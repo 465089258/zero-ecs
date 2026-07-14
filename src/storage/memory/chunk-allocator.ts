@@ -9,23 +9,23 @@ interface MemoryBlock {
     freeCount: number;
 }
 
-interface FreeChunk { readonly blockId: number; readonly chunkIndex: number }
-
 export class ChunkAllocator implements IChunkAllocator {
     private readonly _blocks = new Map<number, MemoryBlock>();
-    private readonly _freeList: FreeChunk[] = [];
+    private readonly _freeList: number[] = [];
     private _nextBlockId = 0;
     private _allocatedChunks = 0;
 
     alloc(): MemoryChunk {
         if (this._freeList.length === 0) this.grow();
         const location = this._freeList.pop()!;
-        const block = this._blocks.get(location.blockId)!;
-        if (block.allocated[location.chunkIndex] !== 0) throw new Error("Allocator free list is corrupted");
-        block.allocated[location.chunkIndex] = 1;
+        const blockId = Math.floor(location / CHUNKS_PER_BLOCK);
+        const chunkIndex = location - blockId * CHUNKS_PER_BLOCK;
+        const block = this._blocks.get(blockId)!;
+        if (block.allocated[chunkIndex] !== 0) throw new Error("Allocator free list is corrupted");
+        block.allocated[chunkIndex] = 1;
         block.freeCount--;
         this._allocatedChunks++;
-        return this.createView(block, location.chunkIndex);
+        return this.createView(block, chunkIndex);
     }
 
     free(handle: ChunkHandle): void {
@@ -36,7 +36,7 @@ export class ChunkAllocator implements IChunkAllocator {
         block.generations[handle.chunkIndex] = (block.generations[handle.chunkIndex] + 1) >>> 0;
         block.freeCount++;
         this._allocatedChunks--;
-        this._freeList.push({ blockId: handle.blockId, chunkIndex: handle.chunkIndex });
+        this._freeList.push(handle.blockId * CHUNKS_PER_BLOCK + handle.chunkIndex);
     }
 
     resolve(handle: ChunkHandle): MemoryChunk | null {
@@ -46,7 +46,15 @@ export class ChunkAllocator implements IChunkAllocator {
         return this.createView(block, handle.chunkIndex);
     }
 
-    owns(handle: ChunkHandle): boolean { return this.resolve(handle) !== null; }
+    owns(handle: ChunkHandle): boolean {
+        const block = this._blocks.get(handle.blockId);
+        return !!block &&
+            Number.isInteger(handle.chunkIndex) &&
+            handle.chunkIndex >= 0 &&
+            handle.chunkIndex < CHUNKS_PER_BLOCK &&
+            block.allocated[handle.chunkIndex] !== 0 &&
+            block.generations[handle.chunkIndex] === handle.generation;
+    }
 
     stats(): AllocatorStats {
         const blockCount = this._blocks.size;
@@ -67,7 +75,11 @@ export class ChunkAllocator implements IChunkAllocator {
         for (const id of emptyIds) this._blocks.delete(id);
         if (emptyIds.size > 0) {
             let write = 0;
-            for (const entry of this._freeList) if (!emptyIds.has(entry.blockId)) this._freeList[write++] = entry;
+            for (let i = 0; i < this._freeList.length; i++) {
+                const entry = this._freeList[i];
+                const blockId = Math.floor(entry / CHUNKS_PER_BLOCK);
+                if (!emptyIds.has(blockId)) this._freeList[write++] = entry;
+            }
             this._freeList.length = write;
         }
         return emptyIds.size;
@@ -81,6 +93,9 @@ export class ChunkAllocator implements IChunkAllocator {
 
     private grow(): void {
         const id = this._nextBlockId++;
+        if (id > Math.floor(Number.MAX_SAFE_INTEGER / CHUNKS_PER_BLOCK) - 1) {
+            throw new RangeError("ChunkAllocator block id capacity exceeded");
+        }
         const block: MemoryBlock = {
             id,
             buffer: new ArrayBuffer(BLOCK_SIZE),
@@ -89,7 +104,7 @@ export class ChunkAllocator implements IChunkAllocator {
             freeCount: CHUNKS_PER_BLOCK,
         };
         this._blocks.set(id, block);
-        for (let i = CHUNKS_PER_BLOCK - 1; i >= 0; i--) this._freeList.push({ blockId: id, chunkIndex: i });
+        for (let i = CHUNKS_PER_BLOCK - 1; i >= 0; i--) this._freeList.push(id * CHUNKS_PER_BLOCK + i);
     }
 
     private createView(block: MemoryBlock, chunkIndex: number): MemoryChunk {

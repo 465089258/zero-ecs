@@ -44,7 +44,7 @@ Internal modules use direct file imports. Barrel files are reserved for module a
 
 Stable runtime APIs are exported from `zero-ecs-lib`. Low-level storage and diagnostics are available from `zero-ecs-lib/advanced`; internal Post and migration implementation are not exported.
 
-The published ESM output targets ES2018 and is emitted bundleless so applications and game engines can tree-shake the stable and advanced entry points independently.
+The published ESM output targets ES2015 and is emitted bundleless so applications and game engines can tree-shake the stable and advanced entry points independently.
 
 ## Commands
 

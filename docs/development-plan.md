@@ -224,6 +224,7 @@ src/
 | 阶段 13：公共 API 边界收紧 | 已完成 | 2026-07-14 |
 | 阶段 14：多平台构建与发布配置 | 工程完成，发布信息待确认 | — |
 | 阶段 15：质量与发布门禁 | 已完成 | 2026-07-14 |
+| 阶段 16：全项目 GC 收口 | 已完成 | 2026-07-14 |
 
 ### 阶段 0：建立迁移基线
 
@@ -387,7 +388,7 @@ src/
 
 完成记录：
 
-- 新增不从公共入口导出的 `EntityMigrationService` 与池化 `MigrationPlan`，使用 `Map<Entity, planIndex>` 合并同周期事务。
+- 新增不从公共入口导出的 `EntityMigrationService` 与池化 `MigrationPlan`；当前使用分页 TypedArray 索引合并同周期事务。
 - EntityCommand 执行时直接解释数字指令到计划，不保留 Command 引用，也不复制完整指令流。
 - MigrationPlan 分别复用目标组件列表、重置组件列表和并行字段写入数组；同字段最后一次 Set 生效。
 - 跨 Command 的 Add/Remove 会按计划当前状态重新应用幂等规则，Set 在计划中发现组件不存在时执行隐式 Add。
@@ -398,7 +399,7 @@ src/
 任务：
 
 - 新增内部 EntityMigrationService。
-- 使用 `Map<Entity, planIndex>` 查找 MigrationPlan，第一版接受 Map 的实现分配特征。
+- 使用分页 TypedArray 的 `Entity → planIndex` 索引查找 MigrationPlan，Post 后按触达列表清零。
 - MigrationPlan、组件类型列表、重置列表和字段写入列表按高水位复用。
 - `record()` 在 EntityCommand.execute 期间直接解释指令并合并最终状态，不保留 Command 引用，也不复制第二份完整指令流。
 - 同字段多次 Set 最后一次生效。
@@ -478,7 +479,7 @@ src/
 
 - Scheduler 使用 Stage token Map 直接定位，0～8 参数走固定调用分支；每 Tick 不再创建 find 回调或使用参数 spread。
 - Ecs、QueryIter、Command、Migration、Timer、Event 稳定路径统一使用索引循环。
-- DataSet/Archetype 增加 tableId/row 数字访问，纯 Set 不再创建 location 对象；结构迁移中的 DataRow/RemoveResult 分配明确保留并记录。
+- DataSet/Archetype 增加 tableId/row 数字访问，纯 Set 不再创建 location 对象；阶段 16 进一步将结构迁移 DataRow/RemoveResult 数字化。
 - Query rebuild 移除临时 Archetype view 和 closure；统一结构版本与跨 rebuild 深度缓存复用保留为独立优化边界。
 - EntityCommand 不存在默认 Error stack/调试字符串；RandomService 移除 seed 闭包/tuple 和 weight reduce 回调。
 - 新增 `docs/performance.md`，逐路径记录稳定分配、高水位扩容、结构变化分配和保留边界。
@@ -623,7 +624,7 @@ src/
 完成记录：
 
 - Rslib 恢复 bundleless 输出，保留 `zero-ecs-lib` 与 `zero-ecs-lib/advanced` 两个显式包入口，并生成逐文件 ESM 与声明文件。
-- 输出语法从 Node 22 专用目标调整为 ES2018，避免把 Node 运行时假设带入 Pixi.js、Cocos、Laya 等宿主。
+- 输出语法从 Node 22 专用目标调整为 ES2015，避免把 Node 运行时假设带入 Pixi.js、Cocos、Laya 等宿主。
 - package 标记 `sideEffects: false`，补充描述和检索关键字；`npm pack --dry-run` 已验证只发布 README、package.json 与 dist。
 - 标准 `npm run build` 已替代临时 `rslib build --no-bundle` 命令并通过。
 
@@ -646,7 +647,24 @@ src/
 - 新增 Mask 确定性性质测试，跨多个 Uint32 word 对照 Set 模型验证 or/and/xor/andNot/has/not/compare/copy；同时修复长度重算、无效 bit 校验与 `toZero` 拼写。
 - `Ecs` 构造函数增加运行时 construction token 校验，JavaScript 调用方也不能绕过 EcsBuilder 直接构建无效实例。
 - 新增 Node 20/22 GitHub Actions 矩阵；`prepack` 绑定统一的 `verify:release` 门禁。
-- 本地门禁通过：strict typecheck、11 个测试文件/52 个测试、ES2018 bundleless 构建、Node `--jitless`、公共类型测试与包边界测试。
+- 本地门禁通过：strict typecheck、bundleless 构建、Node `--jitless`、公共类型测试与包边界测试。
+
+### 阶段 16：全项目 GC 收口
+
+状态：已完成（2026-07-14）。
+
+完成记录：
+
+- DataRow 改为低 14 位行号的安全整数句柄；DataSet.remove 返回数字状态，Entity/Archetype 迁移不再创建 location、RemoveResult、from/to 对象。
+- EntityService 热路径移除 `{ arch, row }` locate 对象；公开诊断位置仍按需物化。
+- Archetype.copyCommonTo 改为索引循环，避免 ES2015 无 JIT 环境中的迭代器临时值。
+- Timer 时间轮槽直接保存池化 InnerTask，删除 LevelTask 与 pending/deferred 临时数组。
+- Query rebuild 跨结构版本复用 entry、current 和组件列视图，并在 Entry 失活时清除存储引用。
+- EntityMigrationService 使用分页 TypedArray 替换 Map；Post 后通过高水位触达列表清零。
+- Command、MigrationPlan、Event 和 Timer 增加显式 trim；Listener.clear 主动断开 callback/context。
+- 增加层级 Timer、池收缩和 Listener 重入清理回归测试；详细分配边界见 `docs/performance.md`。
+- DataSet swap-remove 跳过保留的空尾表，EntityService 只在 Archetype 删除成功后回收句柄；新增跨 Table 批量 Despawn/立即复用回归测试。
+- 发布门禁通过：12 个测试文件/57 个测试、生产构建、Node `--jitless`、公共类型与 package exports；打砖块示例类型检查和生产构建通过。
 
 ## 7. 关键测试矩阵
 
@@ -696,7 +714,7 @@ src/
 | 多 Service 使用不同 Command 导致看不到 pending 数据 | 通过 EntityMutator 约定由外层协调者持有唯一事务 |
 | 纯 Set 绕过 pending migration | 直接写入前必须检查 `MigrationService.has(entity)` |
 | 最终 Mask 相同导致 Remove→Add 未重置 | MigrationPlan 单独保存 resetComponents |
-| Map 在不同引擎产生不可控分配 | 第一版接受并记录；实现边界允许以后替换为分页索引 |
+| 结构迁移索引在不同引擎产生不可控分配 | 已使用分页 TypedArray 和触达列表，不依赖 Map 节点复用 |
 
 ## 9. 明确延期项
 

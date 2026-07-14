@@ -68,6 +68,21 @@ describe("fixed time and optional features", () => {
         expect(calls).toBe(1);
     });
 
+    test("demotes hierarchical Timer tasks without wrapper nodes", () => {
+        const ecs = start(new EcsBuilder()
+            .addModule(new TimeModule(new FixedTimeResource(1)))
+            .addModule(new TimerModule()));
+        const timer = ecs.service(TimerService);
+        let calls = 0;
+        timer.once(65, { submit(): void { calls++; } });
+        for (let i = 0; i < 64; i++) ecs.update();
+        expect(calls).toBe(0);
+        ecs.update();
+        expect(calls).toBe(1);
+        timer.trimPool(0);
+        expect(() => timer.trimPool(-1)).toThrow(/non-negative/);
+    });
+
     test("can delay an EntityCommand until a later fixed tick", () => {
         const ecs = start(new EcsBuilder()
             .addModule(new CommandModule())
@@ -131,6 +146,26 @@ describe("fixed time and optional features", () => {
         second.post();
         ecs.update();
         ecs.dispose();
+    });
+
+    test("trims pooled EventArgs at an explicit boundary", () => {
+        const ecs = start(new EcsBuilder().addModule(new EventModule()));
+        const events = ecs.service(EventService);
+        const first = events.event(PingEvent);
+        const second = events.event(PingEvent);
+        first.post();
+        second.post();
+        ecs.update();
+
+        events.trimPools(1);
+        const retained = events.event(PingEvent);
+        const created = events.event(PingEvent);
+        expect(retained).toBe(first);
+        expect(created).not.toBe(first);
+        expect(created).not.toBe(second);
+        retained.post();
+        created.post();
+        ecs.update();
     });
 
     test("produces the same RandomService sequence for the same seed", () => {

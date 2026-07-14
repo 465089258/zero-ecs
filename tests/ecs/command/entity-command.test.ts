@@ -7,6 +7,7 @@ import {
     ComponentService,
     EcsBuilder,
     ErrorHandlerService,
+    type Entity,
     type EntityMutator,
     EntityService,
     Types,
@@ -66,6 +67,27 @@ describe("unified CommandService", () => {
         expect(CountCommand.total).toBe(5);
     });
 
+    test("trims command and migration pools only at an idle boundary", () => {
+        const ecs = setup();
+        const commands = ecs.service(CommandService);
+        const first = commands.cmd(CountCommand);
+        const second = commands.cmd(CountCommand);
+        first.submit();
+        expect(() => commands.trimPools()).toThrow(/pending/);
+        second.submit();
+        ecs.update();
+
+        commands.trimPools(1, 0);
+        const retained = commands.cmd(CountCommand);
+        const created = commands.cmd(CountCommand);
+        expect(retained).toBe(first);
+        expect(created).not.toBe(first);
+        expect(created).not.toBe(second);
+        retained.submit();
+        created.submit();
+        ecs.update();
+    });
+
     test("recycles a command even when execute throws", () => {
         const ecs = setup();
         const commands = ecs.service(CommandService);
@@ -109,6 +131,41 @@ describe("unified CommandService", () => {
         commands.entity(entity).remove(PlayerTagType).submit();
         ecs.update();
         expect(entities.has(entity, PlayerTagType)).toBe(false);
+    });
+
+    test("batch despawns across retained empty Tables and can immediately reuse Entity slots", () => {
+        const ecs = setup();
+        const commands = ecs.service(CommandService);
+        const entities = ecs.service(EntityService);
+        const errors: unknown[] = [];
+        ecs.service(ErrorHandlerService).setHandler(error => errors.push(error));
+        const original: Entity[] = [];
+
+        // Position rows span more than one 16 KiB Archetype Table.
+        for (let i = 0; i < 1600; i++) {
+            const command = commands.spawn()
+                .set(PositionType, Position.x, i)
+                .set(PositionType, Position.y, -i);
+            original.push(command.entity);
+            command.submit();
+        }
+        ecs.update();
+
+        for (let i = 0; i < original.length; i++) {
+            commands.entity(original[i]).despawn().submit();
+        }
+        ecs.update();
+
+        expect(errors).toEqual([]);
+        for (let i = 0; i < original.length; i++) expect(entities.valid(original[i])).toBe(false);
+
+        const replacement = commands.spawn().set(PositionType, Position.x, 42);
+        const replacementEntity = replacement.entity;
+        replacement.submit();
+        ecs.update();
+        expect(errors).toEqual([]);
+        expect(entities.valid(replacementEntity)).toBe(true);
+        expect(entities.get(replacementEntity, PositionType, Position.x)).toBe(42);
     });
 
     test("keeps unsubmitted EntityCommand alive and makes despawn terminal", () => {

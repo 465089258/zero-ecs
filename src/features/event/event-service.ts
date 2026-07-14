@@ -165,6 +165,17 @@ export class EventService extends Service implements IEventService {
         return this;
     }
 
+    /** Releases pooled EventArgs above a per-type high-water mark. */
+    trimPools(retainPerType = 0): void {
+        this.assertUsable();
+        if (!Number.isSafeInteger(retainPerType) || retainPerType < 0) {
+            throw new RangeError("retainPerType must be a non-negative safe integer");
+        }
+        for (const pool of this._pool.values()) {
+            if (pool.length > retainPerType) pool.length = retainPerType;
+        }
+    }
+
     dispose(): void {
         if (this._disposed) return;
         this._disposed = true;

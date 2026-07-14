@@ -1,6 +1,5 @@
 import { ErrorHandlerService } from "../../context/error-handler-service";
 import { Resource, Service, State } from "../../context/types";
-import { ArrayPool } from "../../internal/array-pool";
 import { FixedTimeResource } from "../time/fixed-time-resource";
 import { TimeState } from "../time/time-state";
 
@@ -27,15 +26,9 @@ interface InnerTask {
     expectedTime: number;      // 预期的虚拟触发时间（秒），用于调试
 }
 
-/** 层级任务（存储在某个层的槽中） */
-interface LevelTask {
-    task: InnerTask;
-    rounds: number;            // 在该层还需等待的完整圈数（当前设计下恒为 0，保留以兼容未来扩展）
-}
-
 /** 时间轮层级 */
 interface Level {
-    slots: LevelTask[][];      // 每个槽位存放 LevelTask 数组
+    slots: InnerTask[][];      // 每个槽位直接存放池化任务，不创建包装节点
     currentSlot: number;       // 当前指针位置
     tickPerSlot: number;       // 每槽代表的基本 tick 数
     totalTicksPerRound: number; // 一整圈的总 tick 数
@@ -113,59 +106,37 @@ export class TimerService extends Service implements ITimer {
 
     /**
      * 处理当前指针所在槽位
-     * - 使用 deferredTasks 延迟降级插入，避免修改正在遍历的 bucket
+     * 高层槽中的任务只会降级到更低层，因此可以直接重新插入。
      */
     private processSlot(level: Level, levelIndex: number): void {
         const bucket = level.slots[level.currentSlot];
         if (bucket.length === 0) return;
 
-        const pending: LevelTask[] = ArrayPool.spawn();
-        const deferredTasks: InnerTask[] = ArrayPool.spawn();
+        const count = bucket.length;
+        for (let i = 0; i < count; i++) {
+            const task = bucket[i];
+            if (levelIndex === 0) {
+                try {
+                    task.taskObject.submit();
 
-        for (let i = 0; i < bucket.length; i++) {
-            const entry = bucket[i];
-            if (entry.rounds > 0) {
-                entry.rounds--;
-                pending.push(entry);
-            } else {
-                const task = entry.task;
-                if (levelIndex === 0) {
-                    // 第 0 层到期 → 直接执行
-                    try {
-                        task.taskObject.submit();
-
-                        if (TimerConfig.DEBUG) {
-                            const actualTime = this._time.elapsed;
-                            const error = actualTime - task.expectedTime;
-                            console.log(
-                                `[Timer] 触发任务: 实际=${actualTime.toFixed(3)}s, ` +
-                                `预期=${task.expectedTime.toFixed(3)}s, ` +
-                                `误差=${error >= 0 ? '+' : ''}${error.toFixed(6)}s`
-                            );
-                        }
-                    } catch (err) {
-                        this._errors.report(err, "timer", task.taskObject);
+                    if (TimerConfig.DEBUG) {
+                        const actualTime = this._time.elapsed;
+                        const error = actualTime - task.expectedTime;
+                        console.log(
+                            `[Timer] 触发任务: 实际=${actualTime.toFixed(3)}s, ` +
+                            `预期=${task.expectedTime.toFixed(3)}s, ` +
+                            `误差=${error >= 0 ? '+' : ''}${error.toFixed(6)}s`
+                        );
                     }
-                    this.recycleTask(task);
-                } else {
-                    // 非 0 层到期 → 降级（延迟插入，避免并发修改）
-                    deferredTasks.push(task);
+                } catch (err) {
+                    this._errors.report(err, "timer", task.taskObject);
                 }
+                this.recycleTask(task);
+            } else {
+                this.addTaskByTargetTick(task);
             }
         }
-
-        // 安全恢复未到期任务
         bucket.length = 0;
-        for (let i = 0; i < pending.length; i++) {
-            bucket.push(pending[i]);
-        }
-        ArrayPool.despawn(pending);
-
-        // 统一降级插入
-        for (let i = 0; i < deferredTasks.length; i++) {
-            this.addTaskByTargetTick(deferredTasks[i]);
-        }
-        ArrayPool.despawn(deferredTasks);
     }
 
     /**
@@ -210,10 +181,7 @@ export class TimerService extends Service implements ITimer {
         // ✅ 修正点：槽位 = (当前指针 + 偏移) 再取模
         const delta = Math.floor(remaining / level.tickPerSlot);
         const slot = (level.currentSlot + delta) & (TimerConfig.SLOT_COUNT - 1);
-        // rounds 恒为 0（因我们保证 remaining < totalTicksPerRound）
-        const rounds = 0;
-
-        level.slots[slot].push({ task, rounds });
+        level.slots[slot].push(task);
     }
 
     private createNewLevel(): void {
@@ -261,9 +229,14 @@ export class TimerService extends Service implements ITimer {
         }
     }
 
-    clearPool(): void {
-        this.taskPool.length = 0;
+    trimPool(retain = 0): void {
+        if (!Number.isSafeInteger(retain) || retain < 0) {
+            throw new RangeError("retain must be a non-negative safe integer");
+        }
+        if (this.taskPool.length > retain) this.taskPool.length = retain;
     }
+
+    clearPool(): void { this.trimPool(0); }
 
     dispose(): void {
         for (let levelIndex = 0; levelIndex < this.levels.length; levelIndex++) {

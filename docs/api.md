@@ -325,6 +325,7 @@ commands.entity(entity).despawn().submit();
 | --- | --- |
 | `CommandService.entity(entity)` | 为已有实体取得一个未提交的 EntityCommand |
 | `CommandService.spawn()` | 立即预留 Entity ID 并返回未提交的 EntityCommand |
+| `CommandService.trimPools(commands, plans)` | 在无 pending Command 的场景切换边界收缩命令与迁移计划历史峰值 |
 | `EntityCommand.add(Type)` | 幂等添加组件 |
 | `EntityCommand.set(Type, field, value)` | 写入字段；组件不存在时自动添加 |
 | `EntityCommand.remove(Type)` | 幂等移除组件 |
@@ -498,12 +499,19 @@ builder.chain(first, second);
 以下 API 从 `zero-ecs-lib/advanced` 导入：
 
 ```ts
-import { ChunkAllocator, DataSet, Types } from "zero-ecs-lib/advanced";
+import {
+    ChunkAllocator,
+    DataSet,
+    RemoveResult,
+    Types,
+    dataRowIndex,
+    dataRowTableId,
+} from "zero-ecs-lib/advanced";
 ```
 
 advanced 同时提供 `Scheduler`、`EntityCommand` 构造器以及 `defineComponentMeta/getComponentMeta` 等底层扩展点；这些 API 不承诺与稳定入口相同的兼容级别。
 
-包采用 bundleless ESM 输出，语法目标为 ES2018。`package.json` 只声明 root 与 advanced 两个子路径；即使产物内存在逐文件模块，也不支持绕过 exports 进行 deep import。
+包采用 bundleless ESM 输出，语法目标为 ES2015。`package.json` 只声明 root 与 advanced 两个子路径；即使产物内存在逐文件模块，也不支持绕过 exports 进行 deep import。
 
 ### 固定内存模型
 
@@ -533,14 +541,23 @@ const row = data.insert();
 
 data.set(row, 0, 1);
 data.set(row, 1, 10.5);
+
+const tableId = dataRowTableId(row);
+const rowIndex = dataRowIndex(row);
+const removed = data.remove(row);
+if (removed === RemoveResult.Moved) {
+    // 尾行被移动到了 row 指向的位置。
+}
 ```
 
 - 一个 Table 对应一个 16 KiB Chunk。
 - 每列是覆盖同一 Chunk 不同区域的 TypedArray。
 - `createTableLayout()` 计算对齐、容量和剩余字节。
-- `remove()` 使用尾行 swap-remove，并通过 `RemoveResult` 告知是否移动了尾行。
+- `DataRow` 是不分配对象的安全整数句柄；低 14 位为行号。句柄 `0` 有效，不应使用 truthy 判断。
+- `remove()` 使用尾行 swap-remove，并返回数字枚举 `RemoveResult.Invalid/Removed/Moved`。
 - `DataSet.version` 只在 Table 创建或释放时变化，用于 Query 缓存失效。
 - `retainEmptyTables` 控制保留多少空 Table，默认 1。
+- swap-remove 会跳过为复用而保留的空尾表；批量删除不会把空 Table 当成搬移源。
 
 ## 11. Advanced：Archetype
 
@@ -583,13 +600,14 @@ events.on(DamageEvent, onDamage);
 events.event(DamageEvent).set(10).post();
 ```
 
-EventService 使用双队列和对象池，在 flush 时派发；支持 `on()`、`one()` 和 `off()`。EventArgs 生命周期固定为 `Recycled → Mutable → Posted → Recycled`，同一实例只能 post 一次；事件子类的写方法应先调用 `assertMutable()`，从而拒绝 post 后或回池后的修改。
+EventService 使用双队列和对象池，在 flush 时派发；支持 `on()`、`one()` 和 `off()`。EventArgs 生命周期固定为 `Recycled → Mutable → Posted → Recycled`，同一实例只能 post 一次；事件子类的写方法应先调用 `assertMutable()`，从而拒绝 post 后或回池后的修改。场景切换时可调用 `trimPools(retainPerType)` 收缩历史峰值。
 
 ### FixedTimeResource、TimeState、TimerService、RandomService
 
 - `FixedTimeResource.deltaSeconds`：构建前传入的不可变固定步长。
 - `TimeState`：每 Tick 更新 `delta`、`elapsed` 和整数 `tick`，不读取 wall clock。
 - `TimerService.once(delaySec, task)`：通过分层时间轮延迟调用 `task.submit()`。
+- `TimerService.trimPool(retain)`：在空闲边界收缩已经完成的任务包装池；`clearPool()` 等价于保留 0 个。
 - `RandomService`：确定性 sfc32 随机数，构造时使用确定默认种子，也可调用 `seed()` 重置；范围、数组和权重输入必须有效，权重必须是有限正数。
 
 ## 13. Advanced：DevProfiler

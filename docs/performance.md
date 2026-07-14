@@ -22,11 +22,11 @@
 | 场景 | 分配来源 | 当前策略 |
 |---|---|---|
 | 首次 Command 类型/并发峰值 | Command 实例、池数组、队列扩容 | 达到高水位后复用 |
-| EntityMigrationService.record | Map entry 及 MigrationPlan 首次扩容 | Plan、组件/重置/字段数组复用；第一版接受 Map 特征 |
+| EntityMigrationService.record | 首次触达 Entity 索引页及 MigrationPlan 高水位 | 分页 TypedArray 保存 entity→plan，触达列表和 Plan 数组复用 |
 | 新 Archetype/Table | Archetype、DataSet Table、16 KiB Chunk、TypedArray views | 结构变化时创建；空表按保留策略释放 |
-| Entity/Archetype insert/remove | DataRow、RemoveResult、移动位置对象 | 当前仍按结构操作创建；后续单独评审数字编码位置 |
-| Query 结构刷新 | matched/entry/current/component-column 数组和 Map entry | 仅 Archetype 或 Table 版本变化时 rebuild；遍历阶段复用 |
-| Timer.once | InnerTask/LevelTask 首次对象及 bucket 扩容 | InnerTask 回池；LevelTask SoA 化作为后续优化候选 |
+| Entity/Archetype insert/remove | 新 Table/Chunk 的高水位扩容 | DataRow 使用安全整数编码，remove 返回数字状态，不创建位置与结果对象 |
+| Query 结构刷新 | 首次达到更多匹配 Table 时扩展高水位缓存 | matched/version 数组、entry、current 和 component-column view 跨 rebuild 复用 |
+| Timer.once | InnerTask 首次对象及 bucket 扩容 | 槽直接保存池化 InnerTask，不再创建 LevelTask 包装对象 |
 | EventService.event/post | EventArgs 首次实例及队列扩容 | EventArgs 按类型回池，双队列复用 |
 
 ## 已完成的无 JIT 调整
@@ -34,6 +34,16 @@
 - Scheduler 每 Tick 不再使用 `find` 回调、数组 `filter/map` 或参数 spread。
 - Ecs、QueryIter、Command、Migration、Timer 和 Event 的稳定遍历使用索引循环。
 - 纯 Set 不再创建 Entity location 对象或组件列数组。
+- DataRow 使用低 14 位编码行号，DataSet/Entity/Archetype 内部位置传递不再创建对象；公开诊断边界按需物化位置。
+- DataSet.remove 返回数字状态，迁移过程不再创建 RemoveResult/from/to 对象。
+- Archetype.copyCommonTo 使用索引循环，无 JIT 时不依赖数组迭代器消除。
+- Timer 槽直接保存 InnerTask，调度和层级降级不再创建 LevelTask 或临时 pending/deferred 数组。
+- Query rebuild 使用高水位 entry/current/component-column 缓存，并用并行版本数组替代 Map；失活 Entry 会清除 Table/TypedArray 引用。
+- CommandService、MigrationPlan、EventService 和 Timer 提供显式 trim API；只在场景切换等空闲边界释放历史峰值，不在 Tick 中自动裁剪。
+- Listener.clear 主动断开 callback/context，包括重入派发期间已经写入 snapshot 的引用。
+- EntityMigrationService 使用 1024 Entity/页的稀疏 TypedArray 索引替代 Map，Post 后按高水位触达列表清零。
+- EntityService.view 的组件列数组按 Archetype/Table 生命周期缓存；重复 view 不再执行 map 或创建数组。
+- ChunkAllocator free-list 使用数字位置栈，free/grow 不再创建每 Chunk 位置对象；owns 不再通过 resolve 创建 MemoryChunk view。
 - Query rebuild 不再创建临时 Archetype view/closure；Table 组件列直接构建到持久 entry。
 - EntityCommand 默认不采集 Error stack，也不生成逐指令调试字符串。
 - RandomService.seed 和 weight 的默认权重计算不创建闭包、tuple 结果或 reduce 回调。
@@ -42,10 +52,9 @@
 
 以下项目需要独立数据和设计评审，不在当前实现中用复杂度换取未经证明的收益：
 
-- 用分页 TypedArray 索引替换 EntityMigrationService 的 Map。
-- 将 DataRow/RemoveResult 改为数字编码或 caller-owned out 参数。
-- 为 Query 建立统一结构版本，并跨 rebuild 复用 entry/current/component-column 缓存。
-- 将 Timer 的 LevelTask 改为并行数组或侵入式节点。
+- Query Filter AST/DNF、System 依赖图和 Component 注册仍在构建阶段创建对象与集合；它们不进入 Tick。
+- Table、MemoryChunk 与 TypedArray view 是存储生命周期对象，只在结构容量达到新高水位时创建。
+- Scheduler 的 Stage Map 和 WeakMap 缓存仍由宿主引擎管理；源码不假定其内部节点分配方式。
 
 ## 验证
 

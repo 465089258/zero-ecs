@@ -83,7 +83,20 @@ export class Listener<T = any> {
     /** 清空所有监听器 */
     clear(): void {
         for (let i = 0; i < this._size; i++) {
-            this._active[i].removed = true;
+            const entry = this._active[i];
+            entry.fn = null!;
+            entry.ctx = undefined;
+            entry.one = false;
+            entry.removed = true;
+        }
+        // During re-entrant clear(), callbacks already visited in call() may
+        // have been copied into the destination snapshot.
+        for (let i = 0; i < this._snapshot.length; i++) {
+            const entry = this._snapshot[i];
+            entry.fn = null!;
+            entry.ctx = undefined;
+            entry.one = false;
+            entry.removed = true;
         }
         this._size = 0;
     }

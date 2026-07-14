@@ -1,4 +1,5 @@
 import { type Table } from "../../storage/data-set";
+import type { TypedArray } from "../../storage/typed-array";
 import { ENTITY_COLUMN, type Archetype } from "../archetype/archetype";
 import {
     type ComponentColumns,
@@ -26,33 +27,36 @@ interface SymbolicClause { required: ComponentType[]; excluded: ComponentType[] 
 interface CompiledClause { requiredMask: Mask; excludedMask: Mask }
 interface Selection { type: ComponentType; meta: ComponentMeta; optional: boolean }
 interface QueryTableEntry<Components extends readonly (object | undefined)[]> {
-    readonly table: Table;
+    table: Table | undefined;
     readonly current: QueryCurrent<Components>;
+    readonly componentViews: TypedArray[][];
 }
 
 const MAX_DNF_CLAUSES = 256;
 
 export class QueryIter<Components extends readonly (object | undefined)[]> {
     private _entries: readonly QueryTableEntry<Components>[] = [];
+    private _length = 0;
     private _index = 0;
     /** Valid only after next() returns true. Reused between iterations. */
     current!: QueryCurrent<Components>;
 
     /** @internal Query-owned iterator reset. */
-    reset(entries: readonly QueryTableEntry<Components>[]): this {
+    reset(entries: readonly QueryTableEntry<Components>[], length: number): this {
         this._entries = entries;
+        this._length = length;
         this._index = 0;
         return this;
     }
 
     next(): boolean {
         const entries = this._entries;
-        const length = entries.length;
+        const length = this._length;
         let index = this._index;
 
         while (index < length) {
             const entry = entries[index++];
-            const count = entry.table.count;
+            const count = entry.table!.count;
             if (count === 0) continue;
 
             const current = entry.current;
@@ -72,8 +76,9 @@ export class Query<Components extends readonly (object | undefined)[]> {
     private readonly _selections: Selection[];
     private readonly _entries: QueryTableEntry<Components>[] = [];
     private readonly _iterator = new QueryIter<Components>();
-    private readonly _dataVersions = new Map<Archetype, number>();
-    private _matched: Archetype[] = [];
+    private readonly _matched: Archetype[] = [];
+    private readonly _dataVersions: number[] = [];
+    private _entryCount = 0;
     private _archetypeVersion = -1;
 
     constructor(
@@ -93,7 +98,7 @@ export class Query<Components extends readonly (object | undefined)[]> {
 
     iter(): QueryIter<Components> {
         if (this.needsRefresh()) this.rebuild();
-        return this._iterator.reset(this._entries);
+        return this._iterator.reset(this._entries, this._entryCount);
     }
 
     private collectSelections(ast: QueryTypeNode): Selection[] {
@@ -192,7 +197,9 @@ export class Query<Components extends readonly (object | undefined)[]> {
     }
 
     private matches(archetype: Archetype): boolean {
-        for (const clause of this._clauses) {
+        const clauses = this._clauses;
+        for (let i = 0; i < clauses.length; i++) {
+            const clause = clauses[i];
             if (archetype.mask.has(clause.requiredMask) && archetype.mask.not(clause.excludedMask)) return true;
         }
         return false;
@@ -203,34 +210,69 @@ export class Query<Components extends readonly (object | undefined)[]> {
         const matched = this._matched;
         for (let i = 0; i < matched.length; i++) {
             const archetype = matched[i];
-            if (this._dataVersions.get(archetype) !== archetype.data.version) return true;
+            if (this._dataVersions[i] !== archetype.data.version) return true;
         }
         return false;
     }
 
     private rebuild(): void {
-        this._entries.length = 0;
-        this._dataVersions.clear();
-        this._matched = [];
-        for (const archetype of this._archetypes.archetypes) {
+        let matchedCount = 0;
+        let entryCount = 0;
+        const archetypes = this._archetypes.archetypes;
+        for (let archetypeIndex = 0; archetypeIndex < archetypes.length; archetypeIndex++) {
+            const archetype = archetypes[archetypeIndex];
             if (!this.matches(archetype)) continue;
-            this._matched.push(archetype);
-            this._dataVersions.set(archetype, archetype.data.version);
-            for (const table of archetype.tables) this._entries.push(this.createEntry(archetype, table));
+            this._matched[matchedCount] = archetype;
+            this._dataVersions[matchedCount++] = archetype.data.version;
+            const tables = archetype.tables;
+            for (let tableIndex = 0; tableIndex < tables.length; tableIndex++) {
+                this.writeEntry(entryCount++, archetype, tables[tableIndex]);
+            }
         }
+        this._matched.length = matchedCount;
+        this._dataVersions.length = matchedCount;
+        this.releaseInactiveEntries(entryCount);
+        this._entryCount = entryCount;
         this._archetypeVersion = this._archetypes.version;
     }
 
-    private createEntry(archetype: Archetype, table: Table): QueryTableEntry<Components> {
-        const current: unknown[] = new Array(2 + this._selections.length);
+    private writeEntry(index: number, archetype: Archetype, table: Table): void {
+        let entry = this._entries[index];
+        if (!entry) {
+            const current: unknown[] = new Array(2 + this._selections.length);
+            const componentViews: TypedArray[][] = new Array(this._selections.length);
+            for (let i = 0; i < componentViews.length; i++) componentViews[i] = [];
+            entry = {
+                table,
+                current: current as QueryCurrent<Components>,
+                componentViews,
+            };
+            this._entries.push(entry);
+        } else {
+            entry.table = table;
+        }
+        const current = entry.current as unknown[];
         current[0] = table.count;
         current[1] = table.columns[ENTITY_COLUMN] as Uint32Array;
         for (let i = 0; i < this._selections.length; i++) {
             const selection = this._selections[i];
-            const columns = archetype.getTableComponent(table, selection.meta.id);
+            const columns = archetype.getTableComponent(table, selection.meta.id, entry.componentViews[i]);
             if (!columns && !selection.optional) throw new Error(`Required component ${selection.meta.name} is missing from matched archetype`);
             current[i + 2] = columns;
         }
-        return { table, current: current as QueryCurrent<Components> };
+    }
+
+    private releaseInactiveEntries(activeCount: number): void {
+        for (let i = activeCount; i < this._entries.length; i++) {
+            const entry = this._entries[i];
+            entry.table = undefined;
+            const current = entry.current as unknown[];
+            current[0] = 0;
+            current[1] = undefined;
+            for (let viewIndex = 0; viewIndex < entry.componentViews.length; viewIndex++) {
+                entry.componentViews[viewIndex].length = 0;
+                current[viewIndex + 2] = undefined;
+            }
+        }
     }
 }
