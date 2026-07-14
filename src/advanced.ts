@@ -3,6 +3,8 @@ export * from "./index";
 export * from "./storage";
 export * from "./context/containers";
 export { CoreEcsModule } from "./ecs/core-module";
+export { EntityCommand } from "./ecs/command/entity-command";
+export type { CommandSubmit, CommandType } from "./ecs/command/command";
 export * from "./ecs/memory";
 export { Archetype, ENTITY_COLUMN } from "./ecs/archetype/archetype";
 export type { ArchetypeRow } from "./ecs/archetype/archetype";

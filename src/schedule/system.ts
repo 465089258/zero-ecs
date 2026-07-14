@@ -48,7 +48,10 @@ type InstanceOfParam<T> =
     never;
 
 export type SystemParamValue<T> =
-    T extends MutParam<infer Target> ? Mut<InstanceOfParam<Target>> : InstanceOfParam<T>;
+    T extends MutParam<infer Target> ? Mut<InstanceOfParam<Target>> :
+    T extends ResourceType<infer Value> ? Readonly<Value> :
+    T extends StateType<infer Value> ? Readonly<Value> :
+    InstanceOfParam<T>;
 
 export type SystemArgs<Params extends readonly SystemParam[]> = {
     [K in keyof Params]: SystemParamValue<Params[K]>;

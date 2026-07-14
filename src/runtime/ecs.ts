@@ -51,7 +51,7 @@ export class Ecs {
 
     get phase(): EcsPhase { return this._phase; }
 
-    readonly resource = <T extends Resource>(type: ResourceType<T>): T =>
+    readonly resource = <T extends Resource>(type: ResourceType<T>): Readonly<T> =>
         this._resources.get(type);
 
     readonly state = <T extends State>(type: StateType<T>): Readonly<T> =>

@@ -177,9 +177,6 @@ export class EntityService extends Service {
         );
     }
 
-    /** @deprecated Use getCompLocation() because rows are scoped to a table. */
-    getCompRow(entity: Entity): number { return this.getCompLocation(entity)?.row ?? -1; }
-
     private locate(entity: Entity): { arch: Archetype; row: ArchetypeRow } | null {
         if (!this.valid(entity)) return null;
         const index = entity >>> VERSION_BITS;

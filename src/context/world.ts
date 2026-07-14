@@ -27,11 +27,11 @@ export class World {
         this._context = context;
     }
 
-    resource<T extends Resource>(type: ResourceType<T>): T {
+    resource<T extends Resource>(type: ResourceType<T>): Readonly<T> {
         return this.context.resources.get(type);
     }
 
-    state<T extends State>(type: StateType<T>): T {
+    state<T extends State>(type: StateType<T>): Readonly<T> {
         return this.context.states.get(type);
     }
 

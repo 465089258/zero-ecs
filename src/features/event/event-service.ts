@@ -73,7 +73,7 @@ export abstract class EventArgs {
 /** 事件系统类 */
 export class EventService extends Service implements IEventService {
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
-    readonly events: Map<ArgsType, Listener<EventArgs>> = new Map();
+    private readonly _events: Map<ArgsType, Listener<EventArgs>> = new Map();
     private readonly _pool: Map<ArgsType, EventArgs[]> = new Map();
     private _frontQueue: Array<EventArgs> = [];
     private _backQueue: Array<EventArgs> = [];
@@ -87,7 +87,7 @@ export class EventService extends Service implements IEventService {
         const { _frontQueue, _backQueue: queue } = this;
         this._frontQueue = queue;
         this._backQueue = _frontQueue;
-        const events = this.events;
+        const events = this._events;
         for (let i = 0; i < queue.length; i++) {
             const args = queue[i];
             try {
@@ -135,7 +135,7 @@ export class EventService extends Service implements IEventService {
     }
     /** 添加监听器 */
     on<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        const events = this.events;
+        const events = this._events;
         let listener = events.get(type);
         if (!listener) {
             listener = new Listener();
@@ -147,7 +147,7 @@ export class EventService extends Service implements IEventService {
 
     /** 添加单次监听器 */
     one<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        const events = this.events;
+        const events = this._events;
         let listener = events.get(type);
         if (!listener) {
             listener = new Listener();
@@ -159,7 +159,7 @@ export class EventService extends Service implements IEventService {
 
     /** 删除监听器 注意只删除最后一个匹配项 */
     off<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        let listener = this.events.get(type);
+        let listener = this._events.get(type);
         if (!listener) return this;
         listener.off(callback as Fn<EventArgs>, context);
         return this;
@@ -171,7 +171,7 @@ export class EventService extends Service implements IEventService {
         let firstError = this.releaseQueue(this._frontQueue);
         const secondError = this.releaseQueue(this._backQueue);
         firstError ??= secondError;
-        this.events.clear();
+        this._events.clear();
         this._pool.clear();
         if (firstError !== undefined) throw firstError;
     }
