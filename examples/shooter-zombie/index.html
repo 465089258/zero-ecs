@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1a0a" />
+    <title>Zero ECS · Zombie Shooter</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">ZERO ECS / RUNTIME STRESS LAB</p>
+          <h1>Zombie <span>Shooter</span></h1>
+          <p class="intro">操控左侧射手抵御右侧僵尸浪潮；击杀僵尸获取经验，升级时从三个随机能力中选择一项强化。守护前方的城墙，城墙被摧毁即告失败。</p>
+        </div>
+        <div class="live-pill"><i></i> LIVE ECS</div>
+      </header>
+
+      <section class="game-layout">
+        <div class="stage-card">
+          <canvas id="game" aria-label="僵尸射手游戏画布"></canvas>
+          <div id="message" class="message" hidden>
+            <strong id="message-title">DEFEAT</strong>
+            <span id="message-copy">按 R 重新开始</span>
+          </div>
+          <div id="upgrade-panel" class="upgrade-panel" hidden>
+            <div class="upgrade-title">⚡ LEVEL UP — 选择升级</div>
+            <div class="upgrade-slots">
+              <div id="upgrade-0" class="upgrade-card"></div>
+              <div id="upgrade-1" class="upgrade-card"></div>
+              <div id="upgrade-2" class="upgrade-card"></div>
+            </div>
+          </div>
+          <div class="scanline"></div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-title">
+            <span>TELEMETRY</span>
+            <small>120 HZ FIXED</small>
+          </div>
+          <dl class="metrics">
+            <div><dt>FPS</dt><dd id="fps">0</dd></div>
+            <div><dt>SIM</dt><dd><span id="sim-ms">0.00</span><small> ms</small></dd></div>
+            <div><dt>RENDER</dt><dd><span id="render-ms">0.00</span><small> ms</small></dd></div>
+            <div><dt>ENTITIES</dt><dd id="entities">0</dd></div>
+            <div><dt>BULLETS</dt><dd id="bullets">0</dd></div>
+            <div><dt>ZOMBIES</dt><dd id="zombies">0</dd></div>
+          </dl>
+
+          <div class="score-block">
+            <span>SCORE</span>
+            <strong id="score">000000</strong>
+            <div class="score-grid">
+              <div><span>WAVE</span><b id="wave">0</b></div>
+              <div><span>LEVEL</span><b id="level">0</b></div>
+              <div><span>XP</span><b id="xp">0/50</b></div>
+              <div><span>WALL</span><b id="wall-hp">500/500</b></div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <button id="restart" class="quiet">重新开始 <kbd>R</kbd></button>
+          </div>
+
+          <div class="legend">
+            <p>⚔️ 击杀僵尸获得经验值 | 💎 经验球自动飞向射手</p>
+            <p>🧱 守住城墙 — 零即失败 | ⚡ 升级选择 1/2/3</p>
+            <p>升级能力：散射 | 分裂 | 弹射 | 连射 | 攻速 | 暴击 | 攻击力</p>
+          </div>
+        </aside>
+      </section>
+
+      <footer>
+        <span>ZOMBIE SURVIVAL · DATA-ORIENTED ECS</span>
+        <span>CHUNK 16 KiB · BLOCK 2 MiB</span>
+      </footer>
+    </main>
+  </body>
+</html>
