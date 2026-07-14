@@ -2,6 +2,7 @@ import { State, Service } from "../../context/types";
 import { Types } from "../../storage/typed-array";
 import {
     type ComponentId,
+    type ComponentDefinition,
     type ComponentMeta,
     type ComponentType,
 } from "./component";
@@ -19,7 +20,17 @@ export class ComponentService extends Service {
     private readonly _state!: ComponentRegistryState;
 
     /** Define a component in this ECS instance, or return its cached metadata. */
-    def<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
+    def<T extends object>(type: ComponentType<T>): ComponentDefinition<T> {
+        return this.defMeta(type);
+    }
+
+    /** Look up a component type without registering it. */
+    get<T extends object>(type: ComponentType<T>): ComponentDefinition<T> | undefined {
+        return this.getMeta(type);
+    }
+
+    /** @internal Define a component and return World-local storage metadata. */
+    defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
         const cached = this._state.byType.get(type);
         if (cached) return cached as ComponentMeta<T>;
 
@@ -51,12 +62,12 @@ export class ComponentService extends Service {
         return meta;
     }
 
-    /** Look up a component type without registering it. */
-    get<T extends object>(type: ComponentType<T>): ComponentMeta<T> | undefined {
+    /** @internal Look up World-local storage metadata without registering it. */
+    getMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> | undefined {
         return this._state.byType.get(type) as ComponentMeta<T> | undefined;
     }
 
-    /** Low-level lookup for world-local IDs held by storage internals. */
+    /** @internal Low-level lookup for World-local IDs held by storage internals. */
     getById(id: ComponentId): ComponentMeta | undefined {
         return this._state.metas[id];
     }

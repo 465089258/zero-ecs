@@ -6,6 +6,7 @@ import {
     CommandService,
     ComponentService,
     EcsBuilder,
+    ErrorHandlerService,
     type EntityMutator,
     EntityService,
     Types,
@@ -69,7 +70,10 @@ describe("unified CommandService", () => {
         const ecs = setup();
         const commands = ecs.service(CommandService);
         const errors: unknown[] = [];
-        (commands as unknown as { onError(error: unknown): void }).onError = error => { errors.push(error); };
+        ecs.service(ErrorHandlerService).setHandler((error, source) => {
+            expect(source).toBe("command");
+            errors.push(error);
+        });
         const command = commands.cmd(ThrowCommand);
         command.submit();
         ecs.update();

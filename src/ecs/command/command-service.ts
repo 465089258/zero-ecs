@@ -1,4 +1,5 @@
 import { InjectionService } from "../../context/injection-service";
+import { ErrorHandlerService } from "../../context/error-handler-service";
 import { Service } from "../../context/types";
 import { EntityService, type Entity } from "../entity/entity-service";
 import { Command, type CommandType } from "./command";
@@ -11,6 +12,7 @@ export interface ICommandService {
 /** Owns the single pooled queue used by ordinary and entity commands. */
 export class CommandService extends Service implements ICommandService {
     @Service.inject(InjectionService) private readonly _injection!: InjectionService;
+    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Service.inject(EntityService) private readonly _entities!: EntityService;
 
     private readonly _pools = new Map<CommandType, Command[]>();
@@ -46,6 +48,7 @@ export class CommandService extends Service implements ICommandService {
         return this.entity(this._entities.spawn());
     }
 
+    /** @internal Internal Post hook. */
     flush(): void {
         let batches = 0;
         while (this._pendingUsed > 0 && batches++ < 1000) {
@@ -85,8 +88,27 @@ export class CommandService extends Service implements ICommandService {
         }
     }
 
+    dispose(): void {
+        let firstError: unknown;
+        const used = this._pendingUsed;
+        this._pendingUsed = 0;
+        for (let i = 0; i < used; i++) {
+            const command = this._pending[i];
+            try {
+                command._recycle();
+            } catch (error) {
+                try { this.onError(error, command); }
+                catch (handlerError) { firstError ??= handlerError; }
+            }
+        }
+        this._pending.length = 0;
+        this._processing.length = 0;
+        this._pools.clear();
+        if (firstError !== undefined) throw firstError;
+    }
+
     protected onError(error: unknown, _command?: Command): void {
-        console.error(error);
+        this._errors.report(error, "command", _command);
     }
 
     private enqueue(command: Command): void {

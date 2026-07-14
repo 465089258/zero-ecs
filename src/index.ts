@@ -10,10 +10,13 @@ export type {
 } from "./context/types";
 export { World } from "./context/world";
 export { InjectionService } from "./context/injection-service";
+export { ErrorHandlerService } from "./context/error-handler-service";
+export type { RuntimeErrorHandler, RuntimeErrorSource } from "./context/error-handler-service";
 
 export type {
     Component,
     ComponentColumns,
+    ComponentDefinition,
     ComponentFields,
     ComponentType,
 } from "./ecs/component/component";
@@ -42,7 +45,6 @@ export type {
 export { QueryType } from "./ecs/query/query-type";
 export { Query, QueryIter } from "./ecs/query/query";
 export type {
-    IQuery,
     QueryComponentView,
     QueryCurrent,
     QueryOf,
@@ -50,13 +52,10 @@ export type {
 
 export { Command } from "./ecs/command/command";
 export type {
-    CommandSubmit,
-    CommandType,
     ICommand,
 } from "./ecs/command/command";
 export { CommandService } from "./ecs/command/command-service";
 export type { ICommandService } from "./ecs/command/command-service";
-export { EntityCommand } from "./ecs/command/entity-command";
 export type { EntityMutator } from "./ecs/command/entity-command";
 export { CommandModule } from "./ecs/command/module";
 
@@ -66,9 +65,7 @@ export type {
     BareSystemParam,
     Mut,
     MutParam,
-    SystemAccess,
     SystemArgs,
-    SystemDefinition,
     SystemFunction,
     SystemHandle,
     SystemId,
@@ -79,8 +76,6 @@ export type {
     SystemDependencyTarget,
     SystemOptions,
 } from "./schedule/schedule";
-export { Scheduler } from "./schedule/scheduler";
-
 export { Ecs, EcsPhase } from "./runtime/ecs";
 export { EcsBuilder } from "./runtime/ecs-builder";
 export type { Module } from "./runtime/module";

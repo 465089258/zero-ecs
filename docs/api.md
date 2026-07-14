@@ -131,6 +131,7 @@ abstract class Service {
 - Service：工具方法集合，自身决定开放哪些修改能力，不参与 State 的 `Write` 权限规则。
 - World：底层入口，只负责访问三个容器。
 - InjectionService：给 Command 等运行时创建的辅助对象填充声明式依赖。
+- ErrorHandlerService：统一接收 Command、Event、Timer 等延迟工作中可恢复的错误。
 
 ### 属性注入
 
@@ -151,6 +152,16 @@ class PhysicsService extends Service {
 ```
 
 同类别的 State 和 Service 初始化顺序会根据属性注入关系进行拓扑排序。循环依赖会在初始化时抛错。
+
+dispose 使用实际初始化顺序的严格逆序；一个实例清理失败不会跳过其余实例，容器完成清理后重新抛出第一个错误。
+
+```ts
+ecs.service(ErrorHandlerService).setHandler((error, source, target) => {
+    report(error, source, target);
+});
+```
+
+同步 System 抛错仍直接返回给 `Ecs.update()` 调用方；ErrorHandlerService 只处理框架能够回收并继续清理的延迟工作错误。
 
 ### `World` 与动态注入
 
@@ -247,7 +258,7 @@ type ComponentMeta<T> = Readonly<{
 
 ## 5. Entity
 
-`Entity` 是带版本的 32 位数字句柄。当前布局使用 20 位索引和 12 位版本。
+`Entity` 是带版本的无符号 32 位数字句柄。当前布局使用 20 位索引和 12 位版本。generation 到达 4095 后对应 slot 会永久退休，不会回绕并使旧句柄重新有效。
 
 ### `EntityService`
 
@@ -559,6 +570,7 @@ TimerService 依赖 FixedTimeResource 和 TimeState。实际使用计时器时�
 class DamageEvent extends EventArgs {
     amount = 0;
     set(amount: number): this {
+        this.assertMutable();
         this.amount = amount;
         return this;
     }
@@ -568,14 +580,14 @@ events.on(DamageEvent, onDamage);
 events.event(DamageEvent).set(10).post();
 ```
 
-EventService 使用双队列和对象池，在 flush 时派发；支持 `on()`、`one()` 和 `off()`。
+EventService 使用双队列和对象池，在 flush 时派发；支持 `on()`、`one()` 和 `off()`。EventArgs 生命周期固定为 `Recycled → Mutable → Posted → Recycled`，同一实例只能 post 一次；事件子类的写方法应先调用 `assertMutable()`，从而拒绝 post 后或回池后的修改。
 
 ### FixedTimeResource、TimeState、TimerService、RandomService
 
 - `FixedTimeResource.deltaSeconds`：构建前传入的不可变固定步长。
 - `TimeState`：每 Tick 更新 `delta`、`elapsed` 和整数 `tick`，不读取 wall clock。
 - `TimerService.once(delaySec, task)`：通过分层时间轮延迟调用 `task.submit()`。
-- `RandomService`：确定性 sfc32 随机数，提供 `seed()`、`float()`、`int()`、`elem()`、`weight()`。
+- `RandomService`：确定性 sfc32 随机数，构造时使用确定默认种子，也可调用 `seed()` 重置；范围、数组和权重输入必须有效，权重必须是有限正数。
 
 ## 13. Advanced：DevProfiler
 

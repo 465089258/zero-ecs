@@ -69,7 +69,7 @@ export class EntityCommand extends Command implements EntityMutator {
 
     has<T extends object>(type: ComponentType<T>): boolean {
         this.assertEntityMutable();
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         return component !== undefined && this._targetMask.has(component.mask);
     }
 
@@ -78,7 +78,7 @@ export class EntityCommand extends Command implements EntityMutator {
         field: Field,
     ): number | null {
         this.assertEntityMutable();
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         if (!component || !this._targetMask.has(component.mask)) return null;
         this.validateField(component, field);
         for (let i = this._used - ENTITY_INSTRUCTION_SIZE; i >= 0; i -= ENTITY_INSTRUCTION_SIZE) {
@@ -98,7 +98,7 @@ export class EntityCommand extends Command implements EntityMutator {
 
     add<T extends object>(type: ComponentType<T>): this {
         this.assertEntityMutable();
-        const component = this._components.def(type);
+        const component = this._components.defMeta(type);
         const created = !this._targetMask.has(component.mask);
         if (created) {
             this._targetMask.orInto(component.mask);
@@ -116,7 +116,7 @@ export class EntityCommand extends Command implements EntityMutator {
 
     remove<T extends object>(type: ComponentType<T>): this {
         this.assertEntityMutable();
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         if (!component) return this;
         if (this._targetMask.has(component.mask)) {
             this._targetMask.andNotInto(component.mask);
@@ -138,7 +138,7 @@ export class EntityCommand extends Command implements EntityMutator {
         value: number,
     ): this {
         this.assertEntityMutable();
-        const component = this._components.def(type);
+        const component = this._components.defMeta(type);
         this.validateField(component, field);
         if (!this._targetMask.has(component.mask)) this.add(type);
         this.write(EntityInstruction.Set, component.id, field, value);

@@ -1,11 +1,14 @@
 import { describe, expect, test } from "@rstest/core";
 import * as publicApi from "../../src";
 import { EntityMigrationService } from "../../src/ecs/migration/entity-migration-service";
+import type { Scheduler } from "../../src/schedule/scheduler";
 import {
     CommandModule,
+    Command,
     CommandService,
     type Component,
     EcsBuilder,
+    EcsPhase,
     EventModule,
     EventService,
     Write,
@@ -101,7 +104,8 @@ describe("system registration and scheduling", () => {
             after: timeSystem,
         });
         const ecs = builder.build();
-        const access = ecs.scheduler.schedule.systems[time.id].access;
+        const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
+        const access = scheduler.schedule.systems[time.id].access;
         expect(access.world).toBe(true);
         expect(access.reads.has(StepResource)).toBe(true);
         expect(access.reads.has(AuditService as never)).toBe(false);
@@ -138,7 +142,8 @@ describe("system registration and scheduling", () => {
         const builder = new EcsBuilder();
         const handle = builder.addSystem(Update.fixed, querySystem, [queryType]);
         const ecs = builder.build();
-        const access = ecs.scheduler.schedule.systems[handle.id].access;
+        const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
+        const access = scheduler.schedule.systems[handle.id].access;
         expect(access.reads.size).toBe(0);
         expect(access.writes.size).toBe(0);
         expect(access.world).toBe(false);
@@ -162,5 +167,30 @@ describe("system registration and scheduling", () => {
         const missing = new EcsBuilder();
         missing.addSystem(Update.fixed, (_step: StepResource) => {}, [StepResource]);
         expect(() => missing.build()).toThrow(/Missing system Resources: StepResource/);
+    });
+
+    test("stops after a failed Tick and discards deferred Commands during dispose", () => {
+        class DeferredCommand extends Command {
+            static executions = 0;
+            execute(): void { DeferredCommand.executions++; }
+        }
+
+        function failingSystem(commands: CommandService): void {
+            commands.cmd(DeferredCommand).submit();
+            throw new Error("expected system failure");
+        }
+
+        DeferredCommand.executions = 0;
+        const builder = new EcsBuilder().addModule(new CommandModule());
+        builder.addSystem(Update.fixed, failingSystem, [CommandService]);
+        const ecs = builder.build();
+        ecs.init();
+        ecs.start();
+
+        expect(() => ecs.update()).toThrow(/expected system failure/);
+        expect(ecs.phase).toBe(EcsPhase.Stopped);
+        expect(() => ecs.update()).toThrow(/invalid during phase Stopped/);
+        ecs.dispose();
+        expect(DeferredCommand.executions).toBe(0);
     });
 });

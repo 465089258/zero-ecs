@@ -15,6 +15,7 @@ import { Scheduler, Shutdown, Startup, Update } from "../schedule";
 import { InternalPost } from "../schedule/internal-stage";
 import { EcsPhase } from "./lifecycle";
 import type { Module } from "./module";
+import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
 
 export { EcsPhase } from "./lifecycle";
 
@@ -23,35 +24,50 @@ export class Ecs {
     private _phase = EcsPhase.Built;
     private _modulesDisposed = false;
 
-    constructor(
+    private constructor(
         readonly world: World,
-        readonly resources: ResourceContainer,
-        readonly states: StateContainer,
-        readonly services: ServiceContainer,
-        readonly scheduler: Scheduler,
+        private readonly _resources: ResourceContainer,
+        private readonly _states: StateContainer,
+        private readonly _services: ServiceContainer,
+        private readonly _scheduler: Scheduler,
         readonly modules: readonly Module[],
         private readonly _context: InjectionContext,
     ) {}
 
+    /** @internal EcsBuilder construction hook. */
+    static create(
+        token: typeof ECS_CONSTRUCTION_TOKEN,
+        world: World,
+        resources: ResourceContainer,
+        states: StateContainer,
+        services: ServiceContainer,
+        scheduler: Scheduler,
+        modules: readonly Module[],
+        context: InjectionContext,
+    ): Ecs {
+        if (token !== ECS_CONSTRUCTION_TOKEN) throw new TypeError("Ecs must be created by EcsBuilder");
+        return new Ecs(world, resources, states, services, scheduler, modules, context);
+    }
+
     get phase(): EcsPhase { return this._phase; }
 
     readonly resource = <T extends Resource>(type: ResourceType<T>): T =>
-        this.resources.get(type);
+        this._resources.get(type);
 
     readonly state = <T extends State>(type: StateType<T>): Readonly<T> =>
-        this.states.get(type);
+        this._states.get(type);
 
     readonly service = <T extends Service>(type: ServiceType<T>): T =>
-        this.services.get(type);
+        this._services.get(type);
 
     /** Structural initialization followed by Module.init() in registration order. */
     init(): void {
         this.assertPhase(EcsPhase.Built, "init");
         try {
             this.world.init();
-            this.states.init();
-            this.services.init();
-            this.scheduler.init(this._context);
+            this._states.init();
+            this._services.init();
+            this._scheduler.init(this._context);
             for (const module of this.modules) module.init?.(this);
             this._phase = EcsPhase.Initialized;
         } catch (error) {
@@ -65,7 +81,7 @@ export class Ecs {
         this.assertPhase(EcsPhase.Initialized, "start");
         let lastStarted = -1;
         try {
-            this.scheduler.run(Startup);
+            this._scheduler.run(Startup);
             for (let i = 0; i < this.modules.length; i++) {
                 lastStarted = i;
                 this.modules[i].start?.(this);
@@ -75,7 +91,7 @@ export class Ecs {
             for (let i = lastStarted; i >= 0; i--) {
                 try { this.modules[i].stop?.(this); } catch { /* preserve start error */ }
             }
-            try { this.scheduler.run(Shutdown); } catch { /* preserve start error */ }
+            try { this._scheduler.run(Shutdown); } catch { /* preserve start error */ }
             this._phase = EcsPhase.Stopped;
             throw error;
         }
@@ -84,10 +100,17 @@ export class Ecs {
     /** Runs systems only. Services have no frame update lifecycle. */
     update(): void {
         this.assertPhase(EcsPhase.Running, "update");
-        const stages = Update.stages;
-        for (let i = 0; i < stages.length; i++) this.scheduler.run(stages[i]);
-        const postStages = InternalPost.stages;
-        for (let i = 0; i < postStages.length; i++) this.scheduler.run(postStages[i]);
+        try {
+            const stages = Update.stages;
+            for (let i = 0; i < stages.length; i++) this._scheduler.run(stages[i]);
+            const postStages = InternalPost.stages;
+            for (let i = 0; i < postStages.length; i++) this._scheduler.run(postStages[i]);
+        } catch (error) {
+            // A failed Tick is terminal: do not retry deferred work against a
+            // partially mutated world on the next update.
+            try { this.stop(); } catch { /* preserve update error */ }
+            throw error;
+        }
     }
 
     stop(): void {
@@ -97,7 +120,7 @@ export class Ecs {
             try { this.modules[i].stop?.(this); }
             catch (error) { firstError ??= error; }
         }
-        try { this.scheduler.run(Shutdown); }
+        try { this._scheduler.run(Shutdown); }
         catch (error) { firstError ??= error; }
         this._phase = EcsPhase.Stopped;
         if (firstError !== undefined) throw firstError;
@@ -115,15 +138,15 @@ export class Ecs {
                 catch (error) { firstError ??= error; }
             }
         }
-        try { this.scheduler.dispose(); }
+        try { this._scheduler.dispose(); }
         catch (error) { firstError ??= error; }
-        try { this.services.dispose(); }
+        try { this._services.dispose(); }
         catch (error) { firstError ??= error; }
-        try { this.states.dispose(); }
+        try { this._states.dispose(); }
         catch (error) { firstError ??= error; }
         try { this.world.dispose(); }
         catch (error) { firstError ??= error; }
-        try { this.resources.clear(); }
+        try { this._resources.clear(); }
         catch (error) { firstError ??= error; }
         this._phase = EcsPhase.Disposed;
         if (firstError !== undefined) throw firstError;

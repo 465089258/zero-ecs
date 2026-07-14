@@ -2,7 +2,7 @@
 
 本文档规划 zero-ecs-lib 从当前实现迁移到下一版纯数据 ECS 运行时的开发任务。`api.md` 与 `architecture.md` 继续描述仓库当前行为；本文档描述已经确认的目标、事务语义、实施顺序和验收标准。
 
-实施状态：阶段 0～9、11 已完成；阶段 10 构建配置将在阶段 14 收口；阶段 12～15 待执行（2026-07-14）。
+实施状态：阶段 0～9、11～12 已完成；阶段 10 构建配置将在阶段 14 收口；阶段 13～15 待执行（2026-07-14）。
 
 ## 1. 项目目标
 
@@ -220,7 +220,7 @@ src/
 | 阶段 9：公共边界与文档收口 | 已完成 | 2026-07-14 |
 | 阶段 10：统一动态注入服务 | 代码完成，构建配置待确认 | 2026-07-14 |
 | 阶段 11：生产正确性修复 | 已完成 | 2026-07-14 |
-| 阶段 12：生命周期与异常安全 | 待执行 | — |
+| 阶段 12：生命周期与异常安全 | 已完成 | 2026-07-14 |
 | 阶段 13：公共 API 边界收紧 | 待执行 | — |
 | 阶段 14：多平台构建与发布配置 | 待执行 | — |
 | 阶段 15：质量与发布门禁 | 待执行 | — |
@@ -575,6 +575,26 @@ src/
 - EventArgs 不会因重复 post 被重复放入对象池。
 - `[1, 1]` 权重池能够选择两个分支，未 seed 的 RandomService 也处于有效状态。
 - Ecs.dispose 后 allocator 的 allocatedChunks 和 blockCount 都为零。
+
+### 阶段 12：生命周期与异常安全
+
+状态：已完成（2026-07-14）。
+
+完成记录：
+
+- StateContainer 与 ServiceContainer 保存实际拓扑初始化顺序，并严格按其逆序 dispose。
+- 单个 State/Service 的 dispose 抛错时继续释放其余实例，清空容器后再抛出第一个错误。
+- 新增基础运行时自动注册的 ErrorHandlerService，Command、Event listener/clear 与 Timer task 的可恢复错误统一通过 source 和 target 上报。
+- CommandService.dispose 回收所有已提交但未执行的 Command；EntityMigrationService.dispose 取消 pending plan。
+- 业务 System 或内部阶段抛错时 `Ecs.update()` 自动执行 stop 并进入 Stopped，失败 Tick 不允许再次 update，也不会在下一 Tick 重放 pending Command。
+- 验证覆盖逆依赖释放、dispose 错误后继续清理、统一 Command 错误上报和失败 Tick；50 个测试、严格类型检查、bundleless 构建与无 JIT 冒烟通过。
+
+验收：
+
+- 任意注册顺序下，依赖方都先于其依赖释放。
+- dispose 局部失败不造成后续 Service、State 或 Core 内存跳过清理。
+- 可恢复的延迟任务错误只有一个可配置出口。
+- 失败 Tick 进入终止状态，未提交的结构事务不会被意外延后执行。
 
 ## 7. 关键测试矩阵
 

@@ -51,6 +51,13 @@ export class EntityMigrationService extends Service {
         this._used = 0;
     }
 
+    dispose(): void {
+        for (let i = 0; i < this._used; i++) this._plans[i].cancel();
+        this._entityToPlan.clear();
+        this._used = 0;
+        this._plans.length = 0;
+    }
+
     private getOrCreate(entity: Entity): MigrationPlan {
         const existing = this._entityToPlan.get(entity);
         if (existing !== undefined) return this._plans[existing];

@@ -5,9 +5,11 @@ import {
     CommandService,
     ComponentService,
     EcsBuilder,
+    ErrorHandlerService,
     EntityService,
     Types,
 } from "../../../src";
+import { getComponentMeta } from "../../../src/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -192,10 +194,13 @@ describe("EntityMigrationService", () => {
         const command = commands.entity(entity)
             .set(PositionType, Position.x, 10)
             .set(VelocityType, Velocity.x, 20);
-        const position = components.get(PositionType)!;
+        const position = getComponentMeta(components, PositionType)!;
         entities.migrate(entity, position.mask, [position], () => {});
         const errors: unknown[] = [];
-        (commands as unknown as { onError(error: unknown): void }).onError = error => { errors.push(error); };
+        ecs.service(ErrorHandlerService).setHandler((error, source) => {
+            expect(source).toBe("command");
+            errors.push(error);
+        });
         command.submit();
         ecs.update();
 

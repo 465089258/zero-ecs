@@ -10,7 +10,7 @@ import { EntitySet } from "../entity";
 import { QueryNodeKind, type QueryTypeNode } from "./filter";
 import { QueryType } from "./query-type";
 
-export interface IComponentResolver { def<T extends object>(type: ComponentType<T>): ComponentMeta<T> }
+export interface IComponentResolver { defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> }
 export interface IArchetypeSource { readonly version: number; readonly archetypes: readonly Archetype[] }
 
 export type QueryOf<T> = T extends QueryType<infer Components> ? Query<Components> : never;
@@ -38,6 +38,7 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     /** Valid only after next() returns true. Reused between iterations. */
     current!: QueryCurrent<Components>;
 
+    /** @internal Query-owned iterator reset. */
     reset(entries: readonly QueryTableEntry<Components>[]): this {
         this._entries = entries;
         this._index = 0;
@@ -66,11 +67,7 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     }
 }
 
-export interface IQuery {
-    match(version: number, archetypes: ReadonlyArray<Archetype>): ReadonlyArray<Archetype>;
-}
-
-export class Query<Components extends readonly (object | undefined)[]> implements IQuery {
+export class Query<Components extends readonly (object | undefined)[]> {
     private readonly _clauses: CompiledClause[];
     private readonly _selections: Selection[];
     private readonly _entries: QueryTableEntry<Components>[] = [];
@@ -99,11 +96,6 @@ export class Query<Components extends readonly (object | undefined)[]> implement
         return this._iterator.reset(this._entries);
     }
 
-    match(_version: number, _archetypes: ReadonlyArray<Archetype>): ReadonlyArray<Archetype> {
-        if (this.needsRefresh()) this.rebuild();
-        return this._matched;
-    }
-
     private collectSelections(ast: QueryTypeNode): Selection[] {
         const selections: Selection[] = [];
         const selected = new Map<ComponentType, QueryNodeKind.With | QueryNodeKind.Optional>();
@@ -117,7 +109,7 @@ export class Query<Components extends readonly (object | undefined)[]> implement
                         const previous = selected.get(type);
                         if (previous !== undefined) throw new Error(`Component ${type.name} is selected more than once`);
                         selected.set(type, QueryNodeKind.With);
-                        selections.push({ type, meta: this._components.def(type), optional: insideAny });
+                        selections.push({ type, meta: this._components.defMeta(type), optional: insideAny });
                     }
                     break;
                 case QueryNodeKind.Optional:
@@ -127,7 +119,7 @@ export class Query<Components extends readonly (object | undefined)[]> implement
                         const previous = selected.get(type);
                         if (previous !== undefined) throw new Error(`Component ${type.name} is selected more than once`);
                         selected.set(type, QueryNodeKind.Optional);
-                        selections.push({ type, meta: this._components.def(type), optional: true });
+                        selections.push({ type, meta: this._components.defMeta(type), optional: true });
                     }
                     break;
                 case QueryNodeKind.Without:
@@ -193,8 +185,8 @@ export class Query<Components extends readonly (object | undefined)[]> implement
         return clauses.map(clause => {
             const requiredMask = Mask.empty();
             const excludedMask = Mask.empty();
-            for (const type of clause.required) requiredMask.orInto(this._components.def(type).mask);
-            for (const type of clause.excluded) excludedMask.orInto(this._components.def(type).mask);
+            for (const type of clause.required) requiredMask.orInto(this._components.defMeta(type).mask);
+            for (const type of clause.excluded) excludedMask.orInto(this._components.defMeta(type).mask);
             return { requiredMask, excludedMask };
         });
     }

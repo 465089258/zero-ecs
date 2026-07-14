@@ -75,7 +75,10 @@ test("Ecs separates build, init, start and system updates", () => {
     ecs.update();
     expect(lifecycle).toEqual(["world:init", "state:init", "service:init", "startup", "update"]);
     expect(ecs.state(CounterState).count).toBe(12);
-    expect(() => ecs.resources.add(ConfigResource, config)).toThrow(/locked/);
+    expect("resources" in ecs).toBe(false);
+    expect("states" in ecs).toBe(false);
+    expect("services" in ecs).toBe(false);
+    expect("scheduler" in ecs).toBe(false);
 });
 
 class InvalidState extends State {
@@ -129,4 +132,43 @@ test("InjectionService rejects objects already injected by another Ecs", () => {
 
     first.dispose();
     second.dispose();
+});
+
+const dependencyLifecycle: string[] = [];
+
+class DependencyService extends Service {
+    init(): void { dependencyLifecycle.push("dependency:init"); }
+    dispose(): void { dependencyLifecycle.push("dependency:dispose"); }
+}
+
+class DependentService extends Service {
+    @Service.inject(DependencyService) readonly dependency!: DependencyService;
+    init(): void { dependencyLifecycle.push("dependent:init"); }
+    dispose(): void { dependencyLifecycle.push("dependent:dispose"); }
+}
+
+class ThrowingDisposeService extends Service {
+    dispose(): void {
+        dependencyLifecycle.push("throwing:dispose");
+        throw new Error("expected dispose failure");
+    }
+}
+
+test("Services dispose in reverse dependency order and continue after an error", () => {
+    dependencyLifecycle.length = 0;
+    const ecs = new EcsBuilder()
+        .addService(DependentService)
+        .addService(DependencyService)
+        .addService(ThrowingDisposeService)
+        .build();
+    ecs.init();
+
+    expect(() => ecs.dispose()).toThrow(/expected dispose failure/);
+    expect(dependencyLifecycle).toEqual([
+        "dependency:init",
+        "dependent:init",
+        "throwing:dispose",
+        "dependent:dispose",
+        "dependency:dispose",
+    ]);
 });

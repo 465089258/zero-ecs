@@ -1,3 +1,4 @@
+import { ErrorHandlerService } from "../../context/error-handler-service";
 import { Service } from "../../context/types";
 import { Listener } from "./listener";
 type Fn<T extends EventArgs> = (args: T) => void;
@@ -71,13 +72,16 @@ export abstract class EventArgs {
 
 /** 事件系统类 */
 export class EventService extends Service implements IEventService {
+    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     readonly events: Map<ArgsType, Listener<EventArgs>> = new Map();
     private readonly _pool: Map<ArgsType, EventArgs[]> = new Map();
     private _frontQueue: Array<EventArgs> = [];
     private _backQueue: Array<EventArgs> = [];
     private readonly _boundPost = (args: EventArgs): void => { this.boundPost(args); };
+    private readonly _listenerError = (error: unknown): void => { this.onError(error); };
     private _disposed = false;
 
+    /** @internal Internal Post hook. */
     flush(): void {
         this.assertUsable();
         const { _frontQueue, _backQueue: queue } = this;
@@ -88,9 +92,7 @@ export class EventService extends Service implements IEventService {
             const args = queue[i];
             try {
                 const type = args.constructor;
-                events.get(type as ArgsType)?.call(args);
-            } catch (error) {
-                this.onError(error, args);
+                events.get(type as ArgsType)?.call(args, this._listenerError);
             } finally {
                 try {
                     args._recycle();
@@ -166,22 +168,29 @@ export class EventService extends Service implements IEventService {
     dispose(): void {
         if (this._disposed) return;
         this._disposed = true;
-        this.releaseQueue(this._frontQueue);
-        this.releaseQueue(this._backQueue);
+        let firstError = this.releaseQueue(this._frontQueue);
+        const secondError = this.releaseQueue(this._backQueue);
+        firstError ??= secondError;
         this.events.clear();
         this._pool.clear();
+        if (firstError !== undefined) throw firstError;
     }
 
     protected onError(error: unknown, _args?: EventArgs): void {
-        console.error(error);
+        this._errors.report(error, "event", _args);
     }
 
-    private releaseQueue(queue: EventArgs[]): void {
+    private releaseQueue(queue: EventArgs[]): unknown {
+        let firstError: unknown;
         for (let i = 0; i < queue.length; i++) {
             try { queue[i]._recycle(); }
-            catch (error) { this.onError(error, queue[i]); }
+            catch (error) {
+                try { this.onError(error, queue[i]); }
+                catch (handlerError) { firstError ??= handlerError; }
+            }
         }
         queue.length = 0;
+        return firstError;
     }
 
     private assertUsable(): void {

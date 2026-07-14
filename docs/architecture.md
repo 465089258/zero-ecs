@@ -69,6 +69,7 @@ World 只提供三个容器的访问能力。动态对象注入只有 `Injection
 ```mermaid
 flowchart LR
     Runtime["EcsBuilder 基础运行时"] --> Injection["InjectionService"]
+    Runtime --> Errors["ErrorHandlerService"]
     Core["CoreEcsModule"] --> RegistryState["ComponentRegistryState"]
     Core --> Memory["EcsMemoryService"]
     Core --> Components["ComponentService"]
@@ -127,7 +128,7 @@ flowchart TB
 5. DataSet 使用 dense row 和尾行 swap-remove。
 6. Archetype 的第 0 列固定保存 Entity，后续列按 ComponentMeta.layout 展开。
 
-EntityService 自身也使用独立 DataSet 保存稳定 slot：Version、Archetype index、Table ID 和 Row。
+EntityService 自身也使用独立 DataSet 保存稳定 slot：Version、Archetype index、Table ID 和 Row。Entity 始终规范化为无符号 32 位值；generation 耗尽时退休 slot，避免旧句柄回绕复活。
 
 ## 5. Component 注册与 Archetype 构建
 
@@ -265,7 +266,11 @@ sequenceDiagram
     Ecs->>World: dispose()
 ```
 
+Core Service 按依赖逆序释放：EntityService 先释放 slot DataSet，ArchetypeService 再释放全部 Archetype DataSet，最后 EcsMemoryService 校验并清空 ChunkAllocator。正常 dispose 后不保留已分配 Chunk 或 2 MiB Block。
+
 一次 `ecs.update()` 有意表示一个固定模拟 Tick。TimeModule 通过 FixedTimeResource 推进 TimeState；真实时间累积、多次追帧和表现插值由上层引擎负责。
+
+如果任意业务 System 或内部阶段抛错，本 Tick 立即失败，Ecs 自动 stop 并进入 Stopped；剩余 Post 不再执行，也不能再次 update。调用方随后 dispose 时，Command/Event/Migration 的 pending 工作只回收或取消，不会在另一个 Tick 重放。Command、Event、Timer 内部能够安全回收的任务错误则统一交给 ErrorHandlerService。
 
 ## 10. Module 组合
 

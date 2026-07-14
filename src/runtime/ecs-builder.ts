@@ -1,5 +1,6 @@
 import { QueryType } from "../ecs/query/query-type";
 import {
+    ErrorHandlerService,
     InjectionService,
     type InjectionContext,
     Resource,
@@ -26,6 +27,7 @@ import {
     type UpdateStage,
 } from "../schedule";
 import { Ecs } from "./ecs";
+import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
 import type { Module } from "./module";
 
 /** Composition root for a World and its peer Scheduler. */
@@ -41,6 +43,7 @@ export class EcsBuilder {
 
     constructor() {
         this.addService(InjectionService);
+        this.addService(ErrorHandlerService);
         this.addModule(new CoreEcsModule());
     }
 
@@ -144,7 +147,8 @@ export class EcsBuilder {
         for (const service of services.values()) injection.inject(service);
 
         const scheduler = new Scheduler(this._schedule.build());
-        return new Ecs(
+        return Ecs.create(
+            ECS_CONSTRUCTION_TOKEN,
             this._world,
             resources,
             states,

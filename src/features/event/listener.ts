@@ -27,7 +27,7 @@ export class Listener<T = any> {
         this.add(true, fn, ctx);
     }
     /** 调用所有监听器 */
-    call(args: any): void {
+    call(args: T, onError?: (error: unknown) => void): void {
         let count = 0;
         const { _active, _snapshot, _size } = this;
         for (let i = 0; i < _size; i++) {
@@ -42,7 +42,8 @@ export class Listener<T = any> {
             try {
                 fn.call(ctx, args);
             } catch (err) {
-                console.error(err);
+                if (onError) onError(err);
+                else throw err;
             }
             entry.fn = null!;
             entry.ctx = undefined;

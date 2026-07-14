@@ -27,11 +27,15 @@ export type ComponentColumns<T extends object> = {
 /** A component's world-local dense identifier. */
 export type ComponentId = number & { readonly [ComponentIdBrand]: "ComponentId" };
 
-/** Runtime metadata owned by one ComponentService instance. */
-export type ComponentMeta<T extends object = object> = Readonly<{
-    id: ComponentId;
+/** Stable public information returned by ComponentService. */
+export type ComponentDefinition<T extends object = object> = Readonly<{
     name: string;
-    mask: Mask;
     type: ComponentType<T>;
     layout: readonly Types[];
+}>;
+
+/** Runtime metadata owned by one ComponentService instance. */
+export type ComponentMeta<T extends object = object> = ComponentDefinition<T> & Readonly<{
+    id: ComponentId;
+    mask: Mask;
 }> & { readonly [ComponentMetaBrand]?: "ComponentMeta" };

@@ -35,6 +35,7 @@ export class StateContainer {
     private readonly _order: State[] = [];
     private _locked = false;
     private _initialized = false;
+    private _lifecycleOrder: State[] = [];
 
     add<T extends State>(type: StateType<T>): T {
         if (this._locked) throw new Error("States are locked");
@@ -57,18 +58,27 @@ export class StateContainer {
 
     init(): void {
         if (this._initialized) return;
-        for (const value of initializationOrder(this._order, InjectionKind.State, "State")) {
+        const order = initializationOrder(this._order, InjectionKind.State, "State");
+        this._lifecycleOrder = order;
+        for (const value of order) {
             value.init?.();
         }
         this._initialized = true;
     }
 
     dispose(): void {
-        for (let i = this._order.length - 1; i >= 0; i--) this._order[i].dispose?.();
+        let firstError: unknown;
+        const order = this._lifecycleOrder.length > 0 ? this._lifecycleOrder : this._order;
+        for (let i = order.length - 1; i >= 0; i--) {
+            try { order[i].dispose?.(); }
+            catch (error) { firstError ??= error; }
+        }
+        this._lifecycleOrder = [];
         this._order.length = 0;
         this._items.clear();
         this._locked = false;
         this._initialized = false;
+        if (firstError !== undefined) throw firstError;
     }
 }
 
@@ -77,6 +87,7 @@ export class ServiceContainer {
     private readonly _order: Service[] = [];
     private _locked = false;
     private _initialized = false;
+    private _lifecycleOrder: Service[] = [];
 
     add<T extends Service>(type: ServiceType<T>): T {
         if (this._locked) throw new Error("Services are locked");
@@ -99,18 +110,27 @@ export class ServiceContainer {
 
     init(): void {
         if (this._initialized) return;
-        for (const value of initializationOrder(this._order, InjectionKind.Service, "Service")) {
+        const order = initializationOrder(this._order, InjectionKind.Service, "Service");
+        this._lifecycleOrder = order;
+        for (const value of order) {
             value.init?.();
         }
         this._initialized = true;
     }
 
     dispose(): void {
-        for (let i = this._order.length - 1; i >= 0; i--) this._order[i].dispose?.();
+        let firstError: unknown;
+        const order = this._lifecycleOrder.length > 0 ? this._lifecycleOrder : this._order;
+        for (let i = order.length - 1; i >= 0; i--) {
+            try { order[i].dispose?.(); }
+            catch (error) { firstError ??= error; }
+        }
+        this._lifecycleOrder = [];
         this._order.length = 0;
         this._items.clear();
         this._locked = false;
         this._initialized = false;
+        if (firstError !== undefined) throw firstError;
     }
 }
 

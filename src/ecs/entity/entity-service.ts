@@ -36,8 +36,10 @@ export class EntityService extends Service {
     private readonly _freeIndices: number[] = [];
     private _counter = 0;
 
+    /** @internal Advanced diagnostics view. */
     get archetypes(): readonly Archetype[] { return this._archetypes.archetypes; }
     get version(): number { return this._archetypes.version; }
+    /** @internal Raw slot storage. */
     get data(): DataSet { return this.slots; }
 
     init(): void {
@@ -56,6 +58,7 @@ export class EntityService extends Service {
         return entity;
     }
 
+    /** @internal Archetype migration primitive. */
     migrate(entity: Entity, mask: Mask, types: ComponentMeta[], callback: (arch: Archetype, row: ArchetypeRow) => void): boolean {
         const index = entity >>> VERSION_BITS;
         if (!this.valid(entity)) return false;
@@ -95,21 +98,21 @@ export class EntityService extends Service {
         type: ComponentType<T>,
         field: Field,
     ): number | null {
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         if (!component) return null;
         const located = this.locate(entity);
         return located ? located.arch.getField(located.row, component.id, field) : null;
     }
 
     has<T extends object>(entity: Entity, type: ComponentType<T>): boolean {
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         if (!component) return false;
         const located = this.locate(entity);
         return located !== null && located.arch.mask.has(component.mask);
     }
 
     view<T extends object>(entity: Entity, type: ComponentType<T>): ComponentColumns<T> | null {
-        const component = this._components.get(type);
+        const component = this._components.getMeta(type);
         if (!component) return null;
         const located = this.locate(entity);
         return located
@@ -129,8 +132,10 @@ export class EntityService extends Service {
         return version !== 0 && index > 0 && index < this._counter && this.readSlot(index, EntityColumn.Version) === version;
     }
 
+    /** @internal Packed Entity index. */
     getRawIndex(entity: Entity): number { return entity >>> VERSION_BITS; }
 
+    /** @internal Current Archetype index. */
     getArchIdx(entity: Entity): number {
         if (!this.valid(entity)) return -1;
         const archId = this.readSlot(entity >>> VERSION_BITS, EntityColumn.Archetype);

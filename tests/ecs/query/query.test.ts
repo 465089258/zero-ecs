@@ -5,6 +5,7 @@ import {
     ArchetypeService,
     type Component,
     ComponentService,
+    defineComponentMeta,
     EcsBuilder,
     Optional,
     QueryService,
@@ -34,9 +35,9 @@ describe("QueryType and QueryIter", () => {
         const ecs = setup();
         const components = ecs.service(ComponentService);
         const archetypes = ecs.service(ArchetypeService);
-        const position = components.def(PositionType);
-        const player = components.def(PlayerType);
-        const death = components.def(DeathTagType);
+        const position = defineComponentMeta(components, PositionType);
+        const player = defineComponentMeta(components, PlayerType);
+        const death = defineComponentMeta(components, DeathTagType);
 
         const queryType = QueryType.from(All(
             With(PositionType),
@@ -77,8 +78,8 @@ describe("QueryType and QueryIter", () => {
         const ecs = setup();
         const components = ecs.service(ComponentService);
         const archetypes = ecs.service(ArchetypeService);
-        const position = components.def(PositionType);
-        const player = components.def(PlayerType);
+        const position = defineComponentMeta(components, PositionType);
+        const player = defineComponentMeta(components, PlayerType);
 
         const emptyArchetype = archetypes.getOrNewAtMask(position.mask, [position]);
         const emptyRow = emptyArchetype.insert(1 as never);

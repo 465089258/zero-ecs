@@ -5,6 +5,7 @@ import {
     EcsBuilder,
     Types,
 } from "../../../src";
+import { defineComponentMeta } from "../../../src/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -33,20 +34,21 @@ describe("ComponentService", () => {
 
         expect(second).toBe(first);
         expect(registry.get(PositionType)).toBe(first);
-        expect(registry.getById(first.id)).toBe(first);
         expect(first.type).toBe(PositionType);
         expect(first.layout).toEqual([Types.F32, Types.F32]);
         expect(Object.isFrozen(first)).toBe(true);
         expect(Object.isFrozen(first.layout)).toBe(true);
+        expect("id" in first).toBe(true);
+        expect("mask" in first).toBe(true);
     });
 
     test("allocates component IDs independently for each ECS instance", () => {
         const first = components();
         const second = components();
 
-        expect(first.def(PositionType).id).toBe(0);
-        expect(first.def(HealthType).id).toBe(1);
-        expect(second.def(HealthType).id).toBe(0);
+        expect(defineComponentMeta(first, PositionType).id).toBe(0);
+        expect(defineComponentMeta(first, HealthType).id).toBe(1);
+        expect(defineComponentMeta(second, HealthType).id).toBe(0);
         expect(second.get(PositionType)).toBeUndefined();
     });
 

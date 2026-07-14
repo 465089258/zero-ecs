@@ -1,3 +1,4 @@
+import { ErrorHandlerService } from "../../context/error-handler-service";
 import { Resource, Service, State } from "../../context/types";
 import { ArrayPool } from "../../internal/array-pool";
 import { FixedTimeResource } from "../time/fixed-time-resource";
@@ -41,6 +42,7 @@ interface Level {
 }
 
 export class TimerService extends Service implements ITimer {
+    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Resource.inject(FixedTimeResource) private readonly _fixed!: FixedTimeResource;
     @State.inject(TimeState) private readonly _time!: TimeState;
 
@@ -142,7 +144,7 @@ export class TimerService extends Service implements ITimer {
                             );
                         }
                     } catch (err) {
-                        console.error(err);
+                        this._errors.report(err, "timer", task.taskObject);
                     }
                     this.recycleTask(task);
                 } else {
@@ -185,7 +187,7 @@ export class TimerService extends Service implements ITimer {
                     );
                 }
             } catch (err) {
-                console.error(err);
+                this._errors.report(err, "timer", task.taskObject);
             }
             this.recycleTask(task);
             return;

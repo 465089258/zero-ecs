@@ -1,5 +1,5 @@
 import { expect, test } from "@rstest/core";
-import { type Component, ComponentService, EcsBuilder, EcsMemoryService, type Entity, EntityService, Types } from "../../../src/advanced";
+import { type Component, ComponentService, defineComponentMeta, EcsBuilder, EcsMemoryService, type Entity, EntityService, Types } from "../../../src/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -16,8 +16,8 @@ test("EntityService and Archetype share DataSet-backed chunk memory", () => {
     const ecs = new EcsBuilder().build();
     ecs.init();
     const components = ecs.service(ComponentService);
-    const position = components.def(PositionType);
-    const health = components.def(HealthType);
+    const position = defineComponentMeta(components, PositionType);
+    const health = defineComponentMeta(components, HealthType);
     const positionId = position.id;
     const healthId = health.id;
     const entities = ecs.service(EntityService);
