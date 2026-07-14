@@ -5,7 +5,7 @@ export default defineConfig({
     {
       // Preserve the stable root and unstable advanced subpath as separate
       // modules, and keep individual files tree-shakeable for game engines.
-      syntax: 'es2018',
+      syntax: 'es2015',
       bundle: false,
       dts: true,
       source: {
