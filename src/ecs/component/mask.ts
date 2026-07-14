@@ -6,12 +6,13 @@ export class Mask {
         this._bits = bits;
         this._length = length;
     }
-    toZeor() {
+    toZero(): void {
         this._length = 0;
         this._bits.fill(0);
     }
     /** 创建一个只有第 `bit` 位为 1 的掩码 */
     static fromBit(bit: number): Mask {
+        Mask.assertBit(bit);
         const wordIndex = bit >>> 5;           // 除以 32
         const bitInWord = bit & 31;            // 取余
         const length = bit + 1;
@@ -26,6 +27,7 @@ export class Mask {
     }
 
     static fill(bit: number): Mask {
+        Mask.assertBit(bit);
         const wordIndex = bit >>> 5;        // 除以 32
         const bitInWord = bit & 31;         // 取余
         const length = bit + 1;             // 有效位数
@@ -71,12 +73,7 @@ export class Mask {
         for (let i = oBits.length; i < tBits.length; i++) {
             tBits[i] = 0;
         }
-        target._length = 0;
-        for (let i = 0; i < tBits.length; i++) {
-            if (tBits[i] !== 0) {
-                target._length = Math.max(target._length, (i << 5) + (31 - Math.clz32(tBits[i])) + 1);
-            }
-        }
+        target._length = this._length;
     }
     /** 返回当前掩码与 other 的并集（不修改原对象） */
     or(other: Mask): Mask {
@@ -144,13 +141,7 @@ export class Mask {
         for (let i = minLen; i < this._bits.length; i++) {
             this._bits[i] = 0;
         }
-        // 重新计算有效长度
-        this._length = 0;
-        for (let i = 0; i < this._bits.length; i++) {
-            if (this._bits[i] !== 0) {
-                this._length = Math.max(this._length, (i << 5) + (31 - Math.clz32(this._bits[i])) + 1);
-            }
-        }
+        this.recomputeLength();
         return this;
     }
 
@@ -164,18 +155,15 @@ export class Mask {
         for (let i = 0; i < other._bits.length; i++) {
             this._bits[i] ^= other._bits[i];
         }
+        this.recomputeLength();
         return this;
     }
     andNotInto(other: Mask): this {
-        const maxLen = Math.max(this._bits.length, other._bits.length);
-        if (this._bits.length < maxLen) {
-            const newBits = new Uint32Array(maxLen);
-            newBits.set(this._bits);
-            this._bits = newBits;
-        }
-        for (let i = 0; i < other._bits.length; i++) {
+        const minLen = Math.min(this._bits.length, other._bits.length);
+        for (let i = 0; i < minLen; i++) {
             this._bits[i] &= ~other._bits[i];
         }
+        this.recomputeLength();
         return this;
     }
     /** 判断相等 */
@@ -211,6 +199,23 @@ export class Mask {
     /** 调试用：返回位数组的副本 */
     get words(): Uint32Array {
         return this._bits.slice();
+    }
+
+    private recomputeLength(): void {
+        for (let i = this._bits.length - 1; i >= 0; i--) {
+            const word = this._bits[i];
+            if (word !== 0) {
+                this._length = (i << 5) + (32 - Math.clz32(word));
+                return;
+            }
+        }
+        this._length = 0;
+    }
+
+    private static assertBit(bit: number): void {
+        if (!Number.isSafeInteger(bit) || bit < 0 || bit > 0xFFFFFFFF) {
+            throw new RangeError(`Mask bit must be an integer between 0 and 4294967295: ${bit}`);
+        }
     }
 
     static readonly EMPTY = Mask.empty();

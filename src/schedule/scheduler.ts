@@ -25,6 +25,7 @@ export class Scheduler {
 
     constructor(readonly schedule: SystemSchedule) {}
 
+    /** @internal Bound and compiled by Ecs during initialization. */
     init(context: InjectionContext): void {
         if (this._context) throw new Error("Scheduler has already been initialized");
         this._context = context;

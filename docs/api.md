@@ -4,7 +4,7 @@
 
 ## 1. 导入与最小启动
 
-稳定公共入口为 `zero-ecs-lib`，提供 Runtime、Component、Entity、Query、Command、System 和可选 Module。Allocator、DataSet、Mask、Archetype、容器与 DevProfiler 位于不保证兼容的 `zero-ecs-lib/advanced`；内部 Post 和 EntityMigrationService 不从任何包入口导出。
+稳定公共入口为 `zero-ecs-lib`，提供 Runtime、Component、Entity、Query、Command Service、System 和可选 Module。Allocator、DataSet、Mask、Archetype、Scheduler、EntityCommand 构造器、容器与 DevProfiler 位于不保证兼容的 `zero-ecs-lib/advanced`；内部 Post 和 EntityMigrationService 不从任何包入口导出。
 
 ```ts
 import { EcsBuilder } from "zero-ecs-lib";
@@ -62,11 +62,11 @@ const builder = new EcsBuilder()
 
 ### `Ecs`
 
-`Ecs` 持有同层级的 World、三个容器和 Scheduler。
+`Ecs` 在内部拥有同层级的 World、三个容器和 Scheduler。稳定 API 只公开 World、Module 列表和按类型访问方法；Ecs 只能由 `EcsBuilder` 构建。
 
 | API | 当前行为 |
 | --- | --- |
-| `resource(Type)` | 获取 Resource 实例 |
+| `resource(Type)` | 返回 `Readonly<T>` 类型的 Resource |
 | `state(Type)` | 返回 `Readonly<T>` 类型的 State |
 | `service(Type)` | 获取 Service 实例 |
 | `init()` | World → State → Service → Scheduler → Module.init 初始化 |
@@ -233,28 +233,24 @@ const components = ecs.service(ComponentService);
 
 const position = components.def(PositionType);
 const cached = components.get(PositionType);
-const byId = components.getById(position.id);
 ```
 
 | API | 当前语义 |
 | --- | --- |
-| `def(Type)` | 在当前 ECS 中首次定义组件，重复调用返回同一 Meta |
+| `def(Type)` | 在当前 ECS 中首次定义组件，重复调用返回同一 Definition |
 | `get(Type)` | 只查询，不注册，不消耗 ID |
-| `getById(id)` | 供存储内部按当前 World 的 ID 查询 |
 
-`ComponentMeta`：
+稳定入口返回的 `ComponentDefinition` 不暴露 World-local 存储标识：
 
 ```ts
-type ComponentMeta<T> = Readonly<{
-    id: ComponentId;
+type ComponentDefinition<T> = Readonly<{
     name: string;
-    mask: Mask;
     type: ComponentType<T>;
     layout: readonly Types[];
 }>;
 ```
 
-组件类是跨 World 的稳定标识；`ComponentId` 只在某个 `ComponentService` 实例中有效。
+组件类是跨 World 的稳定标识。底层工具若确实需要当前 World 的 `ComponentId` 和 `Mask`，应从 advanced 导入 `defineComponentMeta()` 或 `getComponentMeta()`；这些标识只在对应 ComponentService 实例中有效。
 
 ## 5. Entity
 
@@ -295,7 +291,7 @@ if (location && position) {
 }
 ```
 
-`migrate()`、`despawn()`、`getArchIdx()` 等方法目前仍公开，但主要用于 EntityCommand 和底层存储实现。普通系统应优先使用延迟命令。
+`despawn()` 会立即销毁实体。普通业务系统应优先使用 `CommandService.entity(entity).despawn().submit()`，从而把结构修改推迟到内部 Post；`migrate()`、raw index 和 Archetype index 等原语不出现在稳定声明中。
 
 ## 6. EntityCommand
 
@@ -329,7 +325,6 @@ commands.entity(entity).despawn().submit();
 | --- | --- |
 | `CommandService.entity(entity)` | 为已有实体取得一个未提交的 EntityCommand |
 | `CommandService.spawn()` | 立即预留 Entity ID 并返回未提交的 EntityCommand |
-| `CommandService.flush()` | 内部执行并回收统一队列；结构结果随后由 Migration Post 提交 |
 | `EntityCommand.add(Type)` | 幂等添加组件 |
 | `EntityCommand.set(Type, field, value)` | 写入字段；组件不存在时自动添加 |
 | `EntityCommand.remove(Type)` | 幂等移除组件 |
@@ -450,7 +445,11 @@ Shutdown
 ### 参数注册
 
 ```ts
-function readSystem(config: GameConfig, state: GameState, service: GameService): void {}
+function readSystem(
+    config: Readonly<GameConfig>,
+    state: Readonly<GameState>,
+    service: GameService,
+): void {}
 
 function writeSystem(state: Mut<GameState>): void {
     state.frame++;
@@ -477,7 +476,7 @@ builder.addSystem(Update.fixed, writeSystem, [Write(GameState)]);
 - Query 权限尚未纳入访问集合。
 - World 被记录为不透明全局访问。
 
-注意：当前 `SystemParamValue` 尚未把普通 Resource/State 参数映射成 TypeScript `Readonly<T>`；只读目前主要体现在注册语义和 `Ecs.state()` 返回类型上。
+`SystemParamValue` 会把普通 Resource/State 映射成 `Readonly<T>`；只有注册 `Write(StateType)` 的参数是可写 `Mut<T>`。这是浅只读约束，嵌套对象的深层不可变性仍由业务类型自行定义。
 
 ### 依赖规则
 
@@ -501,6 +500,10 @@ builder.chain(first, second);
 ```ts
 import { ChunkAllocator, DataSet, Types } from "zero-ecs-lib/advanced";
 ```
+
+advanced 同时提供 `Scheduler`、`EntityCommand` 构造器以及 `defineComponentMeta/getComponentMeta` 等底层扩展点；这些 API 不承诺与稳定入口相同的兼容级别。
+
+包采用 bundleless ESM 输出，语法目标为 ES2018。`package.json` 只声明 root 与 advanced 两个子路径；即使产物内存在逐文件模块，也不支持绕过 exports 进行 deep import。
 
 ### 固定内存模型
 

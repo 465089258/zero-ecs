@@ -11,7 +11,6 @@ export type { ArchetypeRow } from "./ecs/archetype/archetype";
 export { ArchetypeService } from "./ecs/archetype/archetype-service";
 export type { ComponentId, ComponentMeta } from "./ecs/component/component";
 export { defineComponentMeta, getComponentMeta } from "./ecs/component/advanced";
-export { ComponentRegistryState } from "./ecs/component/component-registry";
 export { Mask } from "./ecs/component/mask";
 export { QueryService } from "./ecs/query/query-service";
 export type { IArchetypeSource, IComponentResolver } from "./ecs/query/query";

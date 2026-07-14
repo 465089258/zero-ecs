@@ -29,7 +29,7 @@ export class MigrationPlan {
         this._resetUsed = 0;
         this._writeUsed = 0;
         this.types.length = 0;
-        this.targetMask.toZeor();
+        this.targetMask.toZero();
         if (!archetype) return;
         archetype.mask.copyTo(this.targetMask);
         for (let i = 0; i < archetype.types.length; i++) this.types.push(archetype.types[i]);

@@ -2,7 +2,7 @@
 
 本文档规划 zero-ecs-lib 从当前实现迁移到下一版纯数据 ECS 运行时的开发任务。`api.md` 与 `architecture.md` 继续描述仓库当前行为；本文档描述已经确认的目标、事务语义、实施顺序和验收标准。
 
-实施状态：阶段 0～9、11～12 已完成；阶段 10 构建配置将在阶段 14 收口；阶段 13～15 待执行（2026-07-14）。
+实施状态：阶段 0～13、15 已完成；阶段 14 的工程配置已完成，正式发布信息待项目所有者确认（2026-07-14）。
 
 ## 1. 项目目标
 
@@ -221,9 +221,9 @@ src/
 | 阶段 10：统一动态注入服务 | 代码完成，构建配置待确认 | 2026-07-14 |
 | 阶段 11：生产正确性修复 | 已完成 | 2026-07-14 |
 | 阶段 12：生命周期与异常安全 | 已完成 | 2026-07-14 |
-| 阶段 13：公共 API 边界收紧 | 待执行 | — |
-| 阶段 14：多平台构建与发布配置 | 待执行 | — |
-| 阶段 15：质量与发布门禁 | 待执行 | — |
+| 阶段 13：公共 API 边界收紧 | 已完成 | 2026-07-14 |
+| 阶段 14：多平台构建与发布配置 | 工程完成，发布信息待确认 | — |
+| 阶段 15：质量与发布门禁 | 已完成 | 2026-07-14 |
 
 ### 阶段 0：建立迁移基线
 
@@ -595,6 +595,58 @@ src/
 - dispose 局部失败不造成后续 Service、State 或 Core 内存跳过清理。
 - 可恢复的延迟任务错误只有一个可配置出口。
 - 失败 Tick 进入终止状态，未提交的结构事务不会被意外延后执行。
+
+### 阶段 13：公共 API 边界收紧
+
+状态：已完成（2026-07-14）。
+
+完成记录：
+
+- `ComponentService.def/get` 只返回不含 World-local ID/Mask 的 `ComponentDefinition`；底层 `ComponentMeta` 通过 advanced 的 `defineComponentMeta/getComponentMeta` 明确取得。
+- `Ecs` 的容器和 Scheduler 改为内部所有权，构造入口只供 `EcsBuilder` 使用；稳定根入口不再导出 Scheduler、EntityCommand 构造器及底层系统定义类型。
+- 内部 bind、flush、reset/recycle、Entity migration/raw index 等成员使用 `@internal` 配合 `stripInternal` 从声明文件移除；删除过时的 `IQuery` 与 `getCompRow`。
+- EventService 的 Listener Map 改为私有，外部只能通过 `on/one/off` 修改监听关系。
+- 普通 Resource/State 系统参数及 `Ecs/World.resource/state` 映射为 `Readonly<T>`；只有 `Write(StateType)` 返回可写 `Mut<T>`，Service 仍由自身 API 决定开放能力。
+- 验证：10 个测试文件、50 个测试通过；严格类型检查、bundleless 声明构建、根/advanced 运行时边界和 Node `--jitless` 冒烟通过。
+
+验收：
+
+- 稳定入口无法直接构造 Ecs、Scheduler 或 EntityCommand，也不能取得容器和内部组件注册数据。
+- 公开声明不暴露内部生命周期钩子和迁移原语。
+- ComponentDefinition 与 ComponentMeta 的稳定/advanced 边界明确。
+- 默认 Resource/State 系统参数在 TypeScript 中是只读的。
+
+### 阶段 14：多平台构建与发布配置
+
+状态：工程配置已完成；正式发布信息待确认。
+
+完成记录：
+
+- Rslib 恢复 bundleless 输出，保留 `zero-ecs-lib` 与 `zero-ecs-lib/advanced` 两个显式包入口，并生成逐文件 ESM 与声明文件。
+- 输出语法从 Node 22 专用目标调整为 ES2018，避免把 Node 运行时假设带入 Pixi.js、Cocos、Laya 等宿主。
+- package 标记 `sideEffects: false`，补充描述和检索关键字；`npm pack --dry-run` 已验证只发布 README、package.json 与 dist。
+- 标准 `npm run build` 已替代临时 `rslib build --no-bundle` 命令并通过。
+
+待项目所有者确认：
+
+- 首个公开版本号及发布通道（stable、alpha 或 beta）。
+- LICENSE、author 与 repository。许可证是法律授权，不能由实现阶段代替所有者选择。
+
+在这些信息确认前，代码可以被本地打包和集成测试，但不应执行正式 npm publish。
+
+### 阶段 15：质量与发布门禁
+
+状态：已完成（2026-07-14）。
+
+完成记录：
+
+- `tsconfig.json` 启用 strict，并增加独立 `typecheck` 命令。
+- 新增基于构建后声明的公共类型契约测试，覆盖组件字段完整性、ComponentDefinition 边界、Ecs 私有构造/所有权和 Resource/State 只读参数。
+- 新增 package exports 运行时测试，确认 root 不泄漏 Scheduler、EntityCommand、DataSet、Mask 或内部 Post，并拒绝未导出的 deep import。
+- 新增 Mask 确定性性质测试，跨多个 Uint32 word 对照 Set 模型验证 or/and/xor/andNot/has/not/compare/copy；同时修复长度重算、无效 bit 校验与 `toZero` 拼写。
+- `Ecs` 构造函数增加运行时 construction token 校验，JavaScript 调用方也不能绕过 EcsBuilder 直接构建无效实例。
+- 新增 Node 20/22 GitHub Actions 矩阵；`prepack` 绑定统一的 `verify:release` 门禁。
+- 本地门禁通过：strict typecheck、11 个测试文件/52 个测试、ES2018 bundleless 构建、Node `--jitless`、公共类型测试与包边界测试。
 
 ## 7. 关键测试矩阵
 

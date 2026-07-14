@@ -60,7 +60,7 @@ export class EntityCommand extends Command implements EntityMutator {
         this._entity = entity;
         this._used = 0;
         this._types.length = 0;
-        this._targetMask.toZeor();
+        this._targetMask.toZero();
         const archetype = this._archetypes.getAtIdx(this._entities.getArchIdx(entity));
         if (!archetype) return;
         archetype.mask.copyTo(this._targetMask);
@@ -178,7 +178,7 @@ export class EntityCommand extends Command implements EntityMutator {
         this._entity = 0 as Entity;
         this._used = 0;
         this._types.length = 0;
-        this._targetMask.toZeor();
+        this._targetMask.toZero();
     }
 
     private assertEntityMutable(): void {

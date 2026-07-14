@@ -1,7 +1,9 @@
 {
   "name": "zero-ecs-lib",
   "version": "0.0.0",
+  "description": "A data-oriented TypeScript ECS runtime with fixed-size chunk storage.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,12 +21,23 @@
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "ecs",
+    "entity-component-system",
+    "typescript",
+    "game-development"
+  ],
   "scripts": {
     "build": "rslib",
     "dev": "rslib --watch",
     "test": "rstest",
+    "typecheck": "tsc --noEmit",
+    "test:types": "tsc -p tests/types/tsconfig.json",
+    "test:package": "node tests/package-boundary.mjs",
     "test:no-jit": "npm run build && node --jitless tests/no-jit-smoke.mjs",
-    "test:watch": "rstest --watch"
+    "test:watch": "rstest --watch",
+    "verify:release": "npm run typecheck && npm run test && npm run build && node --jitless tests/no-jit-smoke.mjs && npm run test:types && npm run test:package",
+    "prepack": "npm run verify:release"
   },
   "devDependencies": {
     "@rslib/core": "^0.23.2",

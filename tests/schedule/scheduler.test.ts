@@ -77,7 +77,7 @@ describe("system registration and scheduling", () => {
 
         function timeSystem(
             world: World,
-            step: StepResource,
+            step: Readonly<StepResource>,
             time: Mut<ClockState>,
             audit: AuditService,
         ): void {
@@ -87,7 +87,7 @@ describe("system registration and scheduling", () => {
             order.push("time");
         }
 
-        function timerSystem(time: ClockState, timer: Mut<TimerState>): void {
+        function timerSystem(time: Readonly<ClockState>, timer: Mut<TimerState>): void {
             timer.observed = time.time;
             order.push("timer");
         }
@@ -165,7 +165,7 @@ describe("system registration and scheduling", () => {
         expect(() => Write(AuditService as never)).toThrow(/only accepts a State/);
 
         const missing = new EcsBuilder();
-        missing.addSystem(Update.fixed, (_step: StepResource) => {}, [StepResource]);
+        missing.addSystem(Update.fixed, (_step: Readonly<StepResource>) => {}, [StepResource]);
         expect(() => missing.build()).toThrow(/Missing system Resources: StepResource/);
     });
 

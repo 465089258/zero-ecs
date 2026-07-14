@@ -32,7 +32,7 @@ flowchart TB
 
 ## 2. 运行时所有权
 
-World、三个容器与 Scheduler 是 Ecs 下的同层对象，World 不拥有 Scheduler。
+World、三个容器与 Scheduler 是 Ecs 内部拥有的同层对象，World 不拥有 Scheduler。稳定 API 不直接暴露容器或 Scheduler，只提供按类型访问与生命周期操作。
 
 ```mermaid
 flowchart TB
@@ -89,7 +89,7 @@ flowchart LR
 
 核心职责：
 
-- ComponentService：World 内组件类到 ComponentMeta/ID 的唯一注册入口。
+- ComponentService：World 内组件类的唯一注册入口；稳定方法返回 ComponentDefinition，内部存储使用 ComponentMeta/ID。
 - EcsMemoryService：拥有当前 ECS 的 ChunkAllocator。
 - ArchetypeService：按组件 Mask 查找和创建 Archetype。
 - EntityService：管理带版本 Entity slot 和 Entity → ArchetypeRow 位置。
@@ -147,7 +147,7 @@ sequenceDiagram
         CS->>CS: new PositionType() 并验证连续字段
         CS->>CRS: 分配 World-local ComponentId
     end
-    CS-->>Caller: ComponentMeta
+    CS-->>Caller: 内部 ComponentMeta
     Caller->>AS: 按最终 Mask 查找/创建
     alt Archetype 不存在
         AS->>A: new Archetype(mask, metas)
@@ -343,7 +343,9 @@ sequenceDiagram
 
 ### 11.1 稳定入口与 Advanced 入口
 
-`zero-ecs-lib` 只导出 Runtime、Component/Entity/Query、Command、System 和可选 Module。`zero-ecs-lib/advanced` 导出 Allocator、DataSet、Mask、Archetype、容器和 DevProfiler。InternalPost 与 EntityMigrationService 两个入口都不导出。
+`zero-ecs-lib` 只导出 Runtime、Component/Entity/Query、Command Service、System 和可选 Module。`zero-ecs-lib/advanced` 额外导出 Allocator、DataSet、Mask、Archetype、Scheduler、EntityCommand 构造器、组件存储元数据辅助函数、容器和 DevProfiler。InternalPost 与 EntityMigrationService 两个入口都不导出。
+
+构建使用 ES2018 bundleless ESM；package exports 是受支持入口的最终边界，dist 内部逐文件路径不构成公共 API。声明生成启用 `stripInternal`，内部 bind、flush、迁移和对象池钩子不会进入发布类型面。
 
 ### 11.2 EntityCommand 事务合并
 
@@ -358,7 +360,7 @@ CommandService flush 已从 `Update.last` 移入内部 Post。业务系统无法
 - State 的 read/write 已记录但未用于冲突边。
 - Query 没有组件读写声明。
 - World 是不透明访问，但当前不会阻止任何排序或并行。
-- Resource 的只读意图尚未完全反映到系统函数 TypeScript 参数。
+- 普通 Resource/State 系统参数已经映射为浅层 `Readonly<T>`；深层 Readonly 与 Query 组件权限仍延期。
 
 ### 11.5 GC 与分配边界
 

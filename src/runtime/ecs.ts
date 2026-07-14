@@ -25,6 +25,7 @@ export class Ecs {
     private _modulesDisposed = false;
 
     private constructor(
+        token: typeof ECS_CONSTRUCTION_TOKEN,
         readonly world: World,
         private readonly _resources: ResourceContainer,
         private readonly _states: StateContainer,
@@ -32,7 +33,9 @@ export class Ecs {
         private readonly _scheduler: Scheduler,
         readonly modules: readonly Module[],
         private readonly _context: InjectionContext,
-    ) {}
+    ) {
+        if (token !== ECS_CONSTRUCTION_TOKEN) throw new TypeError("Ecs must be created by EcsBuilder");
+    }
 
     /** @internal EcsBuilder construction hook. */
     static create(
@@ -46,7 +49,7 @@ export class Ecs {
         context: InjectionContext,
     ): Ecs {
         if (token !== ECS_CONSTRUCTION_TOKEN) throw new TypeError("Ecs must be created by EcsBuilder");
-        return new Ecs(world, resources, states, services, scheduler, modules, context);
+        return new Ecs(token, world, resources, states, services, scheduler, modules, context);
     }
 
     get phase(): EcsPhase { return this._phase; }
