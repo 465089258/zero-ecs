@@ -125,7 +125,7 @@ flowchart TB
 2. Allocator 对外分配单位固定为 16 KiB。
 3. 一个 Table 精确占用一个 Chunk。
 4. Table 所有列共享同一个 ArrayBuffer，通过 byteOffset 分区。
-5. DataSet 使用 dense row 和尾行 swap-remove。
+5. DataSet 使用 dense row 和尾行 swap-remove；保留的空尾表不会参与搬移源选择。
 6. Archetype 的第 0 列固定保存 Entity，后续列按 ComponentMeta.layout 展开。
 
 EntityService 自身也使用独立 DataSet 保存稳定 slot：Version、Archetype index、Table ID 和 Row。Entity 始终规范化为无符号 32 位值；generation 耗尽时退休 slot，避免旧句柄回绕复活。

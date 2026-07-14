@@ -557,6 +557,7 @@ if (removed === RemoveResult.Moved) {
 - `remove()` 使用尾行 swap-remove，并返回数字枚举 `RemoveResult.Invalid/Removed/Moved`。
 - `DataSet.version` 只在 Table 创建或释放时变化，用于 Query 缓存失效。
 - `retainEmptyTables` 控制保留多少空 Table，默认 1。
+- swap-remove 会跳过为复用而保留的空尾表；批量删除不会把空 Table 当成搬移源。
 
 ## 11. Advanced：Archetype
 

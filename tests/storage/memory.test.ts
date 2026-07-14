@@ -57,9 +57,12 @@ describe("DataSet", () => {
             const row = data.insert(); data.set(row, 0, value + 1); return row;
         });
         expect(data.tables).toHaveLength(2);
+        expect(data.remove(rows[rows.length - 1])).toBe(RemoveResult.Removed);
+        expect(data.tables).toHaveLength(2);
+        expect(data.tables[1].empty).toBe(true);
         const result = data.remove(rows[0]);
         expect(result).toBe(RemoveResult.Moved);
-        expect(data.get(rows[0], 0)).toBe(rows.length);
-        expect(data.count).toBe(rows.length - 1);
+        expect(data.get(rows[0], 0)).toBe(rows.length - 1);
+        expect(data.count).toBe(rows.length - 2);
     });
 });

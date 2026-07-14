@@ -663,7 +663,8 @@ src/
 - EntityMigrationService 使用分页 TypedArray 替换 Map；Post 后通过高水位触达列表清零。
 - Command、MigrationPlan、Event 和 Timer 增加显式 trim；Listener.clear 主动断开 callback/context。
 - 增加层级 Timer、池收缩和 Listener 重入清理回归测试；详细分配边界见 `docs/performance.md`。
-- 发布门禁通过：12 个测试文件/56 个测试、生产构建、Node `--jitless`、公共类型与 package exports；打砖块示例类型检查和生产构建通过。
+- DataSet swap-remove 跳过保留的空尾表，EntityService 只在 Archetype 删除成功后回收句柄；新增跨 Table 批量 Despawn/立即复用回归测试。
+- 发布门禁通过：12 个测试文件/57 个测试、生产构建、Node `--jitless`、公共类型与 package exports；打砖块示例类型检查和生产构建通过。
 
 ## 7. 关键测试矩阵
 

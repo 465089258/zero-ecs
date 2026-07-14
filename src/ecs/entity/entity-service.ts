@@ -93,11 +93,17 @@ export class EntityService extends Service {
         const index = entity >>> ENTITY_VERSION_BITS;
         const archId = this.readSlot(index, EntityColumn.Archetype);
         const location = this.readLocation(index);
-        this.freeEntity(index, entity & ENTITY_VERSION_MASK);
-        if (archId === NONE || location === null) return true;
+        if (archId === NONE || location === null) {
+            this.freeEntity(index, entity & ENTITY_VERSION_MASK);
+            return true;
+        }
         const arch = this._archetypes.getAtIdx(archId);
-        const moved = arch?.remove(location);
+        if (!arch || !arch.data.valid(location)) return false;
+        const moved = arch.remove(location);
         if (moved !== undefined) this.setLocation(moved, archId, location);
+        // Recycle the handle only after storage mutation succeeds. Otherwise a
+        // failed remove would leave a stale Entity value visible to Queries.
+        this.freeEntity(index, entity & ENTITY_VERSION_MASK);
         return true;
     }
 

@@ -113,7 +113,9 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
         const tableId = dataRowTableId(location), row = dataRowIndex(location);
         const target = this._tableById.get(tableId);
         if (!target || row < 0 || row >= target.count) return RemoveResult.Invalid;
-        const last = this._tables[this._tables.length - 1], lastRow = last.count - 1;
+        const last = this.lastOccupiedTable();
+        if (!last) return RemoveResult.Invalid;
+        const lastRow = last.count - 1;
         const same = target === last && row === lastRow;
         if (!same) last.copyRowTo(lastRow, target, row);
         last.popRow(); this._count--; this.releaseExcessEmptyTables();
@@ -163,6 +165,13 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
             const last = this._tables[this._tables.length - 1]; if (!last.empty) break;
             this._tables.pop(); this._tableById.delete(last.id); this.allocator.free(last.memory.handle); this._version++; emptyCount--;
         }
+    }
+    private lastOccupiedTable(): Table<T> | undefined {
+        for (let i = this._tables.length - 1; i >= 0; i--) {
+            const table = this._tables[i];
+            if (!table.empty) return table;
+        }
+        return undefined;
     }
     private requireColumnAt(tableId: number, row: number, column: number): TypedArray {
         this.assertUsable();

@@ -58,11 +58,10 @@ export class Archetype {
 
     remove(location: ArchetypeRow): Entity | undefined {
         if (!this.data.valid(location)) return undefined;
-        const lastTable = this.data.tables[this.data.tables.length - 1];
-        const lastRow = lastTable.count - 1;
-        const moved = lastTable.columns[ENTITY_COLUMN][lastRow] as Entity;
         const result = this.data.remove(location);
-        return result === RemoveResult.Moved ? moved : undefined;
+        return result === RemoveResult.Moved
+            ? this.data.get(location, ENTITY_COLUMN) as Entity
+            : undefined;
     }
 
     getEntity(location: ArchetypeRow): Entity | undefined {
