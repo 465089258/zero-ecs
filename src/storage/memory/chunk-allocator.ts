@@ -9,12 +9,14 @@ interface MemoryBlock {
     freeCount: number;
 }
 
+/** 从 2 MiB Block 中分配固定 16 KiB Chunk 的内存分配器。 */
 export class ChunkAllocator implements IChunkAllocator {
     private readonly _blocks = new Map<number, MemoryBlock>();
     private readonly _freeList: number[] = [];
     private _nextBlockId = 0;
     private _allocatedChunks = 0;
 
+    /** 分配一个 Chunk；无空闲空间时自动增加一个 Block。 */
     alloc(): MemoryChunk {
         if (this._freeList.length === 0) this.grow();
         const location = this._freeList.pop()!;
@@ -28,6 +30,7 @@ export class ChunkAllocator implements IChunkAllocator {
         return this.createView(block, chunkIndex);
     }
 
+    /** 释放 Chunk，并通过代数递增使旧句柄失效。 */
     free(handle: ChunkHandle): void {
         const block = this.requireBlock(handle);
         if (block.generations[handle.chunkIndex] !== handle.generation) throw new Error("Cannot free a stale chunk handle");
@@ -39,6 +42,7 @@ export class ChunkAllocator implements IChunkAllocator {
         this._freeList.push(handle.blockId * CHUNKS_PER_BLOCK + handle.chunkIndex);
     }
 
+    /** 解析有效 Chunk 句柄；无效、已释放或过期时返回 `null`。 */
     resolve(handle: ChunkHandle): MemoryChunk | null {
         const block = this._blocks.get(handle.blockId);
         if (!block || handle.chunkIndex < 0 || handle.chunkIndex >= CHUNKS_PER_BLOCK) return null;
@@ -46,6 +50,7 @@ export class ChunkAllocator implements IChunkAllocator {
         return this.createView(block, handle.chunkIndex);
     }
 
+    /** 判断句柄是否指向当前分配器仍在使用的 Chunk。 */
     owns(handle: ChunkHandle): boolean {
         const block = this._blocks.get(handle.blockId);
         return !!block &&
@@ -56,6 +61,7 @@ export class ChunkAllocator implements IChunkAllocator {
             block.generations[handle.chunkIndex] === handle.generation;
     }
 
+    /** 返回当前 Block、Chunk 与字节占用统计。 */
     stats(): AllocatorStats {
         const blockCount = this._blocks.size;
         const chunkCapacity = blockCount * CHUNKS_PER_BLOCK;
@@ -69,6 +75,7 @@ export class ChunkAllocator implements IChunkAllocator {
         };
     }
 
+    /** 释放全部空 Block，并返回释放的 Block 数量。 */
     trim(): number {
         const emptyIds = new Set<number>();
         for (const block of this._blocks.values()) if (block.freeCount === CHUNKS_PER_BLOCK) emptyIds.add(block.id);
@@ -85,6 +92,7 @@ export class ChunkAllocator implements IChunkAllocator {
         return emptyIds.size;
     }
 
+    /** 清空分配器；仍有 Chunk 在使用时拒绝执行。 */
     clear(): void {
         if (this._allocatedChunks !== 0) throw new Error(`Cannot clear allocator with ${this._allocatedChunks} allocated chunk(s)`);
         this._blocks.clear();

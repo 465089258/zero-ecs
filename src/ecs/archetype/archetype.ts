@@ -12,12 +12,13 @@ import { type ComponentId, type ComponentMeta } from "../component/component";
 import { Mask } from "../component/mask";
 import type { Entity } from "../entity/entity";
 
+/** Archetype DataSet 中保存实体句柄的列索引。 */
 export const ENTITY_COLUMN = 0;
 
-/** A stable location of a row inside an archetype DataSet. */
+/** 实体在 Archetype DataSet 中的紧凑行位置。 */
 export type ArchetypeRow = DataRow;
 
-/** Component fields for one concrete 16 KiB table. */
+/** 组件集合相同的实体存储；每个底层 Table 固定占用 16 KiB。 */
 export class Archetype {
     readonly mask: Mask;
     readonly name: string;
@@ -26,10 +27,14 @@ export class Archetype {
     private readonly _componentColumns: Array<readonly number[] | undefined>;
     private readonly _tableComponentViews = new WeakMap<Table, Array<readonly TypedArray[] | undefined>>();
 
+    /** 当前实体数量。 */
     get count(): number { return this.data.count; }
+    /** 按组件编号排序的组件元数据。 */
     get types(): ReadonlyArray<ComponentMeta> { return this._types; }
+    /** 当前持有的 16 KiB Table 列表。 */
     get tables(): readonly Table[] { return this.data.tables; }
 
+    /** 创建指定组件掩码对应的 Archetype。 */
     constructor(mask: Mask, types: readonly ComponentMeta[] | undefined, allocator: IChunkAllocator) {
         this.mask = mask.clone();
         this._types = types === undefined ? [] : [...types].sort((a, b) => a.id - b.id);
@@ -50,12 +55,14 @@ export class Archetype {
         this.data = new DataSet(allocator, columnTypes, { retainEmptyTables: 1 });
     }
 
+    /** 插入实体并返回其行位置；所有组件字段初始为零。 */
     insert(entity: Entity): ArchetypeRow {
         const location = this.data.insert();
         this.data.set(location, ENTITY_COLUMN, entity);
         return location;
     }
 
+    /** 删除实体行；发生末行填补时返回被移动实体。 */
     remove(location: ArchetypeRow): Entity | undefined {
         if (!this.data.valid(location)) return undefined;
         const result = this.data.remove(location);
@@ -64,16 +71,19 @@ export class Archetype {
             : undefined;
     }
 
+    /** 获取指定位置的实体句柄；位置无效时返回 `undefined`。 */
     getEntity(location: ArchetypeRow): Entity | undefined {
         return this.data.valid(location) ? this.data.get(location, ENTITY_COLUMN) as Entity : undefined;
     }
 
+    /** 读取组件字段；位置、组件或字段无效时返回 `null`。 */
     getField(location: ArchetypeRow, compId: ComponentId, fieldId: number): number | null {
         const column = this._componentColumns[compId]?.[fieldId];
         if (column === undefined || !this.data.valid(location)) return null;
         return this.data.get(location, column);
     }
 
+    /** 写入组件字段；位置、组件或字段无效时返回 `false`。 */
     setField(location: ArchetypeRow, compId: ComponentId, fieldId: number, value: number): boolean {
         const column = this._componentColumns[compId]?.[fieldId];
         if (column === undefined || !this.data.valid(location)) return false;
@@ -81,6 +91,7 @@ export class Archetype {
         return true;
     }
 
+    /** 使用 Table ID 和行索引直接写入组件字段。 */
     setFieldAt(tableId: number, row: number, compId: ComponentId, fieldId: number, value: number): boolean {
         const column = this._componentColumns[compId]?.[fieldId];
         if (column === undefined || !this.data.validAt(tableId, row)) return false;
@@ -88,6 +99,7 @@ export class Archetype {
         return true;
     }
 
+    /** 返回实体所在 Table 的组件列视图；组件不存在时返回 `null`。 */
     getComp(location: ArchetypeRow, compId: ComponentId): TypedArray[] | null {
         if (!this.data.valid(location)) return null;
         const columns = this._componentColumns[compId];
@@ -96,6 +108,7 @@ export class Archetype {
         return this.getTableComponent(table, compId) as TypedArray[];
     }
 
+    /** 将源实体与目标 Archetype 共有的组件字段复制到目标行。 */
     copyCommonTo(source: ArchetypeRow, target: Archetype, targetRow: ArchetypeRow): void {
         const sourceTable = this.data.table(dataRowTableId(source))!;
         const targetTable = target.data.table(dataRowTableId(targetRow))!;
@@ -112,6 +125,7 @@ export class Archetype {
         }
     }
 
+    /** 获取一个 Table 中指定组件的列视图；可传入数组以复用结果容器。 */
     getTableComponent(table: Table, compId: ComponentId, target?: TypedArray[]): readonly TypedArray[] | undefined {
         const columns = this._componentColumns[compId];
         if (columns === undefined) return undefined;
@@ -132,5 +146,6 @@ export class Archetype {
         return result;
     }
 
+    /** 释放该 Archetype 持有的全部 Table。 */
     dispose(): void { this.data.dispose(); }
 }

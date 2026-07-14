@@ -6,8 +6,9 @@ import { EntityService } from "./entity/entity-service";
 import { EcsMemoryService } from "./memory/ecs-memory-service";
 import { QueryService } from "./query/query-service";
 
-/** Required memory, component, archetype, entity and query infrastructure. */
+/** 安装内存、组件、原型、实体与查询等 ECS 核心基础设施。 */
 export class CoreEcsModule implements Module {
+    /** 向 EcsBuilder 注册核心 State 与 Service。 */
     build(builder: EcsBuilder): void {
         builder.addState(ComponentRegistryState);
         builder.addService(EcsMemoryService);

@@ -1,5 +1,6 @@
 import { Service } from "../../context/types";
 
+/** 基于 sfc32、可通过种子复现结果的伪随机服务。 */
 export class RandomService extends Service {
     // sfc32 所需的四个 32 位状态
     private _a!: number;
@@ -12,6 +13,7 @@ export class RandomService extends Service {
         this.seed(0);
     }
 
+    /** 使用数字种子重置随机序列。 */
     seed(seed: number): void {
         if (!Number.isFinite(seed)) throw new RangeError(`Random seed must be finite, received ${seed}`);
         let s = seed | 0;
@@ -36,11 +38,11 @@ export class RandomService extends Service {
         return (t >>> 0) * 2.3283064365386963e-10;
     }
 
-    /** 随机0.0 - 1.0 浮点数 */
+    /** 返回 `[0, 1)` 范围的浮点数。 */
     float(): number;
-    /** 随机 0.0 - max 浮点数 */
+    /** 返回 `[0, max)` 范围的浮点数。 */
     float(max: number): number;
-    /** 随机 min - max 浮点数 */
+    /** 返回 `[min, max)` 范围的浮点数。 */
     float(min: number, max: number): number;
     float(min?: number, max?: number): number {
         if (min !== undefined && max !== undefined) {
@@ -56,11 +58,11 @@ export class RandomService extends Service {
         }
     }
 
-    /** 随机整数 (0 ~ 2^32-1) */
+    /** 返回 `[0, 2^32 - 1]` 范围的无符号整数。 */
     int(): number;
-    /** 随机 0 - max 整数 */
+    /** 返回 `[0, max)` 范围的整数。 */
     int(max: number): number;
-    /** 随机 min - max 整数 */
+    /** 返回 `[min, max)` 范围的整数。 */
     int(min: number, max: number): number;
     int(min?: number, max?: number): number {
         if (min !== undefined && max !== undefined) {
@@ -77,14 +79,14 @@ export class RandomService extends Service {
         }
     }
 
-    /** 随机数组中一个元素 */
+    /** 从非空数组中等概率返回一个元素。 */
     elem<T>(array: readonly T[]): T {
         if (array.length === 0) throw new RangeError("RandomService.elem requires a non-empty array");
         const idx = this.int(array.length);
         return array[idx];
     }
 
-    /** 权重池随机一个元素 */
+    /** 按正权重随机返回一个元素；可传入已知总权重进行一致性校验。 */
     weight<T>(array: ReadonlyArray<readonly [number, T]>, totalWeight?: number): T {
         if (array.length === 0) throw new RangeError("RandomService.weight requires a non-empty array");
         let calculatedWeight = 0;

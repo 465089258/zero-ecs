@@ -3,18 +3,25 @@ import { Resource, Service, State } from "../../context/types";
 import { FixedTimeResource } from "../time/fixed-time-resource";
 import { TimeState } from "../time/time-state";
 
+/** 分层时间轮的容量与调试配置。 */
 export const enum TimerConfig {
+    /** 每层时间轮的槽位数，必须为 2 的幂。 */
     SLOT_COUNT = 64,           // 每层槽位数（2 的幂，便于位运算）
+    /** 最多保留的空闲任务包装对象数量。 */
     MAX_TASK_POOL_SIZE = 4096,
+    /** 是否输出时间轮调试日志。 */
     DEBUG = 0,
 }
 
-/** 可被 Timer 延迟执行的任务对象 */
+/** 可由 TimerService 延迟提交的任务。 */
 export interface ITimerTask {
+    /** 到期时提交任务。 */
     submit(): void;
 }
 
+/** 定时器服务的最小接口。 */
 export interface ITimer {
+    /** 在指定模拟时间后提交一次任务。 */
     once(delaySec: number, task: ITimerTask): void;
 }
 
@@ -34,6 +41,7 @@ interface Level {
     totalTicksPerRound: number; // 一整圈的总 tick 数
 }
 
+/** 基于固定 Tick 的分层时间轮定时器。 */
 export class TimerService extends Service implements ITimer {
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Resource.inject(FixedTimeResource) private readonly _fixed!: FixedTimeResource;
@@ -44,7 +52,7 @@ export class TimerService extends Service implements ITimer {
 
     private readonly taskPool: InnerTask[] = [];
 
-    // ------ 初始化 ------
+    /** 根据当前 TimeState 初始化时间轮。 */
     init() {
         this.globalTick = this._time.tick;
         this.createNewLevel(); // 创建第 0 层
@@ -53,7 +61,11 @@ export class TimerService extends Service implements ITimer {
         }
     }
 
-    // ------ 公共接口 ------
+    /**
+     * 延迟提交一次任务。
+     *
+     * 延迟时间向上取整到固定 Tick，且最少等待一个 Tick；当前不提供取消接口。
+     */
     once(delaySec: number, task: ITimerTask): void {
         let ticks = Math.ceil(delaySec / this._fixed.deltaSeconds);
         if (ticks < 1) ticks = 1;
@@ -74,7 +86,7 @@ export class TimerService extends Service implements ITimer {
         this.addTaskByTargetTick(wrapper);
     }
 
-    // ------ 时间推进 ------
+    /** 将时间轮推进到当前 TimeState.tick，并提交所有到期任务。 */
     advance(): void {
         while (this.globalTick < this._time.tick) {
             this.globalTick++;
@@ -229,6 +241,7 @@ export class TimerService extends Service implements ITimer {
         }
     }
 
+    /** 裁剪空闲任务对象池；不会影响仍在等待的任务。 */
     trimPool(retain = 0): void {
         if (!Number.isSafeInteger(retain) || retain < 0) {
             throw new RangeError("retain must be a non-negative safe integer");
@@ -236,8 +249,10 @@ export class TimerService extends Service implements ITimer {
         if (this.taskPool.length > retain) this.taskPool.length = retain;
     }
 
+    /** 清空空闲任务对象池；不会取消仍在等待的任务。 */
     clearPool(): void { this.trimPool(0); }
 
+    /** 取消全部待触发任务并释放时间轮与对象池。 */
     dispose(): void {
         for (let levelIndex = 0; levelIndex < this.levels.length; levelIndex++) {
             const slots = this.levels[levelIndex].slots;

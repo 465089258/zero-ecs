@@ -1,4 +1,4 @@
-/** Unstable low-level APIs. Internal Post and migration implementation stay private. */
+/** 不稳定的底层 API；内部 Post 阶段与迁移实现仍保持私有。 */
 export * from "./index";
 export * from "./storage";
 export * from "./context/containers";

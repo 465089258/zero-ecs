@@ -12,13 +12,18 @@ import {
     type SystemParam,
 } from "./system";
 
+/** 系统依赖目标；函数重复注册时必须改用 SystemHandle 消除歧义。 */
 export type SystemDependencyTarget = SystemHandle | ((...args: any[]) => void);
 
+/** 注册系统时声明的相对执行顺序。 */
 export interface SystemOptions {
+    /** 当前系统必须在这些系统之前执行。 */
     readonly before?: SystemDependencyTarget | readonly SystemDependencyTarget[];
+    /** 当前系统必须在这些系统之后执行。 */
     readonly after?: SystemDependencyTarget | readonly SystemDependencyTarget[];
 }
 
+/** 已解析为系统编号的有向依赖边。 */
 export interface SystemDependency {
     readonly before: SystemId;
     readonly after: SystemId;
@@ -32,6 +37,7 @@ type PendingDependency = {
 
 let nextBuilderId = 1;
 
+/** 收集系统、参数和依赖关系并生成不可变调度定义。 */
 export class SystemScheduleBuilder {
     private readonly _builderId = nextBuilderId++;
     private readonly _systems: SystemDefinition[] = [];
@@ -39,6 +45,7 @@ export class SystemScheduleBuilder {
     private readonly _pending: PendingDependency[] = [];
     private _built = false;
 
+    /** 注册系统并返回可用于后续依赖声明的稳定句柄。 */
     addSystem<const Params extends readonly SystemParam[]>(
         stage: UpdateStage,
         fn: SystemFunction<Params>,
@@ -72,24 +79,28 @@ export class SystemScheduleBuilder {
         return handle;
     }
 
+    /** 声明 `system` 必须在 `target` 之前执行。 */
     before(system: SystemHandle, target: SystemDependencyTarget): this {
         this.assertMutable();
         this._pending.push({ owner: system, relation: "before", target });
         return this;
     }
 
+    /** 声明 `system` 必须在 `target` 之后执行。 */
     after(system: SystemHandle, target: SystemDependencyTarget): this {
         this.assertMutable();
         this._pending.push({ owner: system, relation: "after", target });
         return this;
     }
 
+    /** 按参数顺序建立连续依赖链。 */
     chain(...systems: readonly SystemHandle[]): this {
         this.assertMutable();
         for (let i = 1; i < systems.length; i++) this.before(systems[i - 1], systems[i]);
         return this;
     }
 
+    /** 解析依赖并生成调度定义；Builder 构建后不可再修改。 */
     build(): SystemSchedule {
         this.assertMutable();
         this._built = true;
@@ -194,7 +205,9 @@ export class SystemScheduleBuilder {
     }
 }
 
+/** 系统定义、依赖边和阶段列表组成的不可变调度快照。 */
 export class SystemSchedule {
+    /** 使用已解析的系统、依赖和阶段创建不可变调度快照。 */
     constructor(
         readonly systems: readonly SystemDefinition[],
         readonly dependencies: readonly SystemDependency[],

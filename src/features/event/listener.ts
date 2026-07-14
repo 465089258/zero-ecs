@@ -1,5 +1,6 @@
 type Method<T> = (args: T) => void;
 type Entry<T> = { ctx?: any; fn: Method<T>, one: boolean, removed: boolean };
+/** 支持重入增删与单次回调的低分配监听器集合。 */
 export class Listener<T = any> {
     private _active: Array<Entry<T>> = [];
     private _snapshot: Array<Entry<T>> = [];
@@ -18,15 +19,15 @@ export class Listener<T = any> {
         }
         this._size++;
     }
-    /** 添加监听器 */
+    /** 添加持久监听器。 */
     on(fn: Method<T>, ctx?: any): void {
         this.add(false, fn, ctx);
     }
-    /** 添加一次性监听器 */
+    /** 添加触发一次后自动移除的监听器。 */
     one(fn: Method<T>, ctx?: any): void {
         this.add(true, fn, ctx);
     }
-    /** 调用所有监听器 */
+    /** 按注册顺序调用当前快照中的监听器。 */
     call(args: T, onError?: (error: unknown) => void): void {
         let count = 0;
         const { _active, _snapshot, _size } = this;
@@ -67,7 +68,7 @@ export class Listener<T = any> {
         this._size = count;
     }
 
-    /** 删除监听器，只删除最后一个匹配项 */
+    /** 删除最后一个函数与上下文均匹配的监听器。 */
     off(fn: Method<T>, ctx?: any): void {
         for (let i = this._size - 1; i >= 0; i--) {
             const e = this._active[i];
@@ -80,7 +81,7 @@ export class Listener<T = any> {
         }
     }
 
-    /** 清空所有监听器 */
+    /** 清空全部监听器；可在回调执行期间安全调用。 */
     clear(): void {
         for (let i = 0; i < this._size; i++) {
             const entry = this._active[i];
@@ -89,8 +90,7 @@ export class Listener<T = any> {
             entry.one = false;
             entry.removed = true;
         }
-        // During re-entrant clear(), callbacks already visited in call() may
-        // have been copied into the destination snapshot.
+        // 重入 clear() 时，已执行回调可能已复制到目标快照，也需要同步清除。
         for (let i = 0; i < this._snapshot.length; i++) {
             const entry = this._snapshot[i];
             entry.fn = null!;

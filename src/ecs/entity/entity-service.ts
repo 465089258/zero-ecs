@@ -27,13 +27,14 @@ import {
 } from "./entity-format";
 
 export type { Entity } from "./entity";
+/** 实体在 Archetype DataSet 中的位置。 */
 export interface EntityLocation { readonly tableId: number; readonly row: number }
 
 const NONE = 0xFFFFFFFF;
 
 const enum EntityColumn { Version, Archetype, Table, Row }
 
-/** Stable entity slots backed by DataSet tables. Rows are never removed or moved. */
+/** 管理实体句柄、版本与 Archetype 存储位置。 */
 export class EntityService extends Service {
     @Service.inject(ArchetypeService) private _archetypes!: ArchetypeService;
     @Service.inject(EcsMemoryService) private _memory!: EcsMemoryService;
@@ -44,12 +45,14 @@ export class EntityService extends Service {
     private readonly _freeIndices: number[] = [];
     private _counter = 0;
 
-    /** @internal Advanced diagnostics view. */
+    /** @internal 用于高级诊断的原型只读视图。 */
     get archetypes(): readonly Archetype[] { return this._archetypes.archetypes; }
+    /** 当前原型集合版本；新增原型时递增。 */
     get version(): number { return this._archetypes.version; }
-    /** @internal Raw slot storage. */
+    /** @internal 实体槽位的底层存储。 */
     get data(): DataSet { return this.slots; }
 
+    /** 初始化实体槽位存储；每个服务实例只能调用一次。 */
     init(): void {
         if (this._slots) throw new Error("EntityService has already been initialized");
         this._slots = new DataSet(this._memory.allocator, [Types.U32, Types.U32, Types.U32, Types.U32]);
@@ -60,13 +63,14 @@ export class EntityService extends Service {
         this._counter = 1;
     }
 
+    /** 立即分配并返回一个有效实体句柄，但暂不为其添加组件。 */
     spawn(): Entity {
         const entity = this.allocEntity();
         this.clearLocation(entity >>> ENTITY_VERSION_BITS);
         return entity;
     }
 
-    /** @internal Archetype migration primitive. */
+    /** @internal 将实体迁移到指定组件集合，并在目标行上执行回调。 */
     migrate(entity: Entity, mask: Mask, types: ComponentMeta[], callback: (arch: Archetype, row: ArchetypeRow) => void): boolean {
         const index = entity >>> ENTITY_VERSION_BITS;
         if (!this.valid(entity)) return false;
@@ -88,6 +92,7 @@ export class EntityService extends Service {
         return true;
     }
 
+    /** 销毁实体并回收句柄槽位；实体无效时返回 `false`。 */
     despawn(entity: Entity): boolean {
         if (!this.valid(entity)) return false;
         const index = entity >>> ENTITY_VERSION_BITS;
@@ -101,12 +106,12 @@ export class EntityService extends Service {
         if (!arch || !arch.data.valid(location)) return false;
         const moved = arch.remove(location);
         if (moved !== undefined) this.setLocation(moved, archId, location);
-        // Recycle the handle only after storage mutation succeeds. Otherwise a
-        // failed remove would leave a stale Entity value visible to Queries.
+        // 必须先完成存储变更再回收句柄，避免 Query 暂时读到已失效实体。
         this.freeEntity(index, entity & ENTITY_VERSION_MASK);
         return true;
     }
 
+    /** 读取实体组件的单个字段；实体、组件或字段不存在时返回 `null`。 */
     get<T extends object, Field extends ComponentFields<T>>(
         entity: Entity,
         type: ComponentType<T>,
@@ -120,6 +125,7 @@ export class EntityService extends Service {
         return location === null ? null : archetype.getField(location, component.id, field);
     }
 
+    /** 判断有效实体当前是否包含指定组件。 */
     has<T extends object>(entity: Entity, type: ComponentType<T>): boolean {
         const component = this._components.getMeta(type);
         if (!component) return false;
@@ -127,6 +133,11 @@ export class EntityService extends Service {
         return archetype !== undefined && archetype.mask.has(component.mask);
     }
 
+    /**
+     * 返回实体所在 Table 的组件列视图；组件不存在时返回 `null`。
+     *
+     * 该视图覆盖整个 Table，应结合 {@link getCompLocation} 返回的 `row` 访问当前实体。
+     */
     view<T extends object>(entity: Entity, type: ComponentType<T>): ComponentColumns<T> | null {
         const component = this._components.getMeta(type);
         if (!component) return null;
@@ -136,35 +147,38 @@ export class EntityService extends Service {
         return location === null ? null : archetype.getComp(location, component.id) as ComponentColumns<T> | null;
     }
 
+    /** 返回实体当前包含的组件类型；实体尚无 Archetype 或无效时返回 `null`。 */
     getTypes(entity: Entity): readonly ComponentType[] | null {
         const types = this.locateArchetype(entity)?.types;
         if (!types) return null;
         return types.map(component => component.type);
     }
 
+    /** 判断实体句柄的索引与版本是否仍然有效。 */
     valid(entity: Entity): boolean {
         const index = entity >>> ENTITY_VERSION_BITS;
         const version = entity & ENTITY_VERSION_MASK;
         return version !== 0 && index > 0 && index < this._counter && this.readSlot(index, EntityColumn.Version) === version;
     }
 
-    /** @internal Packed Entity index. */
+    /** @internal 获取实体句柄中的原始索引。 */
     getRawIndex(entity: Entity): number { return entity >>> ENTITY_VERSION_BITS; }
 
-    /** @internal Current Archetype index. */
+    /** @internal 获取实体当前的原型索引；无效或尚未进入原型时返回 `-1`。 */
     getArchIdx(entity: Entity): number {
         if (!this.valid(entity)) return -1;
         const archId = this.readSlot(entity >>> ENTITY_VERSION_BITS, EntityColumn.Archetype);
         return archId === NONE ? -1 : archId;
     }
 
+    /** 获取实体在 Archetype DataSet 中的位置；不存在时返回 `null`。 */
     getCompLocation(entity: Entity): EntityLocation | null {
         if (!this.valid(entity)) return null;
         const location = this.readLocation(entity >>> ENTITY_VERSION_BITS);
         return location === null ? null : { tableId: dataRowTableId(location), row: dataRowIndex(location) };
     }
 
-    /** @internal Validates a direct field write without creating a component view. */
+    /** @internal 在不创建组件列数组的情况下校验字段直写。 */
     canSetComponentFieldById(entity: Entity, componentId: ComponentId, field: number): boolean {
         const component = this._components.getById(componentId);
         if (!component || field < 0 || field >= component.layout.length) return false;
@@ -176,7 +190,7 @@ export class EntityService extends Service {
         return archetype !== undefined && archetype.mask.has(component.mask);
     }
 
-    /** @internal Writes one field without allocating a component column array. */
+    /** @internal 在不分配组件列数组的情况下写入单个字段。 */
     setComponentFieldById(entity: Entity, componentId: ComponentId, field: number, value: number): boolean {
         const component = this._components.getById(componentId);
         if (!component || field < 0 || field >= component.layout.length) return false;
@@ -221,7 +235,7 @@ export class EntityService extends Service {
         if (index === 0 || this.readSlot(index, EntityColumn.Version) !== version) return;
         this.clearLocation(index);
         if (version === ENTITY_VERSION_MASK) {
-            // Retire the slot instead of allowing an old handle to become valid again.
+            // 版本耗尽后永久停用槽位，避免旧句柄再次变为有效。
             this.writeSlot(index, EntityColumn.Version, 0);
             return;
         }
@@ -248,6 +262,7 @@ export class EntityService extends Service {
         return tableId === NONE || row === NONE ? null : dataRowAt(tableId, row);
     }
 
+    /** 释放实体槽位存储并清空所有句柄状态。 */
     dispose(): void {
         this._slots?.dispose();
         this._slots = undefined;

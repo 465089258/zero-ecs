@@ -1,6 +1,6 @@
 import { UpdateStage } from "./stage";
 
-/** Internal commit partitions. This module is intentionally absent from the public barrel. */
+/** @internal 内部提交阶段；普通业务系统不可注册。 */
 export class InternalPost {
     static readonly command = new UpdateStage("post:command", 10);
     static readonly migration = new UpdateStage("post:migration", 11);

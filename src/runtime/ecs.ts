@@ -19,7 +19,10 @@ import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
 
 export { EcsPhase } from "./lifecycle";
 
-/** Runtime owner. World, containers, Scheduler and Modules are peers under Ecs. */
+/**
+ * ECS 运行时的生命周期所有者。
+ * World、三类容器、Scheduler 和 Modules 均由该实例统一协调。
+ */
 export class Ecs {
     private _phase = EcsPhase.Built;
     private _modulesDisposed = false;
@@ -37,7 +40,7 @@ export class Ecs {
         if (token !== ECS_CONSTRUCTION_TOKEN) throw new TypeError("Ecs must be created by EcsBuilder");
     }
 
-    /** @internal EcsBuilder construction hook. */
+    /** @internal 仅供 EcsBuilder 构造实例。 */
     static create(
         token: typeof ECS_CONSTRUCTION_TOKEN,
         world: World,
@@ -52,18 +55,22 @@ export class Ecs {
         return new Ecs(token, world, resources, states, services, scheduler, modules, context);
     }
 
+    /** 当前生命周期阶段。 */
     get phase(): EcsPhase { return this._phase; }
 
+    /** 按类型取得只读 Resource。 */
     readonly resource = <T extends Resource>(type: ResourceType<T>): Readonly<T> =>
         this._resources.get(type);
 
+    /** 按类型取得只读 State。 */
     readonly state = <T extends State>(type: StateType<T>): Readonly<T> =>
         this._states.get(type);
 
+    /** 按类型取得 Service。 */
     readonly service = <T extends Service>(type: ServiceType<T>): T =>
         this._services.get(type);
 
-    /** Structural initialization followed by Module.init() in registration order. */
+    /** 初始化 World、State、Service、Scheduler，再按注册顺序调用 `Module.init()`。 */
     init(): void {
         this.assertPhase(EcsPhase.Built, "init");
         try {
@@ -79,7 +86,7 @@ export class Ecs {
         }
     }
 
-    /** Runs Startup systems, then Module.start() in registration order. */
+    /** 执行 Startup 系统，再按注册顺序调用 `Module.start()`。 */
     start(): void {
         this.assertPhase(EcsPhase.Initialized, "start");
         let lastStarted = -1;
@@ -100,7 +107,7 @@ export class Ecs {
         }
     }
 
-    /** Runs systems only. Services have no frame update lifecycle. */
+    /** 执行一次完整固定 Tick，包括业务阶段和内部 Post。 */
     update(): void {
         this.assertPhase(EcsPhase.Running, "update");
         try {
@@ -109,13 +116,13 @@ export class Ecs {
             const postStages = InternalPost.stages;
             for (let i = 0; i < postStages.length; i++) this._scheduler.run(postStages[i]);
         } catch (error) {
-            // A failed Tick is terminal: do not retry deferred work against a
-            // partially mutated world on the next update.
+            // Tick 失败后立即停止，避免下一次更新在部分变更的 World 上重试延迟任务。
             try { this.stop(); } catch { /* preserve update error */ }
             throw error;
         }
     }
 
+    /** 停止运行，逆序调用 Module.stop() 并执行 Shutdown 系统。 */
     stop(): void {
         if (this._phase !== EcsPhase.Running) return;
         let firstError: unknown;
@@ -129,6 +136,7 @@ export class Ecs {
         if (firstError !== undefined) throw firstError;
     }
 
+    /** 按依赖逆序释放全部运行时对象；重复调用安全。 */
     dispose(): void {
         if (this._phase === EcsPhase.Disposed) return;
         let firstError: unknown;

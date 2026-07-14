@@ -3,10 +3,15 @@ import { Service } from "../../context/types";
 import { Listener } from "./listener";
 type Fn<T extends EventArgs> = (args: T) => void;
 type ArgsType<T extends EventArgs = EventArgs> = new () => T;
+/** 事件创建与监听服务的公共接口。 */
 export interface IEventService {
+    /** 获取指定类型的可发布事件参数；实例可能来自对象池。 */
     event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "_reset" | "_recycle">;
+    /** 注册持久监听器。 */
     on<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
+    /** 注册触发一次后自动移除的监听器。 */
     one<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
+    /** 删除最后一个函数与上下文均匹配的监听器。 */
     off<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
 }
 
@@ -16,11 +21,12 @@ const enum EventFlags {
     Recycled = 1 << 1,
 }
 
+/** 可池化、需要显式发布的事件参数基类。 */
 export abstract class EventArgs {
     private _post!: (args: EventArgs) => void;
     private _flags = EventFlags.Recycled;
 
-    /** @internal EventService pool hook. */
+    /** @internal EventService 的对象池重置入口。 */
     _reset(post: (args: EventArgs) => void): void {
         if (this._flags !== EventFlags.Recycled) {
             throw new Error(`${this.constructor.name} cannot be reset before it is recycled`);
@@ -29,7 +35,7 @@ export abstract class EventArgs {
         this._flags = EventFlags.Mutable;
     }
 
-    /** 把事件发布到事件系统中 */
+    /** 将事件加入延迟分发队列；发布后不可再修改或重复发布。 */
     post(): void {
         if (this._flags === EventFlags.Posted) {
             throw new Error(`${this.constructor.name} has already been posted`);
@@ -46,7 +52,7 @@ export abstract class EventArgs {
         }
     }
 
-    /** @internal EventService pool hook. */
+    /** @internal EventService 的对象池回收入口。 */
     _recycle(): void {
         if (this._flags !== EventFlags.Posted) {
             throw new Error(`${this.constructor.name} is not posted`);
@@ -58,6 +64,7 @@ export abstract class EventArgs {
         }
     }
 
+    /** 校验事件参数仍处于可修改状态。 */
     protected assertMutable(): void {
         if (this._flags === EventFlags.Posted) {
             throw new Error(`${this.constructor.name} has already been posted`);
@@ -67,10 +74,11 @@ export abstract class EventArgs {
         }
     }
 
+    /** 回收前清理子类字段。 */
     clear?(): void;
 }
 
-/** 事件系统类 */
+/** 管理事件对象池、监听器与延迟分发队列。 */
 export class EventService extends Service implements IEventService {
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     private readonly _events: Map<ArgsType, Listener<EventArgs>> = new Map();
@@ -81,7 +89,10 @@ export class EventService extends Service implements IEventService {
     private readonly _listenerError = (error: unknown): void => { this.onError(error); };
     private _disposed = false;
 
-    /** @internal Internal Post hook. */
+    /**
+     * @internal 在内部 Post 阶段分发当前队列并回收事件。
+     * 监听器执行期间新发布的事件会留到下一次 Flush。
+     */
     flush(): void {
         this.assertUsable();
         const { _frontQueue, _backQueue: queue } = this;
@@ -106,6 +117,7 @@ export class EventService extends Service implements IEventService {
         queue.length = 0;
     }
 
+    /** 获取可修改的事件参数实例；调用方设置字段后必须显式 `post()`。 */
     event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "_reset" | "_recycle"> {
         this.assertUsable();
         let pool = this._pool.get(type);
@@ -133,7 +145,7 @@ export class EventService extends Service implements IEventService {
         }
         pool.push(cmd);
     }
-    /** 添加监听器 */
+    /** 注册持久监听器。 */
     on<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
         const events = this._events;
         let listener = events.get(type);
@@ -145,7 +157,7 @@ export class EventService extends Service implements IEventService {
         return this;
     }
 
-    /** 添加单次监听器 */
+    /** 注册触发一次后自动移除的监听器。 */
     one<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
         const events = this._events;
         let listener = events.get(type);
@@ -157,7 +169,7 @@ export class EventService extends Service implements IEventService {
         return this;
     }
 
-    /** 删除监听器 注意只删除最后一个匹配项 */
+    /** 删除最后一个函数与上下文均匹配的监听器。 */
     off<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
         let listener = this._events.get(type);
         if (!listener) return this;
@@ -165,7 +177,7 @@ export class EventService extends Service implements IEventService {
         return this;
     }
 
-    /** Releases pooled EventArgs above a per-type high-water mark. */
+    /** 将每种事件类型的空闲对象池裁剪到指定保留数量。 */
     trimPools(retainPerType = 0): void {
         this.assertUsable();
         if (!Number.isSafeInteger(retainPerType) || retainPerType < 0) {
@@ -176,6 +188,7 @@ export class EventService extends Service implements IEventService {
         }
     }
 
+    /** 回收待分发事件并释放全部监听器与对象池。 */
     dispose(): void {
         if (this._disposed) return;
         this._disposed = true;
@@ -187,6 +200,7 @@ export class EventService extends Service implements IEventService {
         if (firstError !== undefined) throw firstError;
     }
 
+    /** 事件监听或回收失败时的统一错误入口。 */
     protected onError(error: unknown, _args?: EventArgs): void {
         this._errors.report(error, "event", _args);
     }

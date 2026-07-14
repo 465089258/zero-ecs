@@ -3,11 +3,11 @@ import { Service } from "./types";
 
 const owners = new WeakMap<object, InjectionService>();
 
-/** Injects dependencies into runtime-created helpers owned by one Ecs. */
+/** 为运行时动态创建、且属于当前 ECS 的辅助对象执行属性注入。 */
 export class InjectionService extends Service {
     private _context: InjectionContext | undefined;
 
-    /** @internal Bound once by EcsBuilder before initial object injection. */
+    /** @internal 在首次注入前由 EcsBuilder 绑定一次。 */
     bind(context: InjectionContext): void {
         if (this._context) throw new Error("InjectionService has already been bound");
         if (context.services.get(InjectionService) !== this) {
@@ -17,8 +17,8 @@ export class InjectionService extends Service {
     }
 
     /**
-     * Injects a runtime-created helper without taking ownership of its lifecycle.
-     * Repeating the operation in the same Ecs is idempotent.
+     * 注入动态辅助对象，但不接管其生命周期。
+     * 同一 ECS 重复注入幂等，跨 ECS 注入同一实例会报错。
      */
     inject<T extends object>(instance: T): T {
         const context = this.context;
@@ -32,6 +32,7 @@ export class InjectionService extends Service {
         return instance;
     }
 
+    /** 解除注入上下文绑定。 */
     dispose(): void {
         this._context = undefined;
     }

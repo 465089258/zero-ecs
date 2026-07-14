@@ -8,30 +8,35 @@ import type { SystemDependency, SystemSchedule } from "./schedule";
 import type { UpdateStage } from "./stage";
 import { isMutParam, type SystemDefinition, type SystemId, type SystemParam } from "./system";
 
+/** 已解析参数、可直接调用的运行时系统。 */
 export interface RuntimeSystem {
     readonly definition: SystemDefinition;
     readonly args: readonly unknown[];
 }
 
+/** 同一阶段内已完成拓扑排序的运行时系统集合。 */
 export interface RuntimeStage {
     readonly stage: UpdateStage;
     readonly systems: readonly RuntimeSystem[];
 }
 
+/** 将静态调度绑定到 World，并按阶段串行执行系统。 */
 export class Scheduler {
     private readonly _stages: RuntimeStage[] = [];
     private readonly _stageLookup = new Map<UpdateStage, RuntimeStage>();
     private _context: InjectionContext | undefined;
 
+    /** 创建尚未绑定 World 的调度器。 */
     constructor(readonly schedule: SystemSchedule) {}
 
-    /** @internal Bound and compiled by Ecs during initialization. */
+    /** @internal 由 Ecs 在初始化时绑定注入上下文并编译参数。 */
     init(context: InjectionContext): void {
         if (this._context) throw new Error("Scheduler has already been initialized");
         this._context = context;
         this.compile();
     }
 
+    /** 按依赖排序串行执行指定阶段；阶段没有系统时不产生效果。 */
     run(stage: UpdateStage): void {
         if (!this._context) throw new Error("Scheduler has not been initialized");
         const runtime = this._stageLookup.get(stage);
@@ -40,6 +45,7 @@ export class Scheduler {
         for (let i = 0; i < systems.length; i++) invoke(systems[i]);
     }
 
+    /** 释放已解析的运行时系统参数与阶段索引。 */
     dispose(): void {
         this._stages.length = 0;
         this._stageLookup.clear();

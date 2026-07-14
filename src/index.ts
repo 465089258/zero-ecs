@@ -1,4 +1,4 @@
-// Component schemas need only the enum and typed-array result types.
+// 组件定义只需要存储类型枚举及其 TypedArray 结果类型。
 export { Types } from "./storage/typed-array";
 export type { TypedArray, TypedArrayFor } from "./storage/typed-array";
 

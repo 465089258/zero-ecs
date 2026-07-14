@@ -5,36 +5,35 @@ declare const ComponentIdBrand: unique symbol;
 declare const ComponentMetaBrand: unique symbol;
 
 /**
- * Compile-time component schema contract.
+ * 组件字段定义约束。
  *
- * A mapped type is used here because TypeScript interfaces cannot express the
- * generic numeric fields required by `implements Component<MyFields>`.
+ * 组件类必须为字段枚举中的每个成员声明一种 {@link Types}，遗漏字段会产生类型错误。
  */
 export type Component<K extends number> = Readonly<Record<K, Types>>;
 
-/** A component schema constructor and its stable identity across ECS worlds. */
+/** 组件定义类；类本身作为组件在不同 World 间共享的稳定标识。 */
 export type ComponentType<T extends object = object> = new () => T;
 
-/** Numeric fields declared by a component schema. */
+/** 组件定义中的数字字段键。 */
 export type ComponentFields<T extends object> = Extract<keyof T, number>;
 
-/** Typed-array columns belonging to one component in an Archetype table. */
+/** 组件在一个 Archetype Table 中对应的 TypedArray 列集合。 */
 export type ComponentColumns<T extends object> = {
     readonly [Field in ComponentFields<T>]:
         T[Field] extends Types ? TypedArrayFor<T[Field]> : never;
 };
 
-/** A component's world-local dense identifier. */
+/** 组件在当前 World 内的紧凑编号。 */
 export type ComponentId = number & { readonly [ComponentIdBrand]: "ComponentId" };
 
-/** Stable public information returned by ComponentService. */
+/** {@link ComponentService} 对外提供的只读组件定义。 */
 export type ComponentDefinition<T extends object = object> = Readonly<{
     name: string;
     type: ComponentType<T>;
     layout: readonly Types[];
 }>;
 
-/** Runtime metadata owned by one ComponentService instance. */
+/** 当前 World 独有的组件运行时元数据。 */
 export type ComponentMeta<T extends object = object> = ComponentDefinition<T> & Readonly<{
     id: ComponentId;
     mask: Mask;

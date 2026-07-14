@@ -30,7 +30,10 @@ import { Ecs } from "./ecs";
 import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
 import type { Module } from "./module";
 
-/** Composition root for a World and its peer Scheduler. */
+/**
+ * ECS 的唯一构建入口。
+ * 用于注册 World、三类容器对象、Module 和系统，调用 `build()` 后不可继续修改。
+ */
 export class EcsBuilder {
     private readonly _resources = new Map<ResourceType, Resource>();
     private readonly _states = new Set<StateType>();
@@ -41,18 +44,21 @@ export class EcsBuilder {
     private _world = new World();
     private _built = false;
 
+    /** 创建 Builder，并自动安装核心 ECS 基础设施。 */
     constructor() {
         this.addService(InjectionService);
         this.addService(ErrorHandlerService);
         this.addModule(new CoreEcsModule());
     }
 
+    /** 使用自定义 World 替换默认实例。 */
     setWorld(world: World): this {
         this.assertMutable();
         this._world = world;
         return this;
     }
 
+    /** 注册一个构建前已经实例化的只读 Resource。 */
     addResource<T extends Resource>(type: ResourceType<T>, instance: T): this {
         this.assertMutable();
         const existing = this._resources.get(type);
@@ -63,18 +69,28 @@ export class EcsBuilder {
         return this;
     }
 
+    /** 注册由 ECS 实例化和管理生命周期的 State。 */
     addState<T extends State>(type: StateType<T>): this {
         this.assertMutable();
         this._states.add(type);
         return this;
     }
 
+    /** 注册由 ECS 实例化和管理生命周期的 Service。 */
     addService<T extends Service>(type: ServiceType<T>): this {
         this.assertMutable();
         this._services.add(type);
         return this;
     }
 
+    /**
+     * 注册系统函数及其注入参数。
+     * @param stage 执行阶段。
+     * @param fn 系统函数。
+     * @param params 与函数参数顺序一致的类型描述元组。
+     * @param options 可选的前后依赖规则。
+     * @returns 注册后的系统句柄。
+     */
     addSystem<const Params extends readonly SystemParam[]>(
         stage: UpdateStage,
         fn: SystemFunction<Params>,
@@ -86,24 +102,28 @@ export class EcsBuilder {
         return this._schedule.addSystem(stage, fn, params, options);
     }
 
+    /** 声明 `system` 在 `target` 之前执行。 */
     before(system: SystemHandle, target: SystemDependencyTarget): this {
         this.assertMutable();
         this._schedule.before(system, target);
         return this;
     }
 
+    /** 声明 `system` 在 `target` 之后执行。 */
     after(system: SystemHandle, target: SystemDependencyTarget): this {
         this.assertMutable();
         this._schedule.after(system, target);
         return this;
     }
 
+    /** 按传入顺序串联同阶段系统。 */
     chain(...systems: readonly SystemHandle[]): this {
         this.assertMutable();
         this._schedule.chain(...systems);
         return this;
     }
 
+    /** 注册并立即执行 Module 的 `build()`。 */
     addModule(module: Module): this {
         this.assertMutable();
         if (this._modules.indexOf(module) !== -1) {
@@ -119,6 +139,10 @@ export class EcsBuilder {
         return this;
     }
 
+    /**
+     * 完成容器、注入上下文和 Schedule 的构建。
+     * @returns 尚未初始化的 ECS 实例。
+     */
     build(): Ecs {
         this.assertMutable();
         this._built = true;

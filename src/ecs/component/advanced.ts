@@ -1,7 +1,7 @@
 import type { ComponentMeta, ComponentType } from "./component";
 import { ComponentService } from "./component-registry";
 
-/** Unstable advanced access to World-local component storage metadata. */
+/** 不稳定的高级接口：定义组件并返回当前 World 的存储元数据。 */
 export function defineComponentMeta<T extends object>(
     components: ComponentService,
     type: ComponentType<T>,
@@ -9,7 +9,7 @@ export function defineComponentMeta<T extends object>(
     return components.defMeta(type);
 }
 
-/** Unstable advanced lookup that does not register the component. */
+/** 不稳定的高级接口：查询当前 World 的组件元数据，不触发注册。 */
 export function getComponentMeta<T extends object>(
     components: ComponentService,
     type: ComponentType<T>,

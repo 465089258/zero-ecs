@@ -11,12 +11,17 @@ import { EntitySet } from "../entity";
 import { QueryNodeKind, type QueryTypeNode } from "./filter";
 import { QueryType } from "./query-type";
 
+/** Query 构造时所需的组件解析接口。 */
 export interface IComponentResolver { defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> }
+/** Query 构造时所需的原型数据源接口。 */
 export interface IArchetypeSource { readonly version: number; readonly archetypes: readonly Archetype[] }
 
+/** 从 QueryType 推导对应的运行时 Query 类型。 */
 export type QueryOf<T> = T extends QueryType<infer Components> ? Query<Components> : never;
 export type { ComponentColumns } from "../component/component";
+/** 单个组件在当前 Table 中的列视图；可选组件可能为 `undefined`。 */
 export type QueryComponentView<T> = T extends object ? ComponentColumns<T> : undefined;
+/** `QueryIter.current` 返回的当前 Table 数据。 */
 export type QueryCurrent<Components extends readonly (object | undefined)[]> = [
     count: number,
     entities: EntitySet,
@@ -34,14 +39,19 @@ interface QueryTableEntry<Components extends readonly (object | undefined)[]> {
 
 const MAX_DNF_CLAUSES = 256;
 
+/**
+ * 按 Table 遍历查询结果的低分配迭代器。
+ *
+ * 迭代器及 `current` 元组由 Query 复用；请勿缓存结果，也不要在同一 Query 上嵌套迭代。
+ */
 export class QueryIter<Components extends readonly (object | undefined)[]> {
     private _entries: readonly QueryTableEntry<Components>[] = [];
     private _length = 0;
     private _index = 0;
-    /** Valid only after next() returns true. Reused between iterations. */
+    /** 当前 Table 的列视图；仅在 {@link next} 返回 `true` 后有效，并会被后续迭代复用。 */
     current!: QueryCurrent<Components>;
 
-    /** @internal Query-owned iterator reset. */
+    /** @internal 重置 Query 持有的复用迭代器。 */
     reset(entries: readonly QueryTableEntry<Components>[], length: number): this {
         this._entries = entries;
         this._length = length;
@@ -49,6 +59,7 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
         return this;
     }
 
+    /** 前进到下一个非空 Table；成功时返回 `true` 并更新 {@link current}。 */
     next(): boolean {
         const entries = this._entries;
         const length = this._length;
@@ -71,6 +82,7 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     }
 }
 
+/** 根据 QueryType 匹配原型并提供 Table 级列视图。 */
 export class Query<Components extends readonly (object | undefined)[]> {
     private readonly _clauses: CompiledClause[];
     private readonly _selections: Selection[];
@@ -81,6 +93,7 @@ export class Query<Components extends readonly (object | undefined)[]> {
     private _entryCount = 0;
     private _archetypeVersion = -1;
 
+    /** 使用组件解析器与原型数据源创建运行时查询；通常由 {@link QueryService} 调用。 */
     constructor(
         readonly type: QueryType<Components>,
         private readonly _components: IComponentResolver,
@@ -96,6 +109,11 @@ export class Query<Components extends readonly (object | undefined)[]> {
         this.rebuild();
     }
 
+    /**
+     * 重置并返回当前 Query 持有的迭代器。
+     *
+     * 同一 Query 始终复用一个迭代器，因此不支持嵌套调用。
+     */
     iter(): QueryIter<Components> {
         if (this.needsRefresh()) this.rebuild();
         return this._iterator.reset(this._entries, this._entryCount);

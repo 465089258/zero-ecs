@@ -7,7 +7,7 @@ import { EntityService, type Entity } from "../entity/entity-service";
 import { ENTITY_VERSION_BITS } from "../entity/entity-format";
 import { MigrationPlan } from "./migration-plan";
 
-/** Internal structural transaction merger. It is intentionally not publicly exported. */
+/** @internal 合并同一 Post 周期内实体结构事务的迁移服务。 */
 export class EntityMigrationService extends Service {
     @Service.inject(ArchetypeService) private readonly _archetypes!: ArchetypeService;
     @Service.inject(ComponentService) private readonly _components!: ComponentService;
@@ -17,8 +17,10 @@ export class EntityMigrationService extends Service {
     private readonly _plans: MigrationPlan[] = [];
     private _used = 0;
 
+    /** 判断实体是否已有待提交迁移计划。 */
     has(entity: Entity): boolean { return this._entityToPlan.has(entity); }
 
+    /** 合并一个 EntityCommand 的有效指令。 */
     record(entity: Entity, instructions: readonly number[], used: number): void {
         if (!this._entities.valid(entity)) throw new RangeError(`Invalid entity ${entity}`);
         const plan = this.getOrCreate(entity);
@@ -39,6 +41,7 @@ export class EntityMigrationService extends Service {
         }
     }
 
+    /** 取消实体尚未提交的迁移计划。 */
     cancel(entity: Entity): void {
         const index = this._entityToPlan.get(entity);
         if (index === undefined) return;
@@ -46,13 +49,14 @@ export class EntityMigrationService extends Service {
         this._plans[index].cancel();
     }
 
+    /** 提交全部迁移计划，并保留计划对象供后续复用。 */
     flush(): void {
         for (let i = 0; i < this._used; i++) this._plans[i].flush(this._entities);
         this._entityToPlan.clear();
         this._used = 0;
     }
 
-    /** @internal Called by CommandService at an explicit idle boundary. */
+    /** @internal 在显式空闲边界裁剪池化迁移计划。 */
     trimPlans(retain = 0): void {
         if (this._used !== 0) throw new Error("Cannot trim migration plans while migrations are pending");
         if (!Number.isSafeInteger(retain) || retain < 0) {
@@ -62,6 +66,7 @@ export class EntityMigrationService extends Service {
         this._entityToPlan.trim();
     }
 
+    /** 取消待提交迁移并释放所有计划。 */
     dispose(): void {
         for (let i = 0; i < this._used; i++) this._plans[i].cancel();
         this._entityToPlan.clear();
@@ -94,7 +99,7 @@ interface EntityPlanPage {
     readonly plans: Uint32Array;
 }
 
-/** Sparse paged index used only during one Post transaction. */
+/** 仅在一个 Post 事务内使用的稀疏分页索引。 */
 class EntityPlanIndex {
     private readonly _pages: Array<EntityPlanPage | undefined> = [];
     private readonly _touched: number[] = [];

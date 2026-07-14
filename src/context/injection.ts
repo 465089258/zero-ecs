@@ -2,7 +2,7 @@ import { createInjectDecorator, injectionEntries, InjectionKind } from "./inject
 import type { ResourceContainer, ServiceContainer, StateContainer } from "./containers";
 import { Resource, type ResourceType, Service, type ServiceType, State, type StateType } from "./types";
 
-/** @internal Shared runtime record used by World, InjectionService and Scheduler. */
+/** @internal World、InjectionService 与 Scheduler 共享的运行时上下文。 */
 export interface InjectionContext {
     readonly world: unknown;
     readonly resources: ResourceContainer;
@@ -10,11 +10,12 @@ export interface InjectionContext {
     readonly services: ServiceContainer;
 }
 
+/** 创建声明 World 属性依赖的装饰器。 */
 export function createWorldInjectDecorator() {
     return createInjectDecorator(InjectionKind.World);
 }
 
-/** @internal Low-level property injection implementation. */
+/** @internal 按元数据向实例写入依赖。 */
 export function injectAll(instance: any, context: InjectionContext): void {
     let ctor = instance.constructor;
     while (ctor && ctor !== Function.prototype) {

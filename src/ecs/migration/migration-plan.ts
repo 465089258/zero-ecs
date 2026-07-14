@@ -4,7 +4,7 @@ import { ComponentService } from "../component/component-registry";
 import { Mask } from "../component/mask";
 import { EntityService, type Entity } from "../entity/entity-service";
 
-/** Pooled final state for one entity in the current Post cycle. */
+/** @internal 当前 Post 周期内单个实体的池化最终迁移状态。 */
 export class MigrationPlan {
     entity = 0 as Entity;
     active = false;
@@ -23,6 +23,7 @@ export class MigrationPlan {
 
     constructor(private readonly _components: ComponentService) {}
 
+    /** 使用实体当前原型重置迁移计划。 */
     begin(entity: Entity, archetype: Archetype | undefined): void {
         this.entity = entity;
         this.active = true;
@@ -35,6 +36,7 @@ export class MigrationPlan {
         for (let i = 0; i < archetype.types.length; i++) this.types.push(archetype.types[i]);
     }
 
+    /** 将组件加入目标集合；新实例会在提交时清零。 */
     add(component: ComponentMeta): void {
         if (this.targetMask.has(component.mask)) return;
         this.targetMask.orInto(component.mask);
@@ -43,6 +45,7 @@ export class MigrationPlan {
         this.addReset(component.id);
     }
 
+    /** 从目标集合删除组件及其待写字段。 */
     remove(component: ComponentMeta): void {
         if (!this.targetMask.has(component.mask)) return;
         this.targetMask.andNotInto(component.mask);
@@ -56,6 +59,7 @@ export class MigrationPlan {
         this.removeWrites(component.id);
     }
 
+    /** 记录字段最终值；组件不存在时自动添加。 */
     set(component: ComponentMeta, field: number, value: number): void {
         if (!this.targetMask.has(component.mask)) this.add(component);
         for (let i = 0; i < this._writeUsed; i++) {
@@ -69,6 +73,7 @@ export class MigrationPlan {
         writeHighWater(this._writeValues, index, value);
     }
 
+    /** 将计划应用到实体并结束当前事务。 */
     flush(entities: EntityService): void {
         if (!this.active) return;
         if (entities.valid(this.entity)) {
@@ -77,6 +82,7 @@ export class MigrationPlan {
         this.active = false;
     }
 
+    /** 取消当前事务。 */
     cancel(): void { this.active = false; }
 
     private addReset(component: ComponentId): void {

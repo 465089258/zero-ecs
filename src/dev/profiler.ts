@@ -9,6 +9,7 @@ function padRight(value: string, length: number): string {
 let originalSchedulerRun: typeof Scheduler.prototype.run | undefined;
 let patchedProfilers = 0;
 
+/** 开发期 ECS 内存与阶段耗时分析器；会临时包装 Scheduler.run。 */
 export class DevProfiler {
     private readonly _entities: EntityService;
     private _timer: ReturnType<typeof setInterval> | undefined;
@@ -18,11 +19,13 @@ export class DevProfiler {
         max: number;
     }>();
 
+    /** 创建分析器并开始收集全部 Scheduler 阶段的耗时。 */
     constructor(readonly ecs: Ecs) {
         this._entities = ecs.service(EntityService);
         this.patchScheduler();
     }
 
+    /** 返回按 Archetype 汇总的实体数量与 Chunk 内存报告。 */
     getMemoryReport(): string {
         let totalEntities = 0;
         let totalMemory = 0;
@@ -52,6 +55,7 @@ export class DevProfiler {
         return lines.join("\n");
     }
 
+    /** 返回进程内所有分析器共享的阶段耗时报告。 */
     getPerformanceReport(): string {
         const lines = ["Scheduler Performance:"];
         for (const [name, value] of DevProfiler._stats) {
@@ -65,6 +69,7 @@ export class DevProfiler {
         return lines.join("\n");
     }
 
+    /** 定时向控制台输出内存与性能报告。 */
     startLogging(intervalMs = 5000): void {
         this.stopLogging();
         this._timer = setInterval(() => {
@@ -72,11 +77,13 @@ export class DevProfiler {
         }, intervalMs);
     }
 
+    /** 停止当前分析器的定时日志。 */
     stopLogging(): void {
         if (this._timer !== undefined) clearInterval(this._timer);
         this._timer = undefined;
     }
 
+    /** 停止日志，并在最后一个分析器释放时恢复 Scheduler.run。 */
     dispose(): void {
         this.stopLogging();
         if (patchedProfilers > 0) patchedProfilers--;

@@ -8,28 +8,32 @@ import {
 } from "./component";
 import { Mask } from "./mask";
 
-/** @internal Mutable registry storage; use ComponentService from public code. */
+/** @internal 组件注册表状态；外部代码应使用 {@link ComponentService}。 */
 export class ComponentRegistryState extends State {
     readonly metas: ComponentMeta[] = [];
     readonly byType = new WeakMap<ComponentType, ComponentMeta>();
 }
 
-/** The only component registration and metadata lookup entry point. */
+/** 组件注册与定义查询的统一入口。 */
 export class ComponentService extends Service {
     @State.inject(ComponentRegistryState)
     private readonly _state!: ComponentRegistryState;
 
-    /** Define a component in this ECS instance, or return its cached metadata. */
+    /**
+     * 在当前 World 中定义组件；已定义时直接返回原定义。
+     *
+     * 组件字段必须是从 `0` 开始连续递增的数字键。
+     */
     def<T extends object>(type: ComponentType<T>): ComponentDefinition<T> {
         return this.defMeta(type);
     }
 
-    /** Look up a component type without registering it. */
+    /** 查询已定义的组件；该操作不会触发注册。 */
     get<T extends object>(type: ComponentType<T>): ComponentDefinition<T> | undefined {
         return this.getMeta(type);
     }
 
-    /** @internal Define a component and return World-local storage metadata. */
+    /** @internal 定义组件并返回当前 World 的存储元数据。 */
     defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
         const cached = this._state.byType.get(type);
         if (cached) return cached as ComponentMeta<T>;
@@ -62,12 +66,12 @@ export class ComponentService extends Service {
         return meta;
     }
 
-    /** @internal Look up World-local storage metadata without registering it. */
+    /** @internal 查询当前 World 的存储元数据，不触发注册。 */
     getMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> | undefined {
         return this._state.byType.get(type) as ComponentMeta<T> | undefined;
     }
 
-    /** @internal Low-level lookup for World-local IDs held by storage internals. */
+    /** @internal 根据当前 World 的组件编号查询存储元数据。 */
     getById(id: ComponentId): ComponentMeta | undefined {
         return this._state.metas[id];
     }

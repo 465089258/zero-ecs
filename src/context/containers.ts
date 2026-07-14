@@ -8,10 +8,12 @@ import {
     type StateType,
 } from "./types";
 
+/** 保存启动前传入的 Resource 实例，并在构建后锁定。 */
 export class ResourceContainer {
     private readonly _items = new Map<ResourceType, Resource>();
     private _locked = false;
 
+    /** 注册 Resource 实例；重复注册或容器锁定后会抛出错误。 */
     add<T extends Resource>(type: ResourceType<T>, instance: T): this {
         if (this._locked) throw new Error("Resources are locked");
         if (this._items.has(type)) throw new Error(`Resource already registered: ${type.name}`);
@@ -19,17 +21,22 @@ export class ResourceContainer {
         return this;
     }
 
+    /** 获取指定 Resource；未注册时抛出错误。 */
     get<T extends Resource>(type: ResourceType<T>): T {
         const value = this._items.get(type);
         if (!value) throw new Error(`Resource not found: ${type.name}`);
         return value as T;
     }
 
+    /** 判断是否已注册指定 Resource。 */
     has(type: ResourceType): boolean { return this._items.has(type); }
+    /** 禁止继续注册 Resource。 */
     lock(): void { this._locked = true; }
+    /** 清空所有 Resource 引用。 */
     clear(): void { this._items.clear(); }
 }
 
+/** 创建并保存 State，按注入依赖顺序管理其生命周期。 */
 export class StateContainer {
     private readonly _items = new Map<StateType, State>();
     private readonly _order: State[] = [];
@@ -37,6 +44,7 @@ export class StateContainer {
     private _initialized = false;
     private _lifecycleOrder: State[] = [];
 
+    /** 创建并注册 State；重复注册或容器锁定后会抛出错误。 */
     add<T extends State>(type: StateType<T>): T {
         if (this._locked) throw new Error("States are locked");
         if (this._items.has(type)) throw new Error(`State already registered: ${type.name}`);
@@ -46,16 +54,21 @@ export class StateContainer {
         return value;
     }
 
+    /** 获取指定 State；未注册时抛出错误。 */
     get<T extends State>(type: StateType<T>): T {
         const value = this._items.get(type);
         if (!value) throw new Error(`State not found: ${type.name}`);
         return value as T;
     }
 
+    /** 判断是否已注册指定 State。 */
     has(type: StateType): boolean { return this._items.has(type); }
+    /** 按注册顺序返回全部 State。 */
     values(): readonly State[] { return this._order; }
+    /** 禁止继续注册 State。 */
     lock(): void { this._locked = true; }
 
+    /** 按 State 注入依赖的拓扑顺序执行初始化钩子。 */
     init(): void {
         if (this._initialized) return;
         const order = initializationOrder(this._order, InjectionKind.State, "State");
@@ -66,6 +79,7 @@ export class StateContainer {
         this._initialized = true;
     }
 
+    /** 按初始化逆序执行释放钩子并清空容器。 */
     dispose(): void {
         let firstError: unknown;
         const order = this._lifecycleOrder.length > 0 ? this._lifecycleOrder : this._order;
@@ -82,6 +96,7 @@ export class StateContainer {
     }
 }
 
+/** 创建并保存 Service，按注入依赖顺序管理其生命周期。 */
 export class ServiceContainer {
     private readonly _items = new Map<ServiceType, Service>();
     private readonly _order: Service[] = [];
@@ -89,6 +104,7 @@ export class ServiceContainer {
     private _initialized = false;
     private _lifecycleOrder: Service[] = [];
 
+    /** 创建并注册 Service；重复注册或容器锁定后会抛出错误。 */
     add<T extends Service>(type: ServiceType<T>): T {
         if (this._locked) throw new Error("Services are locked");
         if (this._items.has(type)) throw new Error(`Service already registered: ${type.name}`);
@@ -98,16 +114,21 @@ export class ServiceContainer {
         return value;
     }
 
+    /** 获取指定 Service；未注册时抛出错误。 */
     get<T extends Service>(type: ServiceType<T>): T {
         const value = this._items.get(type);
         if (!value) throw new Error(`Service not found: ${type.name}`);
         return value as T;
     }
 
+    /** 判断是否已注册指定 Service。 */
     has(type: ServiceType): boolean { return this._items.has(type); }
+    /** 按注册顺序返回全部 Service。 */
     values(): readonly Service[] { return this._order; }
+    /** 禁止继续注册 Service。 */
     lock(): void { this._locked = true; }
 
+    /** 按 Service 注入依赖的拓扑顺序执行初始化钩子。 */
     init(): void {
         if (this._initialized) return;
         const order = initializationOrder(this._order, InjectionKind.Service, "Service");
@@ -118,6 +139,7 @@ export class ServiceContainer {
         this._initialized = true;
     }
 
+    /** 按初始化逆序执行释放钩子并清空容器。 */
     dispose(): void {
         let firstError: unknown;
         const order = this._lifecycleOrder.length > 0 ? this._lifecycleOrder : this._order;

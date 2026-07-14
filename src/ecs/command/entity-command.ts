@@ -22,15 +22,26 @@ const enum AddInstructionFlags {
     CreatedLocalInstance = 1 << 0,
 }
 
+/**
+ * 单个实体的局部组件事务接口。
+ *
+ * 下层组装 Service 应共享同一个实例，使后续操作能够观察前序的增删改结果。
+ */
 export interface EntityMutator {
+    /** 当前事务操作的实体。 */
     readonly entity: Entity;
+    /** 判断事务提交后实体是否包含指定组件。 */
     has<T extends object>(type: ComponentType<T>): boolean;
+    /** 读取包含当前事务未提交修改的字段值；组件不存在时返回 `null`。 */
     get<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
     ): number | null;
+    /** 添加组件；组件已存在时保留其当前数据。 */
     add<T extends object>(type: ComponentType<T>): this;
+    /** 删除组件；组件不存在时不产生效果。 */
     remove<T extends object>(type: ComponentType<T>): this;
+    /** 写入字段；组件不存在时先创建零初始化的新组件。 */
     set<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
@@ -38,7 +49,12 @@ export interface EntityMutator {
     ): this;
 }
 
-/** A pooled local transaction for one entity. */
+/**
+ * 针对单个实体的可池化局部事务。
+ *
+ * `remove` 后再次 `add` 会创建全字段清零的新组件，再应用其后的 `set`。结构变更在
+ * 内部 Post 阶段合并迁移；没有待合并迁移且仅修改已有组件字段时直接写入原存储。
+ */
 export class EntityCommand extends Command implements EntityMutator {
     @Service.inject(ArchetypeService) private readonly _archetypes!: ArchetypeService;
     @Service.inject(ComponentService) private readonly _components!: ComponentService;
@@ -51,9 +67,10 @@ export class EntityCommand extends Command implements EntityMutator {
     private readonly _instructions: number[] = [];
     private _used = 0;
 
+    /** 当前命令绑定的实体。 */
     get entity(): Entity { return this._entity; }
 
-    /** @internal CommandService binding hook. */
+    /** @internal CommandService 的实体绑定入口。 */
     bind(entity: Entity): void {
         this.assertMutable();
         if (!this._entities.valid(entity)) throw new RangeError(`Invalid entity ${entity}`);
@@ -67,12 +84,14 @@ export class EntityCommand extends Command implements EntityMutator {
         for (let i = 0; i < archetype.types.length; i++) this._types.push(archetype.types[i]);
     }
 
+    /** 判断当前事务的目标组件集合是否包含指定组件。 */
     has<T extends object>(type: ComponentType<T>): boolean {
         this.assertEntityMutable();
         const component = this._components.getMeta(type);
         return component !== undefined && this._targetMask.has(component.mask);
     }
 
+    /** 读取当前事务可见的字段值；会优先返回尚未提交的修改。 */
     get<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
@@ -96,6 +115,7 @@ export class EntityCommand extends Command implements EntityMutator {
         return this._entities.get(this._entity, type, field);
     }
 
+    /** 添加组件；组件已存在时保留当前字段值。 */
     add<T extends object>(type: ComponentType<T>): this {
         this.assertEntityMutable();
         const component = this._components.defMeta(type);
@@ -114,6 +134,7 @@ export class EntityCommand extends Command implements EntityMutator {
         return this;
     }
 
+    /** 删除组件；组件不存在时不产生最终效果。 */
     remove<T extends object>(type: ComponentType<T>): this {
         this.assertEntityMutable();
         const component = this._components.getMeta(type);
@@ -132,6 +153,7 @@ export class EntityCommand extends Command implements EntityMutator {
         return this;
     }
 
+    /** 写入组件字段；组件不存在时自动添加并以零初始化。 */
     set<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
@@ -145,6 +167,11 @@ export class EntityCommand extends Command implements EntityMutator {
         return this;
     }
 
+    /**
+     * 将命令标记为销毁实体，并丢弃此前的全部组件操作。
+     *
+     * 标记后再执行任何组件操作都会抛出错误。
+     */
     despawn(): this {
         this.assertEntityMutable();
         this._flags |= EntityCommandFlags.Despawn;
@@ -152,6 +179,7 @@ export class EntityCommand extends Command implements EntityMutator {
         return this;
     }
 
+    /** 执行字段直写、记录结构迁移或销毁实体；通常由 CommandService 调用。 */
     execute(): void {
         if (!this._entities.valid(this._entity)) {
             throw new RangeError(`Invalid entity ${this._entity}`);
@@ -169,7 +197,7 @@ export class EntityCommand extends Command implements EntityMutator {
         this._migration.record(this._entity, this._instructions, this._used);
     }
 
-    /** @internal Used by the migration and direct-write paths. */
+    /** @internal 供迁移与字段直写路径判断是否包含结构变更。 */
     _hasStructuralChanges(): boolean {
         return (this._flags & EntityCommandFlags.Structural) !== 0;
     }
