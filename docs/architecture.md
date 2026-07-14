@@ -42,21 +42,25 @@ flowchart TB
     Ecs --> Services["ServiceContainer"]
     Ecs --> Scheduler["Scheduler"]
     Ecs --> Modules["Module 实例列表"]
+    Ecs --> Context["InjectionContext<br/>内部运行时记录"]
 
-    World -. "共享 InjectionContext" .-> Resources
-    World -. "共享 InjectionContext" .-> States
-    World -. "共享 InjectionContext" .-> Services
-    Scheduler -. "解析系统参数" .-> World
-    Scheduler -. "解析系统参数" .-> Resources
-    Scheduler -. "解析系统参数" .-> States
-    Scheduler -. "解析系统参数" .-> Services
+    World -. "bind" .-> Context
+    Services --> Injection["InjectionService"]
+    Injection -. "bind / 动态注入" .-> Context
+    Scheduler -. "解析系统参数" .-> Context
+    Context --> World
+    Context --> Resources
+    Context --> States
+    Context --> Services
 
     Resources --> Resource["Resource 实例"]
     States --> State["State 实例"]
     Services --> Service["Service 实例"]
 ```
 
-所有实例在 `EcsBuilder.build()` 中创建或收集，随后使用同一个 `InjectionContext` 完成属性注入。
+所有实例在 `EcsBuilder.build()` 中创建或收集。`InjectionContext` 是不对外公开的运行时记录，同时绑定到 World 与自动注册的 InjectionService；State、Service 以及后续创建的池化辅助对象统一通过 InjectionService 完成属性注入。
+
+World 只提供三个容器的访问能力。动态对象注入只有 `InjectionService.inject()` 一个入口；它不接管目标对象生命周期，并通过弱归属记录拒绝对象跨 Ecs 注入。
 
 ## 3. Core ECS 服务关系
 
@@ -64,6 +68,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
+    Runtime["EcsBuilder 基础运行时"] --> Injection["InjectionService"]
     Core["CoreEcsModule"] --> RegistryState["ComponentRegistryState"]
     Core --> Memory["EcsMemoryService"]
     Core --> Components["ComponentService"]

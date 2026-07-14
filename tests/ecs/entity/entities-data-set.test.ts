@@ -1,5 +1,5 @@
 import { expect, test } from "@rstest/core";
-import { type Component, ComponentService, EcsBuilder, EcsMemoryService, EntityService, Types } from "../../../src/advanced";
+import { type Component, ComponentService, EcsBuilder, EcsMemoryService, type Entity, EntityService, Types } from "../../../src/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -43,5 +43,45 @@ test("EntityService and Archetype share DataSet-backed chunk memory", () => {
     expect(entities.view(first, PositionType)?.[Position.x][0]).toBe(12.5);
     expect(entities.getTypes(first)).toEqual([PositionType, HealthType]);
     expect(entities.getCompLocation(second)).toEqual({ tableId: 0, row: 0 });
-    expect(ecs.service(EcsMemoryService).allocator.stats().allocatedChunks).toBeGreaterThanOrEqual(3);
+    const memory = ecs.service(EcsMemoryService);
+    expect(memory.allocator.stats().allocatedChunks).toBeGreaterThanOrEqual(3);
+    ecs.dispose();
+    expect(memory.allocator.stats()).toEqual({
+        blockCount: 0,
+        chunkCapacity: 0,
+        allocatedChunks: 0,
+        freeChunks: 0,
+        reservedBytes: 0,
+        allocatedBytes: 0,
+    });
+});
+
+test("Entity handles stay unsigned when the packed high bit is set", () => {
+    const ecs = new EcsBuilder().build();
+    ecs.init();
+    const entities = ecs.service(EntityService);
+    let entity = 0 as Entity;
+    for (let i = 0; i < 524_288; i++) entity = entities.spawn();
+
+    expect(entity).toBe(entity >>> 0);
+    expect(entities.valid(entity)).toBe(true);
+    ecs.dispose();
+});
+
+test("retires an Entity slot before its generation can wrap", () => {
+    const ecs = new EcsBuilder().build();
+    ecs.init();
+    const entities = ecs.service(EntityService);
+    const stale = entities.spawn();
+    let current = stale;
+
+    for (let i = 0; i < 4095; i++) {
+        expect(entities.despawn(current)).toBe(true);
+        current = entities.spawn();
+    }
+
+    expect(entities.valid(stale)).toBe(false);
+    expect(current).not.toBe(stale);
+    expect(entities.getRawIndex(current)).not.toBe(entities.getRawIndex(stale));
+    ecs.dispose();
 });

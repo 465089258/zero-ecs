@@ -18,6 +18,10 @@ const enum EntityCommandFlags {
     Structural = 1 << 3,
 }
 
+const enum AddInstructionFlags {
+    CreatedLocalInstance = 1 << 0,
+}
+
 export interface EntityMutator {
     readonly entity: Entity;
     has<T extends object>(type: ComponentType<T>): boolean;
@@ -83,7 +87,10 @@ export class EntityCommand extends Command implements EntityMutator {
             if (operation === EntityInstruction.Set && this._instructions[i + 2] === field) {
                 return this._instructions[i + 3];
             }
-            if (operation === EntityInstruction.Add) return 0;
+            if (operation === EntityInstruction.Add) {
+                if ((this._instructions[i + 2] & AddInstructionFlags.CreatedLocalInstance) !== 0) return 0;
+                continue;
+            }
             if (operation === EntityInstruction.Remove) return null;
         }
         return this._entities.get(this._entity, type, field);
@@ -92,12 +99,18 @@ export class EntityCommand extends Command implements EntityMutator {
     add<T extends object>(type: ComponentType<T>): this {
         this.assertEntityMutable();
         const component = this._components.def(type);
-        if (!this._targetMask.has(component.mask)) {
+        const created = !this._targetMask.has(component.mask);
+        if (created) {
             this._targetMask.orInto(component.mask);
             this._types.push(component);
         }
         this._flags |= EntityCommandFlags.Structural;
-        this.write(EntityInstruction.Add, component.id, 0, 0);
+        this.write(
+            EntityInstruction.Add,
+            component.id,
+            created ? AddInstructionFlags.CreatedLocalInstance : 0,
+            0,
+        );
         return this;
     }
 

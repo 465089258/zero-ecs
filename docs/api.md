@@ -129,7 +129,8 @@ abstract class Service {
 - Resource：上层在 build 前传入的实例，容器 build 后锁定。
 - State：保存运行状态，可以参与系统读写权限声明。
 - Service：工具方法集合，自身决定开放哪些修改能力，不参与 State 的 `Write` 权限规则。
-- World：底层入口，可以访问三个容器，也可以给动态对象执行属性注入。
+- World：底层入口，只负责访问三个容器。
+- InjectionService：给 Command 等运行时创建的辅助对象填充声明式依赖。
 
 ### 属性注入
 
@@ -151,16 +152,20 @@ class PhysicsService extends Service {
 
 同类别的 State 和 Service 初始化顺序会根据属性注入关系进行拓扑排序。循环依赖会在初始化时抛错。
 
-### `World`
+### `World` 与动态注入
 
 ```ts
 world.resource(GameConfig);
 world.state(GameState);
 world.service(PhysicsService);
-world.inject(dynamicObject);
+
+const injection = ecs.service(InjectionService);
+injection.inject(dynamicObject);
 ```
 
-`world.inject()` 用于给池化 Command 等运行时创建的辅助对象注入依赖。
+`InjectionService` 是唯一的动态注入入口，由基础运行时自动注册。它只填充依赖，不创建、不初始化、不保存，也不销毁目标对象。同一个对象在同一 Ecs 中重复注入是幂等操作；把已经注入的对象交给另一个 Ecs 会抛错。
+
+动态注入主要用于池化 Command、EventArgs 和运行时辅助对象。系统的 Resource、State、Service 和 Query 依赖仍应显式登记在系统参数元组中，避免隐藏 Scheduler 未来需要分析的状态访问。
 
 ### 所有权与保存期限
 
@@ -169,6 +174,8 @@ world.inject(dynamicObject);
 | Resource | 上层调用方 | ECS 只保存引用且不会 dispose；实例在运行期不可替换 |
 | State / Service | Ecs 容器 | 由 Ecs 创建和 dispose；Ecs.dispose 后不得继续使用 |
 | World | Ecs 生命周期 | 可以由上层提供实例，但 bind/init/dispose 由 Ecs 驱动 |
+| InjectionService | ServiceContainer | 绑定当前 Ecs 的内部 InjectionContext；Ecs.dispose 后拒绝继续注入 |
+| 动态注入对象 | 创建该对象的调用方或对象池 | InjectionService 不接管生命周期；对象不得跨 Ecs 复用 |
 | Query | QueryService / System 参数 | 绑定当前 Ecs；不得跨 Ecs 使用，Ecs.dispose 后失效 |
 | QueryIter/current/组件列 | Query 缓存 | Iter 和 tuple 会复用；组件列只在当前结构版本下有效 |
 | Command / EntityCommand | CommandService 对象池 | submit 前由调用方持有；submit 后不可修改，flush 后不可继续使用 |
@@ -348,7 +355,7 @@ const command = commands.cmd(MyCommand);
 command.set(...).submit();
 ```
 
-Command 首次创建时会通过 `World.inject()` 注入属性，执行后调用 `clear()` 并回收到对应类型的池。
+Command 首次创建时会通过 `InjectionService.inject()` 注入属性，执行后调用 `clear()` 并回收到对应类型的池。池中复用时不重复注入。
 
 ## 8. Query
 

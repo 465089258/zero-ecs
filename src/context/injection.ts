@@ -2,6 +2,7 @@ import { createInjectDecorator, injectionEntries, InjectionKind } from "./inject
 import type { ResourceContainer, ServiceContainer, StateContainer } from "./containers";
 import { Resource, type ResourceType, Service, type ServiceType, State, type StateType } from "./types";
 
+/** @internal Shared runtime record used by World, InjectionService and Scheduler. */
 export interface InjectionContext {
     readonly world: unknown;
     readonly resources: ResourceContainer;
@@ -13,6 +14,7 @@ export function createWorldInjectDecorator() {
     return createInjectDecorator(InjectionKind.World);
 }
 
+/** @internal Low-level property injection implementation. */
 export function injectAll(instance: any, context: InjectionContext): void {
     let ctor = instance.constructor;
     while (ctor && ctor !== Function.prototype) {

@@ -1,6 +1,7 @@
 import { expect, test } from "@rstest/core";
 import {
     EcsBuilder,
+    InjectionService,
     Write,
     type Mut,
     Resource,
@@ -85,4 +86,47 @@ test("State cannot inject World", () => {
     const builder = new EcsBuilder();
     builder.addState(InvalidState);
     expect(() => builder.build()).toThrow(/cannot inject World/);
+});
+
+class RuntimeHelper {
+    @World.inject() readonly world!: World;
+    @Resource.inject(ConfigResource) readonly config!: ConfigResource;
+    @State.inject(CounterState) readonly counter!: CounterState;
+    @Service.inject(CounterService) readonly service!: CounterService;
+}
+
+function buildInjectionTestEcs(value: number) {
+    const builder = new EcsBuilder();
+    builder.addResource(ConfigResource, new ConfigResource(value));
+    builder.addState(CounterState);
+    builder.addService(CounterService);
+    return builder.build();
+}
+
+test("InjectionService is the single dynamic injection entry", () => {
+    const ecs = buildInjectionTestEcs(21);
+    const injection = ecs.service(InjectionService);
+    const helper = new RuntimeHelper();
+
+    expect(injection.inject(helper)).toBe(helper);
+    expect(injection.inject(helper)).toBe(helper);
+    expect(helper.world).toBe(ecs.world);
+    expect(helper.config).toBe(ecs.resource(ConfigResource));
+    expect(helper.counter).toBe(ecs.state(CounterState));
+    expect(helper.service).toBe(ecs.service(CounterService));
+    expect("inject" in ecs.world).toBe(false);
+
+    ecs.dispose();
+    expect(() => injection.inject(new RuntimeHelper())).toThrow(/has not been bound/);
+});
+
+test("InjectionService rejects objects already injected by another Ecs", () => {
+    const first = buildInjectionTestEcs(1);
+    const second = buildInjectionTestEcs(2);
+    const helper = first.service(InjectionService).inject(new RuntimeHelper());
+
+    expect(() => second.service(InjectionService).inject(helper)).toThrow(/another Ecs/);
+
+    first.dispose();
+    second.dispose();
 });

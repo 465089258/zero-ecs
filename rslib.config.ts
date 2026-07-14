@@ -4,7 +4,7 @@ export default defineConfig({
   lib: [
     {
       syntax: ['node 22'],
-      bundle: false,
+      bundle: true,
       dts: true,
       source: {
         entry: {

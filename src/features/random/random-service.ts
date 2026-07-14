@@ -7,12 +7,18 @@ export class RandomService extends Service {
     private _c!: number;
     private _d!: number;
 
-    seed(seed: number) {
+    constructor() {
+        super();
+        this.seed(0);
+    }
+
+    seed(seed: number): void {
+        if (!Number.isFinite(seed)) throw new RangeError(`Random seed must be finite, received ${seed}`);
         let s = seed | 0;
-        s = splitmix32(s); this._a = s;
-        s = splitmix32(s); this._b = s;
-        s = splitmix32(s); this._c = s;
-        s = splitmix32(s); this._d = s;
+        s = (s + 0x9e3779b9) | 0; this._a = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._b = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._c = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._d = splitmix32(s);
     }
 
     /**
@@ -37,13 +43,16 @@ export class RandomService extends Service {
     /** 随机 min - max 浮点数 */
     float(min: number, max: number): number;
     float(min?: number, max?: number): number {
-        const v = this.next();
         if (min !== undefined && max !== undefined) {
-            return v * (max - min) + min;
+            requireFiniteRange("RandomService.float", min, max);
+            return this.next() * (max - min) + min;
         } else if (min !== undefined) {
-            return v * min;
+            if (!Number.isFinite(min) || min <= 0) {
+                throw new RangeError(`RandomService.float max must be finite and > 0, received ${min}`);
+            }
+            return this.next() * min;
         } else {
-            return v;
+            return this.next();
         }
     }
 
@@ -55,9 +64,12 @@ export class RandomService extends Service {
     int(min: number, max: number): number;
     int(min?: number, max?: number): number {
         if (min !== undefined && max !== undefined) {
-            // 保持浮点数映射方式，保证区间均匀
+            requireIntegerRange("RandomService.int", min, max);
             return Math.floor(this.next() * (max - min) + min);
         } else if (min !== undefined) {
+            if (!Number.isSafeInteger(min) || min <= 0) {
+                throw new RangeError(`RandomService.int max must be a safe integer > 0, received ${min}`);
+            }
             return Math.floor(this.next() * min);
         } else {
             // 直接输出 32 位无符号整数，快且完全符合生成器精度
@@ -66,26 +78,47 @@ export class RandomService extends Service {
     }
 
     /** 随机数组中一个元素 */
-    elem<T>(array: Array<T>): T {
+    elem<T>(array: readonly T[]): T {
+        if (array.length === 0) throw new RangeError("RandomService.elem requires a non-empty array");
         const idx = this.int(array.length);
         return array[idx];
     }
 
     /** 权重池随机一个元素 */
-    weight<T>(array: Array<[number, T]>, totalWeight?: number): T {
-        if (totalWeight === undefined) {
-            totalWeight = 0;
-            for (let i = 0; i < array.length; i++) totalWeight += array[i][0];
+    weight<T>(array: ReadonlyArray<readonly [number, T]>, totalWeight?: number): T {
+        if (array.length === 0) throw new RangeError("RandomService.weight requires a non-empty array");
+        let calculatedWeight = 0;
+        for (let i = 0; i < array.length; i++) {
+            const weight = array[i][0];
+            if (!Number.isFinite(weight) || weight <= 0) {
+                throw new RangeError(`RandomService.weight requires finite positive weights, received ${weight}`);
+            }
+            calculatedWeight += weight;
         }
-        let randomWeight = this.int(totalWeight);
+        if (totalWeight !== undefined && totalWeight !== calculatedWeight) {
+            throw new RangeError(
+                `RandomService.weight total ${totalWeight} does not match calculated total ${calculatedWeight}`,
+            );
+        }
+        let randomWeight = this.next() * calculatedWeight;
         for (let i = 0; i < array.length; i++) {
             const [weight, value] = array[i];
+            if (randomWeight < weight) return value;
             randomWeight -= weight;
-            if (randomWeight <= 0) {
-                return value;
-            }
         }
         return array[array.length - 1][1];
+    }
+}
+
+function requireFiniteRange(name: string, min: number, max: number): void {
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        throw new RangeError(`${name} requires finite min < max, received ${min}, ${max}`);
+    }
+}
+
+function requireIntegerRange(name: string, min: number, max: number): void {
+    if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max <= min) {
+        throw new RangeError(`${name} requires safe integer min < max, received ${min}, ${max}`);
     }
 }
 

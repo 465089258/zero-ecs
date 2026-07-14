@@ -68,6 +68,13 @@ export class ArchetypeService extends Service {
         return arch;
     }
 
+    dispose(): void {
+        for (let i = 0; i < this._archetypes.length; i++) this._archetypes[i].dispose();
+        this._archetypes.length = 0;
+        this._maskIndexes.length = 0;
+        this._version++;
+    }
+
     private bindArchetype(arch: Archetype, idx: number) {
         const indexes = this._maskIndexes;
         let low = 0;

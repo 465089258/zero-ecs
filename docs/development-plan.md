@@ -2,7 +2,7 @@
 
 本文档规划 zero-ecs-lib 从当前实现迁移到下一版纯数据 ECS 运行时的开发任务。`api.md` 与 `architecture.md` 继续描述仓库当前行为；本文档描述已经确认的目标、事务语义、实施顺序和验收标准。
 
-实施状态：全部阶段已完成（2026-07-14）。
+实施状态：阶段 0～9、11 已完成；阶段 10 构建配置将在阶段 14 收口；阶段 12～15 待执行（2026-07-14）。
 
 ## 1. 项目目标
 
@@ -101,6 +101,15 @@ Recycled → Mutable → Submitted → Recycled
 - 不在热路径使用 rest、spread、`map`、`filter`、`reduce` 或每次调用创建的回调。
 - TypeScript 构建阶段确定能够消除的语法不计入运行时模型。
 - 性能测试用于验证，不作为判定代码是否零分配的唯一依据。
+
+### 2.6 动态对象注入
+
+- `InjectionService` 是唯一的动态对象注入入口，基础运行时自动注册。
+- `World` 只访问 Resource、State、Service 三个容器，不再提供同义的 `inject()` API。
+- `InjectionContext` 与 `injectAll()` 属于内部实现，不从稳定或 advanced 包入口导出。
+- 注入不转移对象所有权，也不负责目标对象的 init、dispose 或池化。
+- 同一对象在同一 Ecs 重复注入保持幂等；跨 Ecs 注入同一对象必须报错。
+- 系统依赖仍通过参数元组显式声明，不应借助动态辅助对象隐藏 State 访问。
 
 ## 3. EntityCommand 事务语义
 
@@ -209,6 +218,12 @@ src/
 | 阶段 7：时间与可选功能重构 | 已完成 | 2026-07-14 |
 | 阶段 8：无 JIT 静态审计 | 已完成 | 2026-07-14 |
 | 阶段 9：公共边界与文档收口 | 已完成 | 2026-07-14 |
+| 阶段 10：统一动态注入服务 | 代码完成，构建配置待确认 | 2026-07-14 |
+| 阶段 11：生产正确性修复 | 已完成 | 2026-07-14 |
+| 阶段 12：生命周期与异常安全 | 待执行 | — |
+| 阶段 13：公共 API 边界收紧 | 待执行 | — |
+| 阶段 14：多平台构建与发布配置 | 待执行 | — |
+| 阶段 15：质量与发布门禁 | 待执行 | — |
 
 ### 阶段 0：建立迁移基线
 
@@ -510,6 +525,56 @@ src/
 - 文档示例全部通过类型检查。
 - 当前 API 文档与代码不存在旧名称、Bundle、EntityCommands 或 `Update.update`。
 - 公共入口不暴露内部 Post 和 EntityMigrationService 的实现细节。
+
+### 阶段 10：统一动态注入服务
+
+状态：代码与文档已完成，构建配置待确认（2026-07-14）。
+
+完成记录：
+
+- 新增基础运行时自动注册的 InjectionService，并从稳定入口导出。
+- EcsBuilder 使用 InjectionService 完成所有 State 与 Service 的初始属性注入，不再直接调用 injectAll。
+- 删除 World 实例上的 `world.inject(instance)`，CommandService 改为依赖 InjectionService；`@World.inject()` 属性装饰器继续用于声明 World 依赖。
+- InjectionContext 和 injectAll 保持包内部实现，advanced 入口不再导出 InjectionContext。
+- 使用 WeakMap 记录动态对象所属 InjectionService；同 Ecs 重复注入幂等，跨 Ecs 注入报错。
+- 测试覆盖自动注册、依赖解析、同 Ecs 幂等、跨 Ecs 拒绝及 dispose 后拒绝注入。
+- 验证：10 个测试文件、44 个测试通过；`rslib build --no-bundle` 与 Node `--jitless` 冒烟通过。当前工作区已有的 `bundle: true` 与 glob 入口 `./src/**` 冲突，标准 `npm run build` 需在保留 bundleless 边界或改造 bundled 多入口之间确认后处理。
+
+任务：
+
+- 将动态辅助对象注入从 World 分离为专用 Service。
+- 明确注入服务与 InjectionContext 的绑定和释放顺序。
+- 固定动态注入的对象所有权和跨 Ecs 行为。
+- 同步 Command、公共入口、API 文档和架构关系。
+
+验收：
+
+- 项目不存在 `world.inject(instance)` 或其他同义动态注入入口；`@World.inject()` 只表示属性依赖声明。
+- Command 首次分配通过 InjectionService 注入，池化复用不重复注入。
+- InjectionService 不接管动态对象生命周期，Ecs dispose 后拒绝使用。
+- 普通测试、与既定 bundleless 边界一致的生产构建和无 JIT 验证通过；标准构建配置冲突已确认处理方向。
+
+### 阶段 11：生产正确性修复
+
+状态：已完成（2026-07-14）。
+
+完成记录：
+
+- Entity 句柄生成统一执行 `>>> 0`，高位 index 与 Query 的 Uint32 Entity 表示保持一致。
+- 12 位 generation 到达 4095 后永久退休 slot，不再回绕到旧句柄；`valid()` 明确拒绝零 generation。
+- EntityCommand 的 Add 指令记录本地是否创建新实例；幂等 Add 不再遮蔽此前 Set，read-your-writes 与最终提交一致。
+- EventArgs 增加 Mutable、Posted、Recycled 生命周期，重复 post、post 后修改和回收后修改均报错；Event flush 使用 finally 保证回池。
+- RandomService 使用确定默认种子，修复权重选择边界偏差，并验证 seed、范围、空数组和权重输入。
+- EntityService 与 ArchetypeService dispose 所有 DataSet，EcsMemoryService 最终 clear allocator；Ecs.dispose 后 Block/Chunk 统计归零。
+- 验证：10 个测试文件、48 个测试通过；`tsc --strict`、`rslib build --no-bundle` 与 Node `--jitless` 冒烟通过。
+
+验收：
+
+- Entity 高位表示稳定，旧句柄不会因 generation 回绕重新有效。
+- EntityMutator 的同步读取与最终迁移结果一致。
+- EventArgs 不会因重复 post 被重复放入对象池。
+- `[1, 1]` 权重池能够选择两个分支，未 seed 的 RandomService 也处于有效状态。
+- Ecs.dispose 后 allocator 的 allocatedChunks 和 blockCount 都为零。
 
 ## 7. 关键测试矩阵
 

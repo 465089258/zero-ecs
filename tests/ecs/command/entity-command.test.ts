@@ -152,8 +152,10 @@ describe("unified CommandService", () => {
         create
             .set(PositionType, Position.x, 12)
             .add(PositionType)
-            .remove(PlayerTagType)
-            .submit();
+            .remove(PlayerTagType);
+        expect(create.get(PositionType, Position.x)).toBe(12);
+        expect(create.get(PositionType, Position.y)).toBe(0);
+        create.submit();
         ecs.update();
 
         expect(entities.get(entity, PositionType, Position.x)).toBe(12);

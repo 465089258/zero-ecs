@@ -7,5 +7,6 @@ export class EcsMemoryService extends Service {
 
     dispose(): void {
         this.allocator.trim();
+        this.allocator.clear();
     }
 }

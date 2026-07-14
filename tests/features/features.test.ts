@@ -25,7 +25,7 @@ class PositionType implements Component<Position> {
 
 class PingEvent extends EventArgs {
     value = 0;
-    set(value: number): this { this.value = value; return this; }
+    set(value: number): this { this.assertMutable(); this.value = value; return this; }
     clear(): void { this.value = 0; }
 }
 
@@ -113,6 +113,26 @@ describe("fixed time and optional features", () => {
         expect(values).toEqual([1, 2]);
     });
 
+    test("guards EventArgs lifecycle and never loans the same pooled instance twice", () => {
+        const ecs = start(new EcsBuilder().addModule(new EventModule()));
+        const events = ecs.service(EventService);
+        const event = events.event(PingEvent).set(1);
+        event.post();
+
+        expect(() => event.post()).toThrow(/already been posted/);
+        expect(() => event.set(2)).toThrow(/already been posted/);
+        ecs.update();
+        expect(() => event.set(3)).toThrow(/already been recycled/);
+
+        const first = events.event(PingEvent);
+        const second = events.event(PingEvent);
+        expect(first).not.toBe(second);
+        first.post();
+        second.post();
+        ecs.update();
+        ecs.dispose();
+    });
+
     test("produces the same RandomService sequence for the same seed", () => {
         const first = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
         const second = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
@@ -121,5 +141,18 @@ describe("fixed time and optional features", () => {
         const firstValues = [first.int(), first.int(), first.float(), first.int(10, 20)];
         const secondValues = [second.int(), second.int(), second.float(), second.int(10, 20)];
         expect(firstValues).toEqual(secondValues);
+    });
+
+    test("initializes RandomService and selects every positive weighted branch", () => {
+        const random = new RandomService();
+        expect(random.float()).toBeGreaterThan(0);
+
+        random.seed(123);
+        const values = new Set<string>();
+        for (let i = 0; i < 100; i++) values.add(random.weight([[1, "a"], [1, "b"]]));
+        expect(values).toEqual(new Set(["a", "b"]));
+        expect(() => random.elem([])).toThrow(/non-empty/);
+        expect(() => random.weight([[0, "invalid"]])).toThrow(/positive weights/);
+        expect(() => random.seed(Number.NaN)).toThrow(/finite/);
     });
 });

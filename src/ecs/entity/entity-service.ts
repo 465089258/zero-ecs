@@ -31,18 +31,19 @@ export class EntityService extends Service {
     @Service.inject(EcsMemoryService) private _memory!: EcsMemoryService;
     @Service.inject(ComponentService) private _components!: ComponentService;
 
-    private _slots!: DataSet;
+    private _slots: DataSet | undefined;
     private readonly _slotRows: DataRow[] = [];
     private readonly _freeIndices: number[] = [];
     private _counter = 0;
 
     get archetypes(): readonly Archetype[] { return this._archetypes.archetypes; }
     get version(): number { return this._archetypes.version; }
-    get data(): DataSet { return this._slots; }
+    get data(): DataSet { return this.slots; }
 
     init(): void {
+        if (this._slots) throw new Error("EntityService has already been initialized");
         this._slots = new DataSet(this._memory.allocator, [Types.U32, Types.U32, Types.U32, Types.U32]);
-        const sentinel = this._slots.insert();
+        const sentinel = this.slots.insert();
         this._slotRows.push(sentinel);
         this.writeSlot(0, EntityColumn.Version, 0);
         this.clearLocation(0);
@@ -125,7 +126,7 @@ export class EntityService extends Service {
     valid(entity: Entity): boolean {
         const index = entity >>> VERSION_BITS;
         const version = entity & VERSION_MASK;
-        return index > 0 && index < this._counter && this.readSlot(index, EntityColumn.Version) === version;
+        return version !== 0 && index > 0 && index < this._counter && this.readSlot(index, EntityColumn.Version) === version;
     }
 
     getRawIndex(entity: Entity): number { return entity >>> VERSION_BITS; }
@@ -190,21 +191,24 @@ export class EntityService extends Service {
         else {
             if (this._counter > INDEX_MASK) throw new RangeError(`Entity capacity exceeded: ${INDEX_MASK}`);
             index = this._counter++;
-            const row = this._slots.insert();
+            const row = this.slots.insert();
             this._slotRows.push(row);
             this.writeSlot(index, EntityColumn.Version, 1);
         }
         let version = this.readSlot(index, EntityColumn.Version) & VERSION_MASK;
         if (version === 0) { version = 1; this.writeSlot(index, EntityColumn.Version, version); }
-        return ((index << VERSION_BITS) | version) as Entity;
+        return (((index << VERSION_BITS) | version) >>> 0) as Entity;
     }
 
     private freeEntity(index: number, version: number): void {
         if (index === 0 || this.readSlot(index, EntityColumn.Version) !== version) return;
-        let nextVersion = (version + 1) & VERSION_MASK;
-        if (nextVersion === 0) nextVersion = 1;
-        this.writeSlot(index, EntityColumn.Version, nextVersion);
         this.clearLocation(index);
+        if (version === VERSION_MASK) {
+            // Retire the slot instead of allowing an old handle to become valid again.
+            this.writeSlot(index, EntityColumn.Version, 0);
+            return;
+        }
+        this.writeSlot(index, EntityColumn.Version, version + 1);
         this._freeIndices.push(index);
     }
 
@@ -227,6 +231,19 @@ export class EntityService extends Service {
         return tableId === NONE || row === NONE ? null : { tableId, row };
     }
 
-    private readSlot(index: number, column: EntityColumn): number { return this._slots.get(this._slotRows[index], column); }
-    private writeSlot(index: number, column: EntityColumn, value: number): void { this._slots.set(this._slotRows[index], column, value); }
+    dispose(): void {
+        this._slots?.dispose();
+        this._slots = undefined;
+        this._slotRows.length = 0;
+        this._freeIndices.length = 0;
+        this._counter = 0;
+    }
+
+    private get slots(): DataSet {
+        if (!this._slots) throw new Error("EntityService has not been initialized");
+        return this._slots;
+    }
+
+    private readSlot(index: number, column: EntityColumn): number { return this.slots.get(this._slotRows[index], column); }
+    private writeSlot(index: number, column: EntityColumn, value: number): void { this.slots.set(this._slotRows[index], column, value); }
 }

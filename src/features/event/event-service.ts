@@ -3,22 +3,69 @@ import { Listener } from "./listener";
 type Fn<T extends EventArgs> = (args: T) => void;
 type ArgsType<T extends EventArgs = EventArgs> = new () => T;
 export interface IEventService {
-    event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "reset">;
+    event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "_reset" | "_recycle">;
     on<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
     one<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
     off<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this;
 }
 
+const enum EventFlags {
+    Mutable = 0,
+    Posted = 1 << 0,
+    Recycled = 1 << 1,
+}
+
 export abstract class EventArgs {
     private _post!: (args: EventArgs) => void;
-    reset(post: (args: EventArgs) => void) {
+    private _flags = EventFlags.Recycled;
+
+    /** @internal EventService pool hook. */
+    _reset(post: (args: EventArgs) => void): void {
+        if (this._flags !== EventFlags.Recycled) {
+            throw new Error(`${this.constructor.name} cannot be reset before it is recycled`);
+        }
         this._post = post;
+        this._flags = EventFlags.Mutable;
     }
 
     /** 把事件发布到事件系统中 */
-    post() {
-        this._post(this);
+    post(): void {
+        if (this._flags === EventFlags.Posted) {
+            throw new Error(`${this.constructor.name} has already been posted`);
+        }
+        if (this._flags === EventFlags.Recycled) {
+            throw new Error(`${this.constructor.name} has already been recycled`);
+        }
+        this._flags = EventFlags.Posted;
+        try {
+            this._post(this);
+        } catch (error) {
+            this._flags = EventFlags.Mutable;
+            throw error;
+        }
     }
+
+    /** @internal EventService pool hook. */
+    _recycle(): void {
+        if (this._flags !== EventFlags.Posted) {
+            throw new Error(`${this.constructor.name} is not posted`);
+        }
+        try {
+            this.clear?.();
+        } finally {
+            this._flags = EventFlags.Recycled;
+        }
+    }
+
+    protected assertMutable(): void {
+        if (this._flags === EventFlags.Posted) {
+            throw new Error(`${this.constructor.name} has already been posted`);
+        }
+        if (this._flags === EventFlags.Recycled) {
+            throw new Error(`${this.constructor.name} has already been recycled`);
+        }
+    }
+
     clear?(): void;
 }
 
@@ -28,27 +75,37 @@ export class EventService extends Service implements IEventService {
     private readonly _pool: Map<ArgsType, EventArgs[]> = new Map();
     private _frontQueue: Array<EventArgs> = [];
     private _backQueue: Array<EventArgs> = [];
-    private _boundPost!: (args: EventArgs) => void;
-    init() {
-        this._boundPost = this.boundPost.bind(this);
-    }
+    private readonly _boundPost = (args: EventArgs): void => { this.boundPost(args); };
+    private _disposed = false;
+
     flush(): void {
+        this.assertUsable();
         const { _frontQueue, _backQueue: queue } = this;
         this._frontQueue = queue;
         this._backQueue = _frontQueue;
         const events = this.events;
-        const emitters = this._pool;
         for (let i = 0; i < queue.length; i++) {
             const args = queue[i];
-            const type = args.constructor;
-            events.get(type as ArgsType)?.call(args)
-            args.clear?.();
-            this.recycle(args);
+            try {
+                const type = args.constructor;
+                events.get(type as ArgsType)?.call(args);
+            } catch (error) {
+                this.onError(error, args);
+            } finally {
+                try {
+                    args._recycle();
+                } catch (error) {
+                    this.onError(error, args);
+                } finally {
+                    this.recycle(args);
+                }
+            }
         }
         queue.length = 0;
     }
 
-    event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "reset"> {
+    event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "_reset" | "_recycle"> {
+        this.assertUsable();
         let pool = this._pool.get(type);
         let instance: T;
         if (pool && pool.length > 0) {
@@ -56,11 +113,12 @@ export class EventService extends Service implements IEventService {
         } else {
             instance = new type();
         }
-        instance.reset(this._boundPost);
+        instance._reset(this._boundPost);
         return instance;
     }
 
-    private boundPost(args: EventArgs) {
+    private boundPost(args: EventArgs): void {
+        this.assertUsable();
         this._backQueue.push(args);
     }
     private recycle(cmd: EventArgs): void {
@@ -106,9 +164,27 @@ export class EventService extends Service implements IEventService {
     }
 
     dispose(): void {
+        if (this._disposed) return;
+        this._disposed = true;
+        this.releaseQueue(this._frontQueue);
+        this.releaseQueue(this._backQueue);
         this.events.clear();
         this._pool.clear();
-        this._frontQueue.length = 0;
-        this._backQueue.length = 0;
+    }
+
+    protected onError(error: unknown, _args?: EventArgs): void {
+        console.error(error);
+    }
+
+    private releaseQueue(queue: EventArgs[]): void {
+        for (let i = 0; i < queue.length; i++) {
+            try { queue[i]._recycle(); }
+            catch (error) { this.onError(error, queue[i]); }
+        }
+        queue.length = 0;
+    }
+
+    private assertUsable(): void {
+        if (this._disposed) throw new Error("EventService has been disposed");
     }
 }
