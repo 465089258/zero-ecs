@@ -9,6 +9,10 @@ Typed-array ECS runtime for TypeScript.
 - [Development plan](./docs/development-plan.md)
 - [Performance and allocation model](./docs/performance.md)
 
+## Examples
+
+- [Splitstorm Breakout](./examples/breakout/README.md) — fixed-Tick Canvas breakout with power-up ball splitting and a 10,000-ball stress mode.
+
 ## Usage
 
 ```ts

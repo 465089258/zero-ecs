@@ -30,6 +30,9 @@
   "scripts": {
     "build": "rslib",
     "dev": "rslib --watch",
+    "example:breakout": "npm run build && rsbuild dev --config examples/breakout/rsbuild.config.ts",
+    "example:breakout:build": "npm run build && rsbuild build --config examples/breakout/rsbuild.config.ts",
+    "example:breakout:typecheck": "npm run build && tsc -p examples/breakout/tsconfig.json",
     "test": "rstest",
     "typecheck": "tsc --noEmit",
     "test:types": "tsc -p tests/types/tsconfig.json",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@rslib/core": "^0.23.2",
+    "@rsbuild/core": "^2.1.5",
     "@rstest/adapter-rslib": "^0.11.1",
     "@rstest/core": "^0.11.1",
     "@types/node": "^26.1.1",

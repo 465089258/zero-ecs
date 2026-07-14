@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070b18" />
+    <title>Zero ECS · Splitstorm Breakout</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">ZERO ECS / RUNTIME STRESS LAB</p>
+          <h1>Splitstorm <span>Breakout</span></h1>
+          <p class="intro">接住能量核心，让球体指数分裂。模拟运行在固定 Tick，Canvas 只负责表现。</p>
+        </div>
+        <div class="live-pill"><i></i> LIVE ECS</div>
+      </header>
+
+      <section class="game-layout">
+        <div class="stage-card">
+          <canvas id="game" aria-label="打砖块游戏画布"></canvas>
+          <div id="message" class="message" hidden>
+            <strong id="message-title">SIMULATION HALTED</strong>
+            <span id="message-copy">按 R 或点击重新开始</span>
+          </div>
+          <div class="scanline"></div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-title">
+            <span>TELEMETRY</span>
+            <small>120 HZ FIXED</small>
+          </div>
+          <dl class="metrics">
+            <div><dt>FPS</dt><dd id="fps">0</dd></div>
+            <div><dt>SIM</dt><dd><span id="sim-ms">0.00</span><small> ms</small></dd></div>
+            <div><dt>RENDER</dt><dd><span id="render-ms">0.00</span><small> ms</small></dd></div>
+            <div><dt>ENTITIES</dt><dd id="entities">0</dd></div>
+            <div><dt>BALLS</dt><dd id="balls">0</dd></div>
+            <div><dt>BRICKS</dt><dd id="bricks">0</dd></div>
+          </dl>
+
+          <div class="score-block">
+            <span>SCORE</span>
+            <strong id="score">000000</strong>
+            <div><span>LIVES</span><b id="lives">● ● ●</b></div>
+          </div>
+
+          <div class="controls">
+            <button id="split" class="primary"><span>×2</span> 强制分裂</button>
+            <button id="stress"><span>+</span> 注入 1000 球</button>
+            <button id="restart" class="quiet">重新开始 <kbd>R</kbd></button>
+          </div>
+
+          <div class="legend">
+            <p><i class="drop-dot"></i> 接住青色能力核心：当前球全部分裂</p>
+            <p><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> 或鼠标控制平台</p>
+          </div>
+        </aside>
+      </section>
+
+      <footer>
+        <span>POSITION / VELOCITY / BALL / BRICK / POWER-UP</span>
+        <span>CHUNK 16 KiB · BLOCK 2 MiB</span>
+      </footer>
+    </main>
+  </body>
+</html>
