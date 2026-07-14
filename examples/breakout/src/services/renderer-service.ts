@@ -144,6 +144,9 @@ export class RendererService extends Service {
             const widths = bricks[Brick.halfWidth];
             const heights = bricks[Brick.halfHeight];
             const colors = bricks[Brick.color];
+            const hitPoints = bricks[Brick.hp];
+            const maxHitPoints = bricks[Brick.maxHp];
+            const armored = bricks[Brick.armored];
             const active = bricks[Brick.active];
             for (let i = 0; i < count; i++) {
                 if (active[i] === 0) continue;
@@ -151,12 +154,23 @@ export class RendererService extends Service {
                 const halfHeight = heights[i];
                 const x = xs[i] - halfWidth;
                 const y = ys[i] - halfHeight;
-                ctx.fillStyle = BRICK_COLORS[colors[i] % BRICK_COLORS.length];
-                ctx.globalAlpha = 0.78;
-                ctx.fillRect(x, y, halfWidth * 2, halfHeight * 2);
+                const width = halfWidth * 2;
+                const height = halfHeight * 2;
+                const health = hitPoints[i] / maxHitPoints[i];
+                const isArmored = armored[i] !== 0;
+                ctx.fillStyle = isArmored ? "#ffb45f" : BRICK_COLORS[colors[i] % BRICK_COLORS.length];
+                ctx.globalAlpha = 0.25 + health * 0.68;
+                ctx.fillRect(x + 1, y + 1, width - 2, height - 2);
                 ctx.globalAlpha = 1;
                 ctx.fillStyle = "rgba(255,255,255,.32)";
-                ctx.fillRect(x + 2, y + 2, halfWidth * 2 - 4, 2);
+                ctx.fillRect(x + 3, y + 3, width - 6, 2);
+                ctx.fillStyle = isArmored ? "rgba(255,180,95,.95)" : "rgba(94,231,247,.75)";
+                ctx.fillRect(x + 3, y + height - 4, (width - 6) * health, 2);
+                if (isArmored) {
+                    ctx.strokeStyle = "rgba(255, 213, 148, .8)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+                }
             }
         }
     }

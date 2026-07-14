@@ -24,11 +24,14 @@ export class PaddleType implements Component<Paddle> {
     readonly [Paddle.halfHeight] = Types.F32;
 }
 
-export const enum Brick { halfWidth, halfHeight, color, active }
+export const enum Brick { halfWidth, halfHeight, color, hp, maxHp, armored, active }
 export class BrickType implements Component<Brick> {
     readonly [Brick.halfWidth] = Types.F32;
     readonly [Brick.halfHeight] = Types.F32;
     readonly [Brick.color] = Types.U8;
+    readonly [Brick.hp] = Types.U8;
+    readonly [Brick.maxHp] = Types.U8;
+    readonly [Brick.armored] = Types.U8;
     readonly [Brick.active] = Types.U8;
 }
 

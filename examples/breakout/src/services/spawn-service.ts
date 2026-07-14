@@ -86,21 +86,30 @@ export class SpawnService extends Service {
 
     private spawnBricks(): void {
         const config = this.config;
-        const totalGaps = config.brickGap * (config.brickColumns - 1);
-        const width = (config.width - config.brickSide * 2 - totalGaps) / config.brickColumns;
+        const fieldWidth = config.brickColumns * config.brickSize +
+            (config.brickColumns - 1) * config.brickGap;
+        const left = (config.width - fieldWidth) * 0.5;
         for (let row = 0; row < config.brickRows; row++) {
-            const y = config.brickTop + row * (config.brickHeight + config.brickGap);
+            const y = config.brickTop + config.brickSize * 0.5 + row * (config.brickSize + config.brickGap);
             for (let column = 0; column < config.brickColumns; column++) {
-                const x = config.brickSide + width * 0.5 + column * (width + config.brickGap);
+                const x = left + config.brickSize * 0.5 + column * (config.brickSize + config.brickGap);
+                const armored = row === 0 || row === config.brickRows - 1 ||
+                    column === 0 || column === config.brickColumns - 1;
+                const hp = armored
+                    ? config.armoredBrickHp
+                    : config.innerBrickMinHp + (row * 3 + column * 5) % config.innerBrickHpRange;
                 this.commands.spawn()
                     .add(GameEntityType)
                     .add(PositionType)
                     .set(PositionType, Position.x, x)
                     .set(PositionType, Position.y, y)
                     .add(BrickType)
-                    .set(BrickType, Brick.halfWidth, width * 0.5)
-                    .set(BrickType, Brick.halfHeight, config.brickHeight * 0.5)
+                    .set(BrickType, Brick.halfWidth, config.brickSize * 0.5)
+                    .set(BrickType, Brick.halfHeight, config.brickSize * 0.5)
                     .set(BrickType, Brick.color, row % 5)
+                    .set(BrickType, Brick.hp, hp)
+                    .set(BrickType, Brick.maxHp, hp)
+                    .set(BrickType, Brick.armored, armored ? 1 : 0)
                     .set(BrickType, Brick.active, 1)
                     .submit();
             }

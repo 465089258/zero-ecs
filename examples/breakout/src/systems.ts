@@ -216,6 +216,9 @@ export function collisionSystem(
                 const brickYs = brickPositions[Position.y];
                 const widths = brickData[Brick.halfWidth];
                 const heights = brickData[Brick.halfHeight];
+                const hitPoints = brickData[Brick.hp];
+                const maxHitPoints = brickData[Brick.maxHp];
+                const armored = brickData[Brick.armored];
                 const activeBricks = brickData[Brick.active];
                 for (let brickIndex = 0; brickIndex < brickCount; brickIndex++) {
                     if (activeBricks[brickIndex] === 0 || !intersectsBox(
@@ -227,16 +230,38 @@ export function collisionSystem(
                     const dy = y - brickYs[brickIndex];
                     const overlapX = widths[brickIndex] + radius - Math.abs(dx);
                     const overlapY = heights[brickIndex] + radius - Math.abs(dy);
-                    if (overlapX < overlapY) vxs[ballIndex] = dx < 0 ? -Math.abs(vxs[ballIndex]) : Math.abs(vxs[ballIndex]);
-                    else vys[ballIndex] = dy < 0 ? -Math.abs(vys[ballIndex]) : Math.abs(vys[ballIndex]);
+                    if (overlapX < overlapY) {
+                        if (dx < 0) {
+                            x -= overlapX;
+                            vxs[ballIndex] = -Math.abs(vxs[ballIndex]);
+                        } else {
+                            x += overlapX;
+                            vxs[ballIndex] = Math.abs(vxs[ballIndex]);
+                        }
+                        xs[ballIndex] = x;
+                    } else {
+                        if (dy < 0) {
+                            y -= overlapY;
+                            vys[ballIndex] = -Math.abs(vys[ballIndex]);
+                        } else {
+                            y += overlapY;
+                            vys[ballIndex] = Math.abs(vys[ballIndex]);
+                        }
+                        ys[ballIndex] = y;
+                    }
 
-                    activeBricks[brickIndex] = 0;
-                    commands.entity(brickEntities[brickIndex]).despawn().submit();
-                    game.score += 100;
+                    const remainingHp = hitPoints[brickIndex] - 1;
+                    hitPoints[brickIndex] = remainingHp;
+                    game.score += armored[brickIndex] !== 0 ? 25 : 15;
                     game.collisions++;
-                    if (random.float() < config.powerDropChance) {
-                        spawn.spawnPowerUp(brickXs[brickIndex], brickYs[brickIndex]);
-                        game.drops++;
+                    if (remainingHp === 0) {
+                        activeBricks[brickIndex] = 0;
+                        commands.entity(brickEntities[brickIndex]).despawn().submit();
+                        game.score += maxHitPoints[brickIndex] * 40;
+                        if (random.float() < config.powerDropChance) {
+                            spawn.spawnPowerUp(brickXs[brickIndex], brickYs[brickIndex]);
+                            game.drops++;
+                        }
                     }
                     hit = true;
                     break;
