@@ -2,6 +2,7 @@ import { InjectionService } from "../../context/injection-service";
 import { ErrorHandlerService } from "../../context/error-handler-service";
 import { Service } from "../../context/types";
 import { EntityService, type Entity } from "../entity/entity-service";
+import { EntityMigrationService } from "../migration/entity-migration-service";
 import { Command, type CommandType } from "./command";
 import { EntityCommand } from "./entity-command";
 
@@ -14,6 +15,7 @@ export class CommandService extends Service implements ICommandService {
     @Service.inject(InjectionService) private readonly _injection!: InjectionService;
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Service.inject(EntityService) private readonly _entities!: EntityService;
+    @Service.inject(EntityMigrationService) private readonly _migration!: EntityMigrationService;
 
     private readonly _pools = new Map<CommandType, Command[]>();
     private _pending: Command[] = [];
@@ -88,6 +90,24 @@ export class CommandService extends Service implements ICommandService {
         }
     }
 
+    /**
+     * Releases objects retained above the requested high-water marks.
+     * Call only at an explicit idle boundary such as a scene transition.
+     */
+    trimPools(retainPerType = 0, retainMigrationPlans = retainPerType): void {
+        requireRetainCount("retainPerType", retainPerType);
+        requireRetainCount("retainMigrationPlans", retainMigrationPlans);
+        if (this._pendingUsed !== 0) throw new Error("Cannot trim CommandService while commands are pending");
+        for (const pool of this._pools.values()) {
+            if (pool.length > retainPerType) pool.length = retainPerType;
+        }
+        // Queue arrays contain stale references after flush even though their
+        // logical used count is zero. An explicit trim is allowed to drop them.
+        this._pending.length = 0;
+        this._processing.length = 0;
+        this._migration.trimPlans(retainMigrationPlans);
+    }
+
     dispose(): void {
         let firstError: unknown;
         const used = this._pendingUsed;
@@ -126,4 +146,8 @@ export class CommandService extends Service implements ICommandService {
         }
         pool.push(command);
     }
+}
+
+function requireRetainCount(name: string, value: number): void {
+    if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${name} must be a non-negative safe integer`);
 }

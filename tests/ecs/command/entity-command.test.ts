@@ -66,6 +66,27 @@ describe("unified CommandService", () => {
         expect(CountCommand.total).toBe(5);
     });
 
+    test("trims command and migration pools only at an idle boundary", () => {
+        const ecs = setup();
+        const commands = ecs.service(CommandService);
+        const first = commands.cmd(CountCommand);
+        const second = commands.cmd(CountCommand);
+        first.submit();
+        expect(() => commands.trimPools()).toThrow(/pending/);
+        second.submit();
+        ecs.update();
+
+        commands.trimPools(1, 0);
+        const retained = commands.cmd(CountCommand);
+        const created = commands.cmd(CountCommand);
+        expect(retained).toBe(first);
+        expect(created).not.toBe(first);
+        expect(created).not.toBe(second);
+        retained.submit();
+        created.submit();
+        ecs.update();
+    });
+
     test("recycles a command even when execute throws", () => {
         const ecs = setup();
         const commands = ecs.service(CommandService);

@@ -1,4 +1,11 @@
-import { DataSet, type DataRow, type Table } from "../../storage/data-set";
+import {
+    DataSet,
+    dataRowIndex,
+    dataRowTableId,
+    RemoveResult,
+    type DataRow,
+    type Table,
+} from "../../storage/data-set";
 import type { IChunkAllocator } from "../../storage/memory";
 import { type TypedArray, Types } from "../../storage/typed-array";
 import { type ComponentId, type ComponentMeta } from "../component/component";
@@ -17,6 +24,7 @@ export class Archetype {
     readonly data: DataSet;
     private readonly _types: ComponentMeta[];
     private readonly _componentColumns: Array<readonly number[] | undefined>;
+    private readonly _tableComponentViews = new WeakMap<Table, Array<readonly TypedArray[] | undefined>>();
 
     get count(): number { return this.data.count; }
     get types(): ReadonlyArray<ComponentMeta> { return this._types; }
@@ -54,7 +62,7 @@ export class Archetype {
         const lastRow = lastTable.count - 1;
         const moved = lastTable.columns[ENTITY_COLUMN][lastRow] as Entity;
         const result = this.data.remove(location);
-        return result.moved ? moved : undefined;
+        return result === RemoveResult.Moved ? moved : undefined;
     }
 
     getEntity(location: ArchetypeRow): Entity | undefined {
@@ -85,27 +93,42 @@ export class Archetype {
         if (!this.data.valid(location)) return null;
         const columns = this._componentColumns[compId];
         if (columns === undefined) return null;
-        const table = this.data.table(location.tableId)!;
-        return columns.map(column => table.columns[column]);
+        const table = this.data.table(dataRowTableId(location))!;
+        return this.getTableComponent(table, compId) as TypedArray[];
     }
 
     copyCommonTo(source: ArchetypeRow, target: Archetype, targetRow: ArchetypeRow): void {
-        for (const comp of target.types) {
+        const sourceTable = this.data.table(dataRowTableId(source))!;
+        const targetTable = target.data.table(dataRowTableId(targetRow))!;
+        const sourceRow = dataRowIndex(source), targetRowIndex = dataRowIndex(targetRow);
+        const types = target.types;
+        for (let typeIndex = 0; typeIndex < types.length; typeIndex++) {
+            const comp = types[typeIndex];
             const sourceColumns = this._componentColumns[comp.id];
             const targetColumns = target._componentColumns[comp.id];
             if (!sourceColumns || !targetColumns) continue;
-            const sourceTable = this.data.table(source.tableId)!;
-            const targetTable = target.data.table(targetRow.tableId)!;
             for (let field = 0; field < sourceColumns.length; field++) {
-                targetTable.columns[targetColumns[field]][targetRow.row] = sourceTable.columns[sourceColumns[field]][source.row];
+                targetTable.columns[targetColumns[field]][targetRowIndex] = sourceTable.columns[sourceColumns[field]][sourceRow];
             }
         }
     }
 
-    getTableComponent(table: Table, compId: ComponentId): readonly TypedArray[] | undefined {
+    getTableComponent(table: Table, compId: ComponentId, target?: TypedArray[]): readonly TypedArray[] | undefined {
         const columns = this._componentColumns[compId];
         if (columns === undefined) return undefined;
-        const result: TypedArray[] = new Array(columns.length);
+        let result = target;
+        if (!result) {
+            let views = this._tableComponentViews.get(table);
+            if (!views) {
+                views = [];
+                this._tableComponentViews.set(table, views);
+            }
+            const cached = views[compId];
+            if (cached) return cached;
+            result = new Array<TypedArray>(columns.length);
+            views[compId] = result;
+        }
+        result.length = columns.length;
         for (let i = 0; i < columns.length; i++) result[i] = table.columns[columns[i]];
         return result;
     }

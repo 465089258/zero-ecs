@@ -1,5 +1,15 @@
 import { describe, expect, test } from "@rstest/core";
-import { BLOCK_SIZE, CHUNKS_PER_BLOCK, CHUNK_SIZE, ChunkAllocator, DataSet, Types, createTableLayout } from "../../src/advanced";
+import {
+    BLOCK_SIZE,
+    CHUNKS_PER_BLOCK,
+    CHUNK_SIZE,
+    ChunkAllocator,
+    DataSet,
+    RemoveResult,
+    Types,
+    createTableLayout,
+    dataRowTableId,
+} from "../../src/advanced";
 
 describe("ChunkAllocator", () => {
     test("splits a 2 MiB block into 128 16 KiB chunks", () => {
@@ -30,7 +40,7 @@ describe("DataSet", () => {
         const allocator = new ChunkAllocator();
         const data = new DataSet(allocator, [Types.U32, Types.F32, Types.I16] as const);
         const row = data.insert();
-        const table = data.table(row.tableId)!;
+        const table = data.table(dataRowTableId(row))!;
         expect(table.columns[0]).toBeInstanceOf(Uint32Array);
         expect(table.columns[1]).toBeInstanceOf(Float32Array);
         expect(table.columns[2]).toBeInstanceOf(Int16Array);
@@ -48,8 +58,7 @@ describe("DataSet", () => {
         });
         expect(data.tables).toHaveLength(2);
         const result = data.remove(rows[0]);
-        expect(result.moved).toBe(true);
-        expect(result.from).toEqual(rows[rows.length - 1]);
+        expect(result).toBe(RemoveResult.Moved);
         expect(data.get(rows[0], 0)).toBe(rows.length);
         expect(data.count).toBe(rows.length - 1);
     });

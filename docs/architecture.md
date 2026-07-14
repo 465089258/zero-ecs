@@ -345,11 +345,11 @@ sequenceDiagram
 
 `zero-ecs-lib` 只导出 Runtime、Component/Entity/Query、Command Service、System 和可选 Module。`zero-ecs-lib/advanced` 额外导出 Allocator、DataSet、Mask、Archetype、Scheduler、EntityCommand 构造器、组件存储元数据辅助函数、容器和 DevProfiler。InternalPost 与 EntityMigrationService 两个入口都不导出。
 
-构建使用 ES2018 bundleless ESM；package exports 是受支持入口的最终边界，dist 内部逐文件路径不构成公共 API。声明生成启用 `stripInternal`，内部 bind、flush、迁移和对象池钩子不会进入发布类型面。
+构建使用 ES2015 bundleless ESM；package exports 是受支持入口的最终边界，dist 内部逐文件路径不构成公共 API。声明生成启用 `stripInternal`，内部 bind、flush、迁移和对象池钩子不会进入发布类型面。
 
 ### 11.2 EntityCommand 事务合并
 
-EntityMigrationService 使用 World-local Map 定位池化 MigrationPlan；Command Post 只收集最终状态，Migration Post 保证每个 Entity 最多迁移一次。该内部 Service 不从根入口导出。
+EntityMigrationService 使用 1024 Entity/页的 World-local 稀疏 TypedArray 索引定位池化 MigrationPlan；Command Post 只收集最终状态，Migration Post 按触达列表清零索引，并保证每个 Entity 最多迁移一次。该内部 Service 不从根入口导出。
 
 ### 11.3 Post 提交屏障
 
@@ -367,7 +367,10 @@ CommandService flush 已从 `Update.last` 移入内部 Post。业务系统无法
 - Command 队列、EntityCommand 指令数组和对象池按高水位复用。
 - flush 后保留的 Command 不能再次使用；对象池后续可能复用同一实例。
 - QueryIter 和 current tuple 复用。
-- Query rebuild 使用 Map、Set 和数组，发生结构变化时会重新分配缓存。
+- DataRow 是低 14 位行号的安全整数句柄，insert/remove/迁移不创建位置或结果对象。
+- Query rebuild 复用 entry/current/component-column 高水位缓存；失活 Entry 会断开 Table 与 TypedArray 引用。
+- Timer 槽直接保存池化 InnerTask，不创建 LevelTask 包装节点。
+- Command、Migration、Event 和 Timer 的历史峰值只能通过显式 trim API 在空闲边界收缩。
 
 完整静态审计见[性能与分配模型](./performance.md)。
 
@@ -375,6 +378,5 @@ CommandService flush 已从 `Update.last` 移入内部 Post。业务系统无法
 
 1. 设计 Query 的读写访问语法，并接入 SystemAccess。
 2. 在决定并行执行后，再设计冲突批次和调度策略。
-3. 基于明确数据评估 Migration Map、数字编码位置和 Query rebuild 缓存。
-4. 独立评审深层 Readonly、Boolean 列和异步 Module 生命周期。
-5. 出现 Editor/Prefab 需求时再设计 EntityTemplate，不在纯运行时提前加入批量模板抽象。
+3. 独立评审深层 Readonly、Boolean 列和异步 Module 生命周期。
+4. 出现 Editor/Prefab 需求时再设计 EntityTemplate，不在纯运行时提前加入批量模板抽象。

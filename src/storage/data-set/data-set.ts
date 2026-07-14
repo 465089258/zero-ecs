@@ -3,10 +3,28 @@ import { CHUNK_SIZE, type IChunkAllocator, type MemoryChunk } from "../memory";
 
 export interface ColumnLayout { readonly index: number; readonly type: Types; readonly byteOffset: number; readonly byteLength: number; readonly bytesPerElement: number }
 export interface TableLayout { readonly capacity: number; readonly columns: readonly ColumnLayout[]; readonly usedBytes: number; readonly unusedBytes: number }
-export interface DataRow { readonly tableId: number; readonly row: number }
-export interface RemoveResult { readonly removed: boolean; readonly moved: boolean; readonly from?: DataRow; readonly to?: DataRow }
+declare const DATA_ROW_BRAND: unique symbol;
+/** Allocation-free packed row handle. The low 14 bits address a row in one 16 KiB Table. */
+export type DataRow = number & { readonly [DATA_ROW_BRAND]: true };
+export const RemoveResult = Object.freeze({ Invalid: 0, Removed: 1, Moved: 2 } as const);
+export type RemoveResult = typeof RemoveResult[keyof typeof RemoveResult];
 export interface DataSetOptions { readonly retainEmptyTables?: number }
 type ColumnsFor<T extends readonly Types[]> = { readonly [I in keyof T]: T[I] extends Types ? TypedArrayFor<T[I]> : never };
+
+const DATA_ROW_STRIDE = CHUNK_SIZE;
+// Entity slot storage reserves 0xFFFFFFFF as NONE and stores Table ids in U32.
+// Keeping the shared DataRow format inside that boundary avoids truncation.
+const MAX_TABLE_ID = 0xFFFFFFFE;
+
+/** @internal Packs a Table id and row without allocating an object. */
+export function dataRowAt(tableId: number, row: number): DataRow {
+    return (tableId * DATA_ROW_STRIDE + row) as DataRow;
+}
+export function dataRowTableId(location: DataRow): number { return Math.floor(location / DATA_ROW_STRIDE); }
+export function dataRowIndex(location: DataRow): number {
+    const tableId = Math.floor(location / DATA_ROW_STRIDE);
+    return location - tableId * DATA_ROW_STRIDE;
+}
 
 function alignUp(value: number, alignment: number): number { return Math.ceil(value / alignment) * alignment; }
 function calculateUsedBytes(types: readonly Types[], capacity: number): number {
@@ -87,30 +105,39 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
         let table = this._tables[this._tables.length - 1];
         if (!table || table.full) table = this.createTable();
         const row = table.allocRow(); this._count++;
-        return { tableId: table.id, row };
+        return dataRowAt(table.id, row);
     }
     remove(location: DataRow): RemoveResult {
         this.assertUsable();
-        const target = this._tableById.get(location.tableId);
-        if (!target || !Number.isInteger(location.row) || location.row < 0 || location.row >= target.count) return { removed: false, moved: false };
+        if (!Number.isSafeInteger(location) || location < 0) return RemoveResult.Invalid;
+        const tableId = dataRowTableId(location), row = dataRowIndex(location);
+        const target = this._tableById.get(tableId);
+        if (!target || row < 0 || row >= target.count) return RemoveResult.Invalid;
         const last = this._tables[this._tables.length - 1], lastRow = last.count - 1;
-        const same = target === last && location.row === lastRow;
-        const from = same ? undefined : { tableId: last.id, row: lastRow };
-        if (!same) last.copyRowTo(lastRow, target, location.row);
+        const same = target === last && row === lastRow;
+        if (!same) last.copyRowTo(lastRow, target, row);
         last.popRow(); this._count--; this.releaseExcessEmptyTables();
-        return same ? { removed: true, moved: false } : { removed: true, moved: true, from, to: location };
+        return same ? RemoveResult.Removed : RemoveResult.Moved;
     }
     valid(location: DataRow): boolean {
-        const table = this._tableById.get(location.tableId);
-        return !this._disposed && !!table && Number.isInteger(location.row) && location.row >= 0 && location.row < table.count;
+        if (this._disposed || !Number.isSafeInteger(location) || location < 0) return false;
+        const row = dataRowIndex(location);
+        const table = this._tableById.get(dataRowTableId(location));
+        return !!table && row >= 0 && row < table.count;
     }
     validAt(tableId: number, row: number): boolean {
         const table = this._tableById.get(tableId);
         return !this._disposed && !!table && Number.isInteger(row) && row >= 0 && row < table.count;
     }
     table(tableId: number): Table<T> | undefined { return this._tableById.get(tableId); }
-    get(location: DataRow, column: number): number { return this.requireColumn(location, column)[location.row]; }
-    set(location: DataRow, column: number, value: number): void { this.requireColumn(location, column)[location.row] = value; }
+    get(location: DataRow, column: number): number {
+        const row = dataRowIndex(location);
+        return this.requireColumnAt(dataRowTableId(location), row, column)[row];
+    }
+    set(location: DataRow, column: number, value: number): void {
+        const row = dataRowIndex(location);
+        this.requireColumnAt(dataRowTableId(location), row, column)[row] = value;
+    }
     getAt(tableId: number, row: number, column: number): number {
         return this.requireColumnAt(tableId, row, column)[row];
     }
@@ -125,6 +152,7 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
         this._tables.length = 0; this._tableById.clear(); this._count = 0; this._disposed = true;
     }
     private createTable(): Table<T> {
+        if (this._nextTableId > MAX_TABLE_ID) throw new RangeError(`DataSet Table id capacity exceeded: ${MAX_TABLE_ID}`);
         const table = new Table<T>(this._nextTableId++, this.allocator.alloc(), this.layout);
         this._tables.push(table); this._tableById.set(table.id, table); this._version++; return table;
     }
@@ -136,15 +164,10 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
             this._tables.pop(); this._tableById.delete(last.id); this.allocator.free(last.memory.handle); this._version++; emptyCount--;
         }
     }
-    private requireColumn(location: DataRow, column: number): TypedArray {
-        this.assertUsable(); const table = this._tableById.get(location.tableId);
-        if (!table || location.row < 0 || location.row >= table.count) throw new RangeError("Invalid data row");
-        const view = (table.columns as readonly TypedArray[])[column]; if (!view) throw new RangeError(`Invalid column: ${column}`); return view;
-    }
     private requireColumnAt(tableId: number, row: number, column: number): TypedArray {
         this.assertUsable();
         const table = this._tableById.get(tableId);
-        if (!table || row < 0 || row >= table.count) throw new RangeError("Invalid data row");
+        if (!table || !Number.isInteger(row) || row < 0 || row >= table.count) throw new RangeError("Invalid data row");
         const view = (table.columns as readonly TypedArray[])[column];
         if (!view) throw new RangeError(`Invalid column: ${column}`);
         return view;
