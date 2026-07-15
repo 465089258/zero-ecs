@@ -64,7 +64,7 @@ export class SpawnService extends Service {
             .set(ShooterType, Shooter.critChance, Math.min(critChance, 0.95))
             .set(ShooterType, Shooter.critMult, critMult)
             .set(ShooterType, Shooter.scatter, c.shooterScatterBase + (g.scatterLevel - 1) * c.upgradeScatter)
-            .set(ShooterType, Shooter.split, c.shooterSplitBase + (g.splitLevel - 1) * c.upgradeSplit)
+            .set(ShooterType, Shooter.split, g.splitLevel === 0 ? 0 : g.splitLevel + 1)
             .set(ShooterType, Shooter.ricochet, c.shooterRicochetBase + (g.ricochetLevel - 1) * c.upgradeRicochet)
             .set(ShooterType, Shooter.burst, c.shooterBurstBase + (g.burstLevel - 1) * c.upgradeBurst)
             .set(ShooterType, Shooter.burstCooldown, 0)

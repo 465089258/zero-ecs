@@ -93,16 +93,26 @@ export class RendererService extends Service {
     }
 
     private drawWaveBar(ctx: CanvasRenderingContext2D): void {
-        const { wave, inHorde, waveZombieTotal, spawnQueue, zombies } = this.game;
+        const { wave, inHorde, waveZombieTotal, waveTimer, waveDuration, zombies } = this.game;
         if (wave === 0) return;
 
         const barX = 16;
         const barY = 10;
         const barW = this.config.width - 32;
         const barH = 18;
-        const remaining = zombies + spawnQueue;
-        const killed = Math.max(0, waveZombieTotal - remaining);
-        const progress = waveZombieTotal > 0 ? Math.min(1, killed / waveZombieTotal) : 0;
+
+        // Progress: time-based during wave, kill-based during horde
+        let progress: number;
+        if (inHorde) {
+            const remaining = zombies;
+            progress = waveZombieTotal > 0
+                ? Math.min(1, (waveZombieTotal - remaining) / waveZombieTotal)
+                : 0;
+        } else {
+            progress = waveDuration > 0
+                ? Math.min(1, 1 - waveTimer / waveDuration)
+                : 0;
+        }
 
         // Background
         ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -123,7 +133,9 @@ export class RendererService extends Service {
         ctx.font = "bold 11px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const label = inHorde ? `WAVE ${wave} · 尸潮爆发!` : `WAVE ${wave}`;
+        const label = inHorde
+            ? `WAVE ${wave} · 尸潮! ${zombies}只`
+            : `WAVE ${wave} · ${waveTimer.toFixed(1)}s`;
         ctx.fillText(label, barX + barW / 2, barY + barH / 2);
     }
 

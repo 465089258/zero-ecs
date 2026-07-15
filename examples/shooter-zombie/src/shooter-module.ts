@@ -83,6 +83,7 @@ export class ShooterModule implements Module {
         const fire = builder.addSystem(Update.fixed, shooterFireSystem, [
             GameConfigResource,
             TimeState,
+            RandomService,
             SpawnService,
             GameState,
             ShooterQuery,

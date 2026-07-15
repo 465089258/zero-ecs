@@ -34,13 +34,14 @@ export const UPGRADE_DESCRIPTIONS: Record<number, (level: number) => string> = {
     [UpgradeType.AttackSpeed]: (lvl: number) =>
         `攻速 +15% (${(2 / (1 + lvl * 0.15)).toFixed(2)}s, Lv.${lvl})`,
     [UpgradeType.Scatter]: (lvl: number) => `散射箭 +1 (当前 Lv.${lvl})`,
-    [UpgradeType.Split]: (lvl: number) => `命中分裂 +1 (当前 Lv.${lvl})`,
+    [UpgradeType.Split]: (lvl: number) =>
+        `命中分裂 ${lvl === 0 ? 0 : lvl + 1}颗 (当前 Lv.${lvl})`,
     [UpgradeType.Ricochet]: (lvl: number) => `弹射次数 +1 (当前 Lv.${lvl})`,
     [UpgradeType.Burst]: (lvl: number) => `连射弹数 +1 (当前 Lv.${lvl})`,
     [UpgradeType.CritChance]: (lvl: number) =>
         `暴击率 +5% (${((0.05 * (1 + lvl * 0.05)) * 100).toFixed(1)}%, Lv.${lvl})`,
     [UpgradeType.CritDamage]: (lvl: number) =>
-        `暴伤 +15% (×${(2 * (1 + lvl * 0.15)).toFixed(2)}, Lv.${lvl})`,
+        `暴伤 +15% (×${(1.5 * (1 + lvl * 0.15)).toFixed(2)}, Lv.${lvl})`,
     [UpgradeType.FlatDamage]: (lvl: number) => `伤害 +8 (当前 Lv.${lvl})`,
     [UpgradeType.DamageMultiplier]: (lvl: number) =>
         `总伤害 ×${(1 + lvl * 0.15).toFixed(2)} (当前 Lv.${lvl})`,
@@ -68,7 +69,7 @@ export class GameState extends State {
     damageLevel = 1;
     attackSpeedLevel = 1;
     scatterLevel = 1;
-    splitLevel = 1;
+    splitLevel = 0;
     ricochetLevel = 1;
     burstLevel = 1;
     critChanceLevel = 1;
@@ -82,6 +83,7 @@ export class GameState extends State {
     /** Horde / wave phases */
     inHorde = false;
     waveZombieTotal = 0;
+    waveDuration = 8;
 
     /** Offered upgrade choices (set externally when LevelUp) */
     upgradeOptions: UpgradeType[] = [];

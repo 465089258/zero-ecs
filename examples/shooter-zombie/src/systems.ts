@@ -102,7 +102,7 @@ export function restartSystem(
     game.damageLevel = 1;
     game.attackSpeedLevel = 1;
     game.scatterLevel = 1;
-    game.splitLevel = 1;
+    game.splitLevel = 0;
     game.ricochetLevel = 1;
     game.burstLevel = 1;
     game.critChanceLevel = 1;
@@ -124,6 +124,7 @@ export function restartSystem(
 export function shooterFireSystem(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
+    random: RandomService,
     spawn: SpawnService,
     game: Readonly<GameState>,
     shooter: Shooters,
@@ -156,11 +157,11 @@ export function shooterFireSystem(
                         xs[i], ys[i],
                         damages[i], critChances[i], critMults[i],
                         scatters[i], splits[i], ricochets[i],
-                        spawn, zombies,
+                        spawn, zombies, random,
                     );
                     burstLefts[i]--;
                     if (burstLefts[i] > 0) {
-                        burstCooldowns[i] = fireIntervals[i] / bursts[i];
+                        burstCooldowns[i] = fireIntervals[i] / 3 / bursts[i];
                     }
                 }
             }
@@ -182,13 +183,13 @@ export function shooterFireSystem(
                 xs[i], ys[i],
                 damages[i], critChances[i], critMults[i],
                 scatterCount, splitCount, ricochetCount,
-                spawn, zombies,
+                spawn, zombies, random,
             );
 
             // Queue remaining burst bullets
             if (burstCount > 1) {
                 burstLefts[i] = burstCount - 1;
-                burstCooldowns[i] = fireIntervals[i] / burstCount;
+                burstCooldowns[i] = fireIntervals[i] / 3 / burstCount;
             }
         }
     }
@@ -198,7 +199,7 @@ function fireBulletGroup(
     sx: number, sy: number,
     damage: number, critChance: number, critMult: number,
     scatterCount: number, splitCount: number, ricochetCount: number,
-    spawn: SpawnService, zombies: Zombies,
+    spawn: SpawnService, zombies: Zombies, random: RandomService,
 ): void {
     const baseAngle = findNearestZombieAngle(sx, sy, zombies);
     for (let s = 0; s < scatterCount; s++) {
@@ -207,7 +208,8 @@ function fireBulletGroup(
             const spread = 0.12;
             angle += spread * (s - (scatterCount - 1) * 0.5);
         }
-        const dmg = critChance > Math.random() ? damage * critMult : damage;
+        const variance = random.float(0.9, 1.1);
+        const dmg = (critChance > random.float(0, 1) ? damage * critMult : damage) * variance;
         spawn.spawnBullet(sx + 12, sy + s * 4 - scatterCount * 2, angle, dmg, splitCount, ricochetCount);
     }
 }
@@ -251,6 +253,7 @@ export function moveBulletsSystem(
             if (bounced) {
                 if (ricochetCounts[i] > 0) {
                     ricochetCounts[i]--;
+                    lifetimes[i] += 0.5;
                 } else {
                     active[i] = 0;
                     commands.entity(entities[i] as Entity).despawn().submit();
@@ -399,24 +402,40 @@ export function bulletZombieCollisionSystem(
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist > zr + br) continue;
 
-                    // Hit!
+                    // Hit! Original bullet always deals damage
                     zHp[zi] -= bDamage[bi];
                     game.score += 10;
-
-                    // Spawn floating damage text
                     spawn.spawnDamageText(bx, by, Math.round(bDamage[bi]));
 
-                    // Handle split
+                    // Handle split: spawn child bullets along bullet trajectory
                     if (bSplitCount[bi] > 0) {
-                        for (let s = 0; s < bSplitCount[bi]; s++) {
-                            const angle = random.float(0, Math.PI * 2);
-                            spawn.spawnBullet(bx, by, angle, bDamage[bi] * 0.5, 0, bRicochetCounts[bi]);
+                        const bulletAngle = Math.atan2(
+                            bVelocities[Velocity.y][bi],
+                            bVelocities[Velocity.x][bi],
+                        );
+                        const totalDeg = 30;
+                        const totalRad = (totalDeg * Math.PI) / 180;
+                        const splitCount = bSplitCount[bi];
+                        // If spread × count exceeds 360°, use equal division
+                        const spread = (totalRad * splitCount > Math.PI * 2)
+                            ? (Math.PI * 2) / splitCount
+                            : totalRad / Math.max(1, splitCount - 1);
+
+                        const halfFan = (spread * (splitCount - 1)) / 2;
+                        // Spawn outside the trigger zombie's hitbox to avoid re-hitting
+                        const spawnDist = zr + 8;
+                        for (let s = 0; s < splitCount; s++) {
+                            const angle = bulletAngle - halfFan + spread * s;
+                            const sx = bx + Math.cos(angle) * spawnDist;
+                            const sy = by + Math.sin(angle) * spawnDist;
+                            spawn.spawnBullet(sx, sy, angle, bDamage[bi] * 0.5, 0, bRicochetCounts[bi]);
                         }
                     }
 
                     // Handle ricochet: bounce the original bullet toward nearest other zombie
                     if (bRicochetCounts[bi] > 0) {
                         bRicochetCounts[bi]--;
+                        bData[Bullet.lifetime][bi] += 0.5;
                         const ricochetAngle = findRicochetTarget(
                             bx, by, zXs, zYs, zActive, zCount,
                         );
@@ -534,44 +553,52 @@ export function spawnSystem(
 ): void {
     if (game.skipTick || game.mode !== GameMode.Playing) return;
 
-    // Start new wave (timer-based)
-    if (!game.inHorde && game.waveTimer <= 0) {
-        game.wave++;
-        game.waveTimer = Math.max(3, config.waveInterval - game.wave * 0.08);
+    // Init first wave
+    if (game.wave === 0) {
+        game.wave = 1;
+        game.waveTimer = config.waveInterval;
+        game.waveDuration = config.waveInterval;
+    }
 
+    // Horde phase: wait until all zombies are dead
+    if (game.inHorde) {
+        if (game.zombies === 0) {
+            game.inHorde = false;
+            game.wave++;
+            game.waveTimer = Math.max(4, config.waveInterval - game.wave * 0.08);
+            game.waveDuration = game.waveTimer;
+            game.level++;
+            game.xpToNext = Math.floor(50 + game.level * 45 + game.level * game.level * 5);
+            game.upgradeOptions = pickUpgrades(random, 3);
+            game.mode = GameMode.LevelUp;
+        }
+        return;
+    }
+
+    // Normal wave: timer counts down
+    game.waveTimer -= time.delta;
+
+    // Continuous zombie spawning during wave
+    game.spawnTimer -= time.delta;
+    if (game.spawnTimer <= 0 && game.zombies < config.maxZombies) {
+        const minDelay = Math.max(0.15, config.spawnDelayMin - game.wave * 0.005);
+        const maxDelay = Math.max(0.4, config.spawnDelayMax - game.wave * 0.01);
+        game.spawnTimer = random.float(minDelay, maxDelay);
+        spawn.spawnZombie(game.wave);
+    }
+
+    // Timer expired → trigger horde
+    if (game.waveTimer <= 0) {
+        game.inHorde = true;
         const isBossWave = game.wave % config.bossWaveInterval === 0;
-        let count = game.baseZombieCount + game.wave * config.zombiePerWaveGrowth;
+        let hordeCount = game.baseZombieCount * 3 + game.wave * 3;
         if (isBossWave) {
-            count = Math.floor(count * config.bossWaveMultiplier);
+            hordeCount = Math.floor(hordeCount * config.bossWaveMultiplier);
             scheduleBaseGrowth(game, config);
         }
-        game.spawnQueue = count;
-        game.waveZombieTotal = count;
-    }
+        hordeCount = Math.min(hordeCount, config.maxZombies - game.zombies);
+        game.waveZombieTotal = game.zombies + hordeCount;
 
-    // Normal spawning (not in horde)
-    if (!game.inHorde && game.spawnQueue > 0) {
-        game.spawnTimer -= time.delta;
-        if (game.spawnTimer <= 0) {
-            const minDelay = Math.max(0.1, config.spawnDelayMin - game.wave * 0.005);
-            const maxDelay = Math.max(0.3, config.spawnDelayMax - game.wave * 0.01);
-            game.spawnTimer = random.float(minDelay, maxDelay);
-            if (game.zombies < config.maxZombies) {
-                spawn.spawnZombie(game.wave);
-                game.spawnQueue--;
-            }
-        }
-    }
-
-    // Wave cleared (all queued + all dead) → trigger horde
-    if (!game.inHorde && game.spawnQueue === 0 && game.zombies === 0 && game.wave > 0) {
-        game.inHorde = true;
-        const hordeCount = Math.min(
-            game.baseZombieCount * 3 + game.wave * 3,
-            config.maxZombies,
-        );
-        game.waveZombieTotal = hordeCount;
-        // Horde zombies spread across right side to avoid stacking
         const yMin = config.zombieSpawnYMin + 20;
         const yMax = config.zombieSpawnYMax - 20;
         for (let i = 0; i < hordeCount; i++) {
@@ -581,16 +608,6 @@ export function spawnSystem(
                 : yMin + (yMax - yMin) * 0.5;
             spawn.spawnZombieAt(game.wave + 2, x, y);
         }
-    }
-
-    // Horde cleared → level up + next wave
-    if (game.inHorde && game.zombies === 0) {
-        game.inHorde = false;
-        game.level++;
-        game.xpToNext = Math.floor(50 + game.level * 45 + game.level * game.level * 5);
-        game.upgradeOptions = pickUpgrades(random, 3);
-        game.mode = GameMode.LevelUp;
-        game.waveTimer = Math.max(4, config.waveInterval - game.wave * 0.08);
     }
 }
 
