@@ -1,5 +1,5 @@
 /** ECS 实例的生命周期阶段。 */
-export enum EcsPhase {
+export const enum EcsPhase {
     /** 已构建，尚未初始化。 */
     Built,
     /** 已初始化，尚未启动。 */

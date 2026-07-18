@@ -18,7 +18,6 @@ import type { Module } from "./module";
 import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
 
 export { EcsPhase } from "./lifecycle";
-
 /**
  * ECS 运行时的生命周期所有者。
  * World、三类容器、Scheduler 和 Modules 均由该实例统一协调。
@@ -165,7 +164,7 @@ export class Ecs {
 
     private assertPhase(expected: EcsPhase, operation: string): void {
         if (this._phase !== expected) {
-            throw new Error(`Ecs.${operation}() is invalid during phase ${EcsPhase[this._phase]}`);
+            throw new Error(`Ecs.${operation}() is invalid during phase ${this._phase}`);
         }
     }
 }
