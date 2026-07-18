@@ -4,18 +4,15 @@ export class GameConfigResource extends Resource {
     readonly width = 960;
     readonly height = 640;
 
-    /** Shooter position */
     readonly shooterX = 70;
     readonly shooterY = 320;
 
-    /** Wall position */
     readonly wallX = 210;
     readonly wallY = 320;
     readonly wallHalfWidth = 12;
     readonly wallHalfHeight = 260;
     readonly wallInitialHp = 2000;
 
-    /** Zombie spawn area */
     readonly zombieSpawnX = 920;
     readonly zombieSpawnYMin = 80;
     readonly zombieSpawnYMax = 560;
@@ -30,20 +27,17 @@ export class GameConfigResource extends Resource {
     readonly zombieHalfWidth = 12;
     readonly zombieHalfHeight = 16;
 
-    /** Wave config */
     readonly waveInterval = 60;
     readonly zombiePerWaveBase = 5;
     readonly zombiePerWaveGrowth = 2;
     readonly spawnDelayMin = 3.0;
     readonly spawnDelayMax = 5.0;
 
-    /** Bullet config */
     readonly bulletRadius = 5;
     readonly bulletSpeed = 800;
     readonly bulletLifetime = 1.5;
     readonly bulletBaseDamage = 5;
 
-    /** Shooter base stats */
     readonly shooterFireInterval = 2.0;
     readonly shooterMinFireInterval = 0.15;
     readonly shooterCritChance = 0.05;
@@ -53,7 +47,6 @@ export class GameConfigResource extends Resource {
     readonly shooterRicochetBase = 0;
     readonly shooterBurstBase = 1;
 
-    /** Upgrade (all percentage-based) */
     readonly upgradeDamageGrowth = 0.15;
     readonly upgradeAttackSpeed = 0.15;
     readonly upgradeCritChanceBonus = 0.05;
@@ -65,17 +58,14 @@ export class GameConfigResource extends Resource {
     readonly upgradeFlatDamage = 8;
     readonly upgradeDamageMultiplier = 0.15;
 
-    /** Wave stages */
-    readonly bossWaveInterval = 5;  // every 5 waves is a boss wave
-    readonly bossWaveMultiplier = 2; // 2x zombies in boss wave
-    readonly baseZombieGrowth = 2;   // +2 base zombies after each boss wave
+    readonly bossWaveInterval = 5;
+    readonly bossWaveMultiplier = 2;
+    readonly baseZombieGrowth = 2;
 
-    /** XP / Level */
     readonly xpBase = 25;
     readonly xpGrowth = 25;
     readonly expOrbSpeed = 80;
 
-    /** Limits */
     readonly maxBullets = 5000;
     readonly maxZombies = 80;
     readonly maxExpOrbs = 300;

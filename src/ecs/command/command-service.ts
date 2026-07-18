@@ -1,10 +1,58 @@
 import { InjectionService } from "../../context/injection-service";
 import { ErrorHandlerService } from "../../context/error-handler-service";
-import { Service } from "../../context/types";
 import { EntityService, type Entity } from "../entity/entity-service";
 import { EntityMigrationService } from "../migration/entity-migration-service";
 import { Command, type CommandType } from "./command";
 import { EntityCommand } from "./entity-command";
+import { Service } from "../../context";
+import { State } from "../../context";
+import type { Mut } from "../../schedule/system";
+
+/** 命令队列与对象池的 World-local 状态。 */
+export class CommandState extends State {
+    readonly pending: Command[] = [];
+    readonly pendingUsed: number = 0;
+    readonly processing: Command[] = [];
+}
+
+/** @internal 当前 World 的命令对象池；不属于可恢复模拟状态。 */
+export class CommandPoolService extends Service {
+    @Service.inject(InjectionService) private readonly _injection!: InjectionService;
+    private readonly _pools = new Map<CommandType, Command[]>();
+
+    acquire<T extends Command>(type: CommandType<T>, submit: (command: Command) => void): T {
+        let pool = this._pools.get(type);
+        if (!pool) {
+            pool = [];
+            this._pools.set(type, pool);
+        }
+        let command = pool.pop() as T | undefined;
+        if (!command) {
+            command = new type(submit);
+            this._injection.inject(command);
+        }
+        command.reset(submit);
+        return command;
+    }
+
+    recycle(command: Command): void {
+        const type = command.constructor as CommandType;
+        let pool = this._pools.get(type);
+        if (!pool) {
+            pool = [];
+            this._pools.set(type, pool);
+        }
+        pool.push(command);
+    }
+
+    trim(retainPerType: number): void {
+        for (const pool of this._pools.values()) {
+            if (pool.length > retainPerType) pool.length = retainPerType;
+        }
+    }
+
+    dispose(): void { this._pools.clear(); }
+}
 
 /** 命令创建服务的最小接口。 */
 export interface ICommandService {
@@ -14,31 +62,17 @@ export interface ICommandService {
 
 /** 统一管理普通命令与实体命令的创建、队列和对象池。 */
 export class CommandService extends Service implements ICommandService {
-    @Service.inject(InjectionService) private readonly _injection!: InjectionService;
+    @Service.inject(CommandPoolService) private readonly _pool!: CommandPoolService;
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Service.inject(EntityService) private readonly _entities!: EntityService;
     @Service.inject(EntityMigrationService) private readonly _migration!: EntityMigrationService;
 
-    private readonly _pools = new Map<CommandType, Command[]>();
-    private _pending: Command[] = [];
-    private _pendingUsed = 0;
-    private _processing: Command[] = [];
+    @State.inject(CommandState) private readonly _state!: Mut<CommandState>;
     private readonly _submit = (command: Command): void => { this.enqueue(command); };
 
     /** 获取指定类型的命令，并注入当前 World 的依赖。调用方必须显式提交。 */
     cmd<T extends Command>(type: CommandType<T>): Omit<T, "execute"> {
-        let pool = this._pools.get(type);
-        if (!pool) {
-            pool = [];
-            this._pools.set(type, pool);
-        }
-        let command = pool.pop() as T | undefined;
-        if (!command) {
-            command = new type(this._submit);
-            this._injection.inject(command);
-        }
-        command.reset(this._submit);
-        return command;
+        return this._pool.acquire(type, this._submit);
     }
 
     /** 为已有实体创建局部事务；调用方必须显式提交。 */
@@ -57,46 +91,6 @@ export class CommandService extends Service implements ICommandService {
         return this.entity(this._entities.spawn());
     }
 
-    /** @internal 在内部 Post 阶段执行并回收全部已提交命令。 */
-    flush(): void {
-        let batches = 0;
-        while (this._pendingUsed > 0 && batches++ < 1000) {
-            const commands = this._pending;
-            const used = this._pendingUsed;
-            this._pending = this._processing;
-            this._pendingUsed = 0;
-            this._processing = commands;
-
-            for (let i = 0; i < used; i++) {
-                const command = commands[i];
-                try {
-                    command._execute();
-                } catch (error) {
-                    this.onError(error, command);
-                } finally {
-                    try {
-                        command._recycle();
-                    } catch (error) {
-                        this.onError(error, command);
-                    } finally {
-                        this.recycle(command);
-                    }
-                }
-            }
-        }
-
-        if (this._pendingUsed > 0) {
-            const used = this._pendingUsed;
-            this._pendingUsed = 0;
-            for (let i = 0; i < used; i++) {
-                const command = this._pending[i];
-                try { command._recycle(); }
-                finally { this.recycle(command); }
-            }
-            this.onError(new Error("CommandService flush safety limit reached"));
-        }
-    }
-
     /**
      * 释放超过指定保留数量的池化对象。
      *
@@ -105,55 +99,40 @@ export class CommandService extends Service implements ICommandService {
     trimPools(retainPerType = 0, retainMigrationPlans = retainPerType): void {
         requireRetainCount("retainPerType", retainPerType);
         requireRetainCount("retainMigrationPlans", retainMigrationPlans);
-        if (this._pendingUsed !== 0) throw new Error("Cannot trim CommandService while commands are pending");
-        for (const pool of this._pools.values()) {
-            if (pool.length > retainPerType) pool.length = retainPerType;
-        }
+        const state = this._state;
+        if (state.pendingUsed !== 0) throw new Error("Cannot trim CommandService while commands are pending");
+        this._pool.trim(retainPerType);
         // 队列逻辑清空后仍保留旧引用；显式裁剪时允许释放这些引用。
-        this._pending.length = 0;
-        this._processing.length = 0;
+        state.pending.length = 0;
+        state.processing.length = 0;
         this._migration.trimPlans(retainMigrationPlans);
     }
 
     /** 回收待处理命令并释放所有命令池。 */
     dispose(): void {
         let firstError: unknown;
-        const used = this._pendingUsed;
-        this._pendingUsed = 0;
+        const state = this._state;
+        const used = state.pendingUsed;
+        state.pendingUsed = 0;
         for (let i = 0; i < used; i++) {
-            const command = this._pending[i];
+            const command = state.pending[i];
             try {
                 command._recycle();
             } catch (error) {
-                try { this.onError(error, command); }
+                try { this._errors.report(error, "command", command); }
                 catch (handlerError) { firstError ??= handlerError; }
             }
         }
-        this._pending.length = 0;
-        this._processing.length = 0;
-        this._pools.clear();
+        state.pending.length = 0;
+        state.processing.length = 0;
         if (firstError !== undefined) throw firstError;
     }
 
-    /** 命令执行或回收失败时的统一错误入口。 */
-    protected onError(error: unknown, _command?: Command): void {
-        this._errors.report(error, "command", _command);
-    }
-
     private enqueue(command: Command): void {
-        const index = this._pendingUsed++;
-        if (index < this._pending.length) this._pending[index] = command;
-        else this._pending.push(command);
-    }
-
-    private recycle(command: Command): void {
-        const type = command.constructor as CommandType;
-        let pool = this._pools.get(type);
-        if (!pool) {
-            pool = [];
-            this._pools.set(type, pool);
-        }
-        pool.push(command);
+        const state = this._state;
+        const index = state.pendingUsed++;
+        if (index < state.pending.length) state.pending[index] = command;
+        else state.pending.push(command);
     }
 }
 

@@ -29,22 +29,16 @@ export const UPGRADE_NAMES: Record<number, string> = {
 };
 
 export const UPGRADE_DESCRIPTIONS: Record<number, (level: number) => string> = {
-    [UpgradeType.Damage]: (lvl: number) =>
-        `攻击力 +15% (${(5 * (1 + lvl * 0.15)).toFixed(1)}dmg, Lv.${lvl})`,
-    [UpgradeType.AttackSpeed]: (lvl: number) =>
-        `攻速 +15% (${(2 / (1 + lvl * 0.15)).toFixed(2)}s, Lv.${lvl})`,
-    [UpgradeType.Scatter]: (lvl: number) => `散射箭 +1 (当前 Lv.${lvl})`,
-    [UpgradeType.Split]: (lvl: number) =>
-        `命中分裂 ${lvl === 0 ? 0 : lvl + 1}颗 (当前 Lv.${lvl})`,
-    [UpgradeType.Ricochet]: (lvl: number) => `弹射次数 +1 (当前 Lv.${lvl})`,
-    [UpgradeType.Burst]: (lvl: number) => `连射弹数 +1 (当前 Lv.${lvl})`,
-    [UpgradeType.CritChance]: (lvl: number) =>
-        `暴击率 +5% (${((0.05 * (1 + lvl * 0.05)) * 100).toFixed(1)}%, Lv.${lvl})`,
-    [UpgradeType.CritDamage]: (lvl: number) =>
-        `暴伤 +15% (×${(1.5 * (1 + lvl * 0.15)).toFixed(2)}, Lv.${lvl})`,
-    [UpgradeType.FlatDamage]: (lvl: number) => `伤害 +8 (当前 Lv.${lvl})`,
-    [UpgradeType.DamageMultiplier]: (lvl: number) =>
-        `总伤害 ×${(1 + lvl * 0.15).toFixed(2)} (当前 Lv.${lvl})`,
+    [UpgradeType.Damage]: level => `攻击力 +15% (${(5 * (1 + level * 0.15)).toFixed(1)}dmg, Lv.${level})`,
+    [UpgradeType.AttackSpeed]: level => `攻速 +15% (${(2 / (1 + level * 0.15)).toFixed(2)}s, Lv.${level})`,
+    [UpgradeType.Scatter]: level => `散射箭 +1 (当前 Lv.${level})`,
+    [UpgradeType.Split]: level => `命中分裂 ${level === 0 ? 0 : level + 1}颗 (当前 Lv.${level})`,
+    [UpgradeType.Ricochet]: level => `弹射次数 +1 (当前 Lv.${level})`,
+    [UpgradeType.Burst]: level => `连射弹数 +1 (当前 Lv.${level})`,
+    [UpgradeType.CritChance]: level => `暴击率 +5% (${((0.05 * (1 + level * 0.05)) * 100).toFixed(1)}%, Lv.${level})`,
+    [UpgradeType.CritDamage]: level => `暴伤 +15% (×${(1.5 * (1 + level * 0.15)).toFixed(2)}, Lv.${level})`,
+    [UpgradeType.FlatDamage]: level => `伤害 +8 (当前 Lv.${level})`,
+    [UpgradeType.DamageMultiplier]: level => `总伤害 ×${(1 + level * 0.15).toFixed(2)} (当前 Lv.${level})`,
 };
 
 export class GameState extends State {
@@ -65,7 +59,6 @@ export class GameState extends State {
     wallHp = 0;
     wallMaxHp = 0;
 
-    /** Upgrade levels */
     damageLevel = 1;
     attackSpeedLevel = 1;
     scatterLevel = 1;
@@ -77,14 +70,10 @@ export class GameState extends State {
     flatDamageLevel = 1;
     damageMultiplierLevel = 1;
 
-    /** Base zombie count per wave (grows after boss waves) */
     baseZombieCount = 1;
-
-    /** Horde / wave phases */
+    pendingBaseGrowth = false;
     inHorde = false;
     waveZombieTotal = 0;
     waveDuration = 8;
-
-    /** Offered upgrade choices (set externally when LevelUp) */
     upgradeOptions: UpgradeType[] = [];
 }

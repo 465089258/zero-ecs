@@ -1,5 +1,7 @@
 import { ErrorHandlerService } from "../../context/error-handler-service";
-import { Service } from "../../context/types";
+import { Service } from "../../context/service";
+import { State } from "../../context/state";
+import type { Mut } from "../../schedule/system";
 import { Listener } from "./listener";
 type Fn<T extends EventArgs> = (args: T) => void;
 type ArgsType<T extends EventArgs = EventArgs> = new () => T;
@@ -78,76 +80,65 @@ export abstract class EventArgs {
     clear?(): void;
 }
 
+/** 事件监听、队列与对象池状态。 */
+export class EventState extends State {
+    readonly events = new Map<ArgsType, Listener<EventArgs>>();
+    readonly frontQueue: EventArgs[] = [];
+    readonly backQueue: EventArgs[] = [];
+    readonly disposed: boolean = false;
+}
+
+/** @internal 当前 World 的事件参数对象池；不属于可恢复模拟状态。 */
+export class EventPoolService extends Service {
+    private readonly _pools = new Map<ArgsType, EventArgs[]>();
+
+    acquire<T extends EventArgs>(type: ArgsType<T>, post: (args: EventArgs) => void): T {
+        const pool = this._pools.get(type);
+        const instance = pool && pool.length > 0 ? pool.pop() as T : new type();
+        instance._reset(post);
+        return instance;
+    }
+
+    recycle(args: EventArgs): void {
+        const type = args.constructor as ArgsType;
+        let pool = this._pools.get(type);
+        if (!pool) {
+            pool = [];
+            this._pools.set(type, pool);
+        }
+        pool.push(args);
+    }
+
+    trim(retainPerType: number): void {
+        for (const pool of this._pools.values()) {
+            if (pool.length > retainPerType) pool.length = retainPerType;
+        }
+    }
+
+    dispose(): void { this._pools.clear(); }
+}
+
 /** 管理事件对象池、监听器与延迟分发队列。 */
 export class EventService extends Service implements IEventService {
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
-    private readonly _events: Map<ArgsType, Listener<EventArgs>> = new Map();
-    private readonly _pool: Map<ArgsType, EventArgs[]> = new Map();
-    private _frontQueue: Array<EventArgs> = [];
-    private _backQueue: Array<EventArgs> = [];
+    @Service.inject(EventPoolService) private readonly _pool!: EventPoolService;
+    @State.inject(EventState) private readonly _state!: Mut<EventState>;
     private readonly _boundPost = (args: EventArgs): void => { this.boundPost(args); };
-    private readonly _listenerError = (error: unknown): void => { this.onError(error); };
-    private _disposed = false;
-
-    /**
-     * @internal 在内部 Post 阶段分发当前队列并回收事件。
-     * 监听器执行期间新发布的事件会留到下一次 Flush。
-     */
-    flush(): void {
-        this.assertUsable();
-        const { _frontQueue, _backQueue: queue } = this;
-        this._frontQueue = queue;
-        this._backQueue = _frontQueue;
-        const events = this._events;
-        for (let i = 0; i < queue.length; i++) {
-            const args = queue[i];
-            try {
-                const type = args.constructor;
-                events.get(type as ArgsType)?.call(args, this._listenerError);
-            } finally {
-                try {
-                    args._recycle();
-                } catch (error) {
-                    this.onError(error, args);
-                } finally {
-                    this.recycle(args);
-                }
-            }
-        }
-        queue.length = 0;
-    }
 
     /** 获取可修改的事件参数实例；调用方设置字段后必须显式 `post()`。 */
     event<T extends EventArgs>(type: ArgsType<T>): Omit<T, "_reset" | "_recycle"> {
         this.assertUsable();
-        let pool = this._pool.get(type);
-        let instance: T;
-        if (pool && pool.length > 0) {
-            instance = pool.pop() as T;
-        } else {
-            instance = new type();
-        }
-        instance._reset(this._boundPost);
-        return instance;
+        return this._pool.acquire(type, this._boundPost);
     }
 
     private boundPost(args: EventArgs): void {
         this.assertUsable();
-        this._backQueue.push(args);
+        this._state.backQueue.push(args);
     }
-    private recycle(cmd: EventArgs): void {
-        // 获取命令类型对应的池
-        const type = cmd.constructor as ArgsType; // 需要命令类暴露静态 type
-        let pool = this._pool.get(type);
-        if (!pool) {
-            pool = [];
-            this._pool.set(type, pool);
-        }
-        pool.push(cmd);
-    }
+
     /** 注册持久监听器。 */
     on<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        const events = this._events;
+        const events = this._state.events;
         let listener = events.get(type);
         if (!listener) {
             listener = new Listener();
@@ -159,7 +150,7 @@ export class EventService extends Service implements IEventService {
 
     /** 注册触发一次后自动移除的监听器。 */
     one<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        const events = this._events;
+        const events = this._state.events;
         let listener = events.get(type);
         if (!listener) {
             listener = new Listener();
@@ -171,7 +162,7 @@ export class EventService extends Service implements IEventService {
 
     /** 删除最后一个函数与上下文均匹配的监听器。 */
     off<T extends EventArgs>(type: ArgsType<T>, callback: Fn<T>, context?: any): this {
-        let listener = this._events.get(type);
+        let listener = this._state.events.get(type);
         if (!listener) return this;
         listener.off(callback as Fn<EventArgs>, context);
         return this;
@@ -183,20 +174,18 @@ export class EventService extends Service implements IEventService {
         if (!Number.isSafeInteger(retainPerType) || retainPerType < 0) {
             throw new RangeError("retainPerType must be a non-negative safe integer");
         }
-        for (const pool of this._pool.values()) {
-            if (pool.length > retainPerType) pool.length = retainPerType;
-        }
+        this._pool.trim(retainPerType);
     }
 
     /** 回收待分发事件并释放全部监听器与对象池。 */
     dispose(): void {
-        if (this._disposed) return;
-        this._disposed = true;
-        let firstError = this.releaseQueue(this._frontQueue);
-        const secondError = this.releaseQueue(this._backQueue);
+        const state = this._state;
+        if (state.disposed) return;
+        state.disposed = true;
+        let firstError = this.releaseQueue(state.frontQueue);
+        const secondError = this.releaseQueue(state.backQueue);
         firstError ??= secondError;
-        this._events.clear();
-        this._pool.clear();
+        state.events.clear();
         if (firstError !== undefined) throw firstError;
     }
 
@@ -219,6 +208,6 @@ export class EventService extends Service implements IEventService {
     }
 
     private assertUsable(): void {
-        if (this._disposed) throw new Error("EventService has been disposed");
+        if (this._state.disposed) throw new Error("EventService has been disposed");
     }
 }

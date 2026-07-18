@@ -1,11 +1,14 @@
 import { expect, test } from "@rstest/core";
 import {
+    defSystem,
     EcsBuilder,
     InjectionService,
     Write,
     type Mut,
     Resource,
     Service,
+    type ServiceActivateContext,
+    type ServiceInitContext,
     Startup,
     State,
     Update,
@@ -57,8 +60,8 @@ test("Ecs separates build, init, start and system updates", () => {
     const builder = new EcsBuilder();
     builder.setWorld(new TestWorld());
     builder.addResource(ConfigResource, config);
-    builder.addSystem(Startup, startup, [CounterService]);
-    builder.addSystem(Update.fixed, increment, [Write(CounterState)]);
+    builder.addSystem(defSystem(Startup, startup, [CounterService]));
+    builder.addSystem(defSystem(Update.fixed, increment, [Write(CounterState)]));
     const ecs = builder.build();
 
     expect(lifecycle).toEqual([]);
@@ -169,6 +172,80 @@ test("Services dispose in reverse dependency order and continue after an error",
         "dependent:init",
         "throwing:dispose",
         "dependent:dispose",
+        "dependency:dispose",
+    ]);
+});
+
+const phaseLifecycle: string[] = [];
+let expiredInitContext: ServiceInitContext;
+let expiredActivateContext: ServiceActivateContext;
+
+class PhaseDependencyService extends Service {
+    initialized = false;
+
+    init(): void {
+        this.initialized = true;
+        phaseLifecycle.push("dependency:init");
+    }
+
+    activate(): void { phaseLifecycle.push("dependency:activate"); }
+    start(): void { phaseLifecycle.push("dependency:start"); }
+    stop(): void { phaseLifecycle.push("dependency:stop"); }
+    dispose(): void { phaseLifecycle.push("dependency:dispose"); }
+}
+
+class PhaseConsumerService extends Service {
+    init(context: ServiceInitContext): void {
+        expiredInitContext = context;
+        expect(context.resource(ConfigResource).value).toBe(7);
+        expect(context.state(CounterState).count).toBe(7);
+        phaseLifecycle.push("consumer:init");
+    }
+
+    activate(context: ServiceActivateContext): void {
+        expiredActivateContext = context;
+        expect(context.service(PhaseDependencyService).initialized).toBe(true);
+        phaseLifecycle.push("consumer:activate");
+    }
+
+    start(): void { phaseLifecycle.push("consumer:start"); }
+    stop(): void { phaseLifecycle.push("consumer:stop"); }
+    dispose(): void { phaseLifecycle.push("consumer:dispose"); }
+}
+
+test("Service init, activate and start form barriers with scoped lookup contexts", () => {
+    phaseLifecycle.length = 0;
+    const builder = new EcsBuilder()
+        .addResource(ConfigResource, new ConfigResource(7))
+        .addState(CounterState)
+        .addService(PhaseConsumerService)
+        .addService(PhaseDependencyService);
+    builder.addSystem(defSystem(Startup, () => phaseLifecycle.push("startup"), []));
+    const ecs = builder.build();
+
+    ecs.init();
+    expect(phaseLifecycle).toEqual([
+        "consumer:init",
+        "dependency:init",
+        "consumer:activate",
+        "dependency:activate",
+    ]);
+    expect(() => expiredInitContext.resource(ConfigResource)).toThrow(/no longer active/);
+    expect(() => expiredActivateContext.service(PhaseDependencyService)).toThrow(/no longer active/);
+
+    ecs.start();
+    expect(phaseLifecycle.slice(4)).toEqual([
+        "startup",
+        "dependency:start",
+        "consumer:start",
+    ]);
+
+    ecs.stop();
+    ecs.dispose();
+    expect(phaseLifecycle.slice(7)).toEqual([
+        "consumer:stop",
+        "dependency:stop",
+        "consumer:dispose",
         "dependency:dispose",
     ]);
 });

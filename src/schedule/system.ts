@@ -1,14 +1,16 @@
 import type { QueryComponentTuple } from "../ecs/query/filter";
 import { Query } from "../ecs/query/query";
 import { QueryType } from "../ecs/query/query-type";
-import type { ResourceType, ServiceType, StateType } from "../context/types";
-import { State } from "../context/types";
+import type { ResourceType } from "../context/resource";
+import type { ServiceType } from "../context/service";
+import { State, type StateType } from "../context/state";
 import { World } from "../context/world";
 import type { UpdateStage } from "./stage";
 
 declare const SystemIdBrand: unique symbol;
 declare const MutBrand: unique symbol;
 const MUT_PARAM = Symbol("MutParam");
+const SYSTEM_METADATA = Symbol("SystemMetadata");
 
 /** 当前 Schedule 内唯一的系统编号。 */
 export type SystemId = number & { readonly [SystemIdBrand]: "SystemId" };
@@ -73,7 +75,49 @@ export type SystemArgs<Params extends readonly SystemParam[]> = {
 export type SystemFunction<Params extends readonly SystemParam[] = readonly SystemParam[]> =
     (...args: SystemArgs<Params>) => void;
 
-/** 系统声明的 Resource、State 和 World 访问集合。 */
+/** 由 `defSystem()` 固化到系统函数上的注册元数据。 */
+export interface SystemMetadata<Params extends readonly SystemParam[] = readonly SystemParam[]> {
+    readonly stage: UpdateStage;
+    readonly params: Params;
+}
+
+/** 已绑定 Stage 与参数元数据、可由 EcsBuilder 注册的系统函数。 */
+export type DefinedSystem<Params extends readonly SystemParam[] = any> =
+    SystemFunction<Params> & { readonly [SYSTEM_METADATA]: SystemMetadata<Params> };
+
+/**
+ * 将系统实现函数、Stage 与参数声明绑定为唯一可注册的系统函数。
+ * 返回原函数本身，不增加运行时包装调用。
+ */
+export function defSystem<const Params extends readonly SystemParam[]>(
+    stage: UpdateStage,
+    fn: SystemFunction<Params>,
+    params: Params,
+): DefinedSystem<Params> {
+    if (Object.prototype.hasOwnProperty.call(fn, SYSTEM_METADATA)) {
+        throw new Error(`System ${fn.name || "anonymous"} is already defined`);
+    }
+    const metadata = Object.freeze({
+        stage,
+        params: Object.freeze([...params]) as unknown as Params,
+    });
+    Object.defineProperty(fn, SYSTEM_METADATA, {
+        value: metadata,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+    });
+    return fn as DefinedSystem<Params>;
+}
+
+/** @internal 读取已定义系统的不可变注册元数据。 */
+export function systemMetadata<const Params extends readonly SystemParam[]>(
+    system: DefinedSystem<Params>,
+): SystemMetadata<Params> {
+    return system[SYSTEM_METADATA];
+}
+
+/** 系统声明的 Resource、State 和 World 调度访问元数据；不构成运行时权限隔离。 */
 export interface SystemAccess {
     readonly reads: ReadonlySet<ResourceType | StateType>;
     readonly writes: ReadonlySet<StateType>;

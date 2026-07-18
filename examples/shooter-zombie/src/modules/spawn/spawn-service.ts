@@ -6,26 +6,18 @@ import {
     State,
 } from "zero-ecs-lib";
 import {
-    Bullet,
-    BulletType,
-    DamageText,
-    DamageTextType,
-    ExpOrb,
-    ExpOrbType,
     GameEntityType,
     Position,
     PositionType,
-    Shooter,
-    ShooterType,
     Velocity,
     VelocityType,
-    Wall,
-    WallType,
-    Zombie,
-    ZombieType,
-} from "../components";
-import { GameConfigResource } from "../resources";
-import { GameState } from "../states";
+} from "../common/components";
+import { GameConfigResource } from "../common/resources";
+import { GameState } from "../common/game-state";
+import { Bullet, BulletType } from "../projectile/components";
+import { DamageText, DamageTextType, ExpOrb, ExpOrbType } from "../progression/components";
+import { Shooter, ShooterType } from "../shooter/components";
+import { Wall, WallType, Zombie, ZombieType } from "../zombie/components";
 
 export class SpawnService extends Service {
     @Service.inject(CommandService) private readonly commands!: CommandService;

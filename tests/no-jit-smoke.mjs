@@ -8,14 +8,14 @@ import {
     TimeState,
     Types,
 } from "../dist/index.js";
-import { ChunkAllocator, DataSet } from "../dist/advanced.js";
+import { Allocator, DataSet } from "../dist/advanced.js";
 
 class PositionType {
     [0] = Types.F32;
     [1] = Types.F32;
 }
 
-if (typeof ChunkAllocator !== "function" || typeof DataSet !== "function") {
+if (typeof Allocator !== "function" || typeof DataSet !== "function") {
     throw new Error("advanced entry failed");
 }
 

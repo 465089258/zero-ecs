@@ -1,6 +1,7 @@
 import type { InjectionContext } from "../context/injection";
-import { Resource, Service, State } from "../context/types";
-import type { ResourceType, ServiceType, StateType } from "../context/types";
+import { Resource, type ResourceType } from "../context/resource";
+import { Service, type ServiceType } from "../context/service";
+import { State, type StateType } from "../context/state";
 import { World } from "../context/world";
 import { QueryType } from "../ecs/query/query-type";
 import { QueryService } from "../ecs/query/query-service";

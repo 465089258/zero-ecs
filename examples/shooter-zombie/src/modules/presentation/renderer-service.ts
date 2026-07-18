@@ -5,18 +5,19 @@ import {
     type QueryOf,
 } from "zero-ecs-lib";
 import {
-    Bullet,
-    DamageText,
-    ExpOrb,
     Position,
-    Shooter,
-    Wall,
-    Zombie,
-} from "../components";
-import { BulletQuery, DamageTextQuery, ExpOrbQuery, ShooterQuery, WallQuery, ZombieQuery } from "../queries";
-import { GameConfigResource, GameViewResource } from "../resources";
-import { MetricsService } from "./metrics-service";
-import { GameMode, GameState, UPGRADE_NAMES, UPGRADE_DESCRIPTIONS, UpgradeType } from "../states";
+} from "../common/components";
+import { GameMode, GameState, UPGRADE_DESCRIPTIONS, UPGRADE_NAMES, UpgradeType } from "../common/game-state";
+import { GameConfigResource, GameViewResource } from "../common/resources";
+import { MetricsService } from "../common/services/metrics-service";
+import { Bullet } from "../projectile/components";
+import { BulletQuery } from "../projectile/queries";
+import { DamageText, ExpOrb } from "../progression/components";
+import { DamageTextQuery, ExpOrbQuery } from "../progression/queries";
+import { Shooter } from "../shooter/components";
+import { ShooterQuery } from "../shooter/queries";
+import { Wall, Zombie } from "../zombie/components";
+import { WallQuery, ZombieQuery } from "../zombie/queries";
 
 const GROUND_COLOR = "#1a2a1a";
 const GRID_COLOR = "rgba(50, 90, 50, 0.15)";

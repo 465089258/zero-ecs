@@ -50,10 +50,10 @@ const builder = new EcsBuilder()
 | API | 作用 |
 | --- | --- |
 | `setWorld(world)` | 替换默认 World，只能在 build 前调用 |
-| `addResource(type, instance)` | 注册已实例化的静态资源 |
+| `addResource(type, instance)` | 注册构建期提供、运行期不替换的只读依赖或能力 |
 | `addState(type)` | 注册纯状态类型，由 Builder 实例化 |
 | `addService(type)` | 注册功能服务类型，由 Builder 实例化 |
-| `addSystem(stage, fn, params, options?)` | 注册系统并返回 `SystemHandle` |
+| `addSystem(system, options?)` | 注册 `defSystem()` 返回的系统函数并返回 `SystemHandle` |
 | `before(system, target)` | 添加系统前置关系 |
 | `after(system, target)` | 添加系统后置关系 |
 | `chain(...systems)` | 按参数顺序建立依赖链 |
@@ -69,10 +69,10 @@ const builder = new EcsBuilder()
 | `resource(Type)` | 返回 `Readonly<T>` 类型的 Resource |
 | `state(Type)` | 返回 `Readonly<T>` 类型的 State |
 | `service(Type)` | 获取 Service 实例 |
-| `init()` | World → State → Service → Scheduler → Module.init 初始化 |
-| `start()` | 运行 `Startup` 系统，再顺序调用 Module.start |
+| `init()` | World → State.init → 全部 Service.init → 全部 Service.activate → Scheduler → Module.init |
+| `start()` | 运行 `Startup` 系统，再启动 Service，最后顺序调用 Module.start |
 | `update()` | 依次运行 `Update.first/fixed/last`，然后运行内部 Post |
-| `stop()` | 逆序调用 Module.stop，再运行 `Shutdown` 系统 |
+| `stop()` | 逆序调用 Module.stop、Service.stop，再运行 `Shutdown` 系统 |
 | `dispose()` | 逆序 Module.dispose，再释放 Scheduler、Service、State、World 并清空 Resource 容器 |
 
 生命周期状态为：
@@ -121,17 +121,22 @@ abstract class State {
     dispose?(): void;
 }
 abstract class Service {
-    init?(): void;
+    init?(context: ServiceInitContext): void;
+    activate?(context: ServiceActivateContext): void;
+    start?(): void;
+    stop?(): void;
     dispose?(): void;
 }
 ```
 
-- Resource：上层在 build 前传入的实例，容器 build 后锁定。
+- Resource：上层在 build 前传入的配置或宿主能力，容器 build 后锁定注册关系，运行期不替换实例。
 - State：保存运行状态，可以参与系统读写权限声明。
 - Service：工具方法集合，自身决定开放哪些修改能力，不参与 State 的 `Write` 权限规则。
 - World：底层入口，只负责访问三个容器。
 - InjectionService：给 Command 等运行时创建的辅助对象填充声明式依赖。
 - ErrorHandlerService：统一接收 Command、Event、Timer 等延迟工作中可恢复的错误。
+
+Service 生命周期采用阶段屏障：所有 Service 实例在 build 时已经注册并完成属性注入；所有 `init()` 完成后才调用任何 `activate()`。`ServiceInitContext` 只提供只读 Resource/State，`ServiceActivateContext` 额外提供已初始化 Service 查询，并记录用于释放排序的依赖。Context 在 hook 返回后失效。
 
 ### 属性注入
 
@@ -189,8 +194,8 @@ injection.inject(dynamicObject);
 | 动态注入对象 | 创建该对象的调用方或对象池 | InjectionService 不接管生命周期；对象不得跨 Ecs 复用 |
 | Query | QueryService / System 参数 | 绑定当前 Ecs；不得跨 Ecs 使用，Ecs.dispose 后失效 |
 | QueryIter/current/组件列 | Query 缓存 | Iter 和 tuple 会复用；组件列只在当前结构版本下有效 |
-| Command / EntityCommand | CommandService 对象池 | submit 前由调用方持有；submit 后不可修改，flush 后不可继续使用 |
-| EventArgs | EventService 对象池 | post 后所有权转交 EventService；派发完成后不可继续使用 |
+| Command / EntityCommand | CommandModule 内部对象池 Service | submit 前由调用方持有；submit 后不可修改，flush 后不可继续使用 |
+| EventArgs | EventModule 内部对象池 Service | post 后所有权转交 EventService；派发完成后不可继续使用 |
 | Entity | 数值句柄 | 可以长期保存，但每次使用都应允许其版本已经失效 |
 
 ## 4. Component
@@ -349,7 +354,7 @@ commands.entity(entity).despawn().submit();
 
 ## 7. 通用 Command
 
-`CommandService` 是普通 Command 与 EntityCommand 共用的唯一对象池命令队列。
+`CommandService` 是普通 Command 与 EntityCommand 共用的创建和提交入口。待执行队列位于内部 CommandState，空闲对象池由 CommandModule 内部 Service 持有。
 
 ```ts
 abstract class Command {
@@ -400,7 +405,9 @@ const movementQuery = QueryType.from(
 ```ts
 type MovementQuery = QueryOf<typeof movementQuery>;
 
-function movementSystem(query: MovementQuery): void {
+const movementSystem = defSystem(Update.fixed, moveEntities, [movementQuery]);
+
+function moveEntities(query: MovementQuery): void {
     const iter = query.iter();
 
     while (iter.next()) {
@@ -417,7 +424,7 @@ function movementSystem(query: MovementQuery): void {
     }
 }
 
-builder.addSystem(Update.fixed, movementSystem, [movementQuery]);
+builder.addSystem(movementSystem);
 ```
 
 每次 `next()` 返回 `true` 后，`current` 对应一个 Archetype Table：
@@ -446,18 +453,21 @@ Shutdown
 ### 参数注册
 
 ```ts
-function readSystem(
+const readSystem = defSystem(Update.fixed, read, [GameConfig, GameState, GameService]);
+const writeSystem = defSystem(Update.fixed, write, [Write(GameState)]);
+
+function read(
     config: Readonly<GameConfig>,
     state: Readonly<GameState>,
     service: GameService,
 ): void {}
 
-function writeSystem(state: Mut<GameState>): void {
+function write(state: Mut<GameState>): void {
     state.frame++;
 }
 
-builder.addSystem(Update.fixed, readSystem, [GameConfig, GameState, GameService]);
-builder.addSystem(Update.fixed, writeSystem, [Write(GameState)]);
+builder.addSystem(readSystem);
+builder.addSystem(writeSystem);
 ```
 
 支持参数：
@@ -477,13 +487,13 @@ builder.addSystem(Update.fixed, writeSystem, [Write(GameState)]);
 - Query 权限尚未纳入访问集合。
 - World 被记录为不透明全局访问。
 
-`SystemParamValue` 会把普通 Resource/State 映射成 `Readonly<T>`；只有注册 `Write(StateType)` 的参数是可写 `Mut<T>`。这是浅只读约束，嵌套对象的深层不可变性仍由业务类型自行定义。
+`SystemParamValue` 会把普通 Resource/State 映射成 `Readonly<T>`；只有注册 `Write(StateType)` 的参数是可写 `Mut<T>`。这是供调度分析使用的访问声明和浅只读类型提示，不是运行时安全隔离；嵌套对象的深层不可变性仍由业务类型自行定义。
 
 ### 依赖规则
 
 ```ts
-const first = builder.addSystem(Update.fixed, firstSystem, []);
-const second = builder.addSystem(Update.fixed, secondSystem, [], {
+const first = builder.addSystem(firstSystem);
+const second = builder.addSystem(secondSystem, {
     after: first,
 });
 
@@ -492,7 +502,7 @@ builder.after(second, first);
 builder.chain(first, second);
 ```
 
-依赖目标可以是唯一注册的函数或 `SystemHandle`。同一个函数注册多次时必须使用 Handle。跨阶段依赖不能逆转阶段顺序；同阶段依赖使用稳定拓扑排序，无显式依赖时保持注册顺序。
+依赖目标可以是唯一注册的 `DefinedSystem` 或 `SystemHandle`。同一个系统注册多次时必须使用 Handle。跨阶段依赖不能逆转阶段顺序；同阶段依赖使用稳定拓扑排序，无显式依赖时保持注册顺序。
 
 ## 10. Advanced：内存与 DataSet
 
@@ -500,7 +510,8 @@ builder.chain(first, second);
 
 ```ts
 import {
-    ChunkAllocator,
+    Allocator,
+    Buffer,
     DataSet,
     RemoveResult,
     Types,
@@ -517,21 +528,24 @@ advanced 同时提供 `Scheduler`、`EntityCommand` 构造器以及 `defineCompo
 
 ```ts
 BLOCK_SIZE      // 2 MiB
-CHUNK_SIZE      // 16 KiB
-CHUNKS_PER_BLOCK // 128
+BUFFER_SIZE      // 16 KiB
+BUFFERS_PER_BLOCK // 128
 ```
 
-### `ChunkAllocator`
+### `Allocator` 与 `Buffer`
 
 | API | 作用 |
 | --- | --- |
-| `alloc()` | 从 free list 分配 16 KiB MemoryChunk |
-| `free(handle)` | 通过 generation 校验后释放 |
-| `resolve(handle)` | 句柄有效时返回 MemoryChunk，否则返回 null |
-| `owns(handle)` | 检查句柄是否属于当前 allocator |
-| `stats()` | 返回 block、chunk 和字节统计 |
+| `Allocator.alloc()` | 从 free list 分配新的 16 KiB Buffer 对象 |
+| `Allocator.stats()` | 返回 Block、Buffer 和字节统计 |
 | `trim()` | 回收完全空闲的大块 |
 | `clear()` | 清空全部 Block |
+| `Buffer.alloc(type, length)` | 按类型对齐并顺序分配 TypedArray |
+| `Buffer.u8/u16/u32/i8/i16/i32/f32()` | 分配指定类型的 TypedArray |
+| `Buffer.zero()` | 清零整个 16 KiB 区域，不改变分配位置 |
+| `Buffer.release()` | 归还内存并使当前 Buffer 对象失效 |
+
+`Buffer` 不公开底层 2 MiB `ArrayBuffer`、块偏移或分配句柄。返回的原生 TypedArray 仍按 JavaScript 标准保留其 `buffer` 属性。
 
 ### `DataSet` 与 `Table`
 
@@ -550,8 +564,8 @@ if (removed === RemoveResult.Moved) {
 }
 ```
 
-- 一个 Table 对应一个 16 KiB Chunk。
-- 每列是覆盖同一 Chunk 不同区域的 TypedArray。
+- 一个 Table 对应一个 16 KiB Buffer。
+- 每列由同一 Buffer 顺序分配为 TypedArray。
 - `createTableLayout()` 计算对齐、容量和剩余字节。
 - `DataRow` 是不分配对象的安全整数句柄；低 14 位为行号。句柄 `0` 有效，不应使用 truthy 判断。
 - `remove()` 使用尾行 swap-remove，并返回数字枚举 `RemoveResult.Invalid/Removed/Moved`。
@@ -600,7 +614,7 @@ events.on(DamageEvent, onDamage);
 events.event(DamageEvent).set(10).post();
 ```
 
-EventService 使用双队列和对象池，在 flush 时派发；支持 `on()`、`one()` 和 `off()`。EventArgs 生命周期固定为 `Recycled → Mutable → Posted → Recycled`，同一实例只能 post 一次；事件子类的写方法应先调用 `assertMutable()`，从而拒绝 post 后或回池后的修改。场景切换时可调用 `trimPools(retainPerType)` 收缩历史峰值。
+EventService 使用 EventState 双队列和模块内部 Service 对象池，由 flushEventsSystem 在 Post 阶段派发；支持 `on()`、`one()` 和 `off()`。EventArgs 生命周期固定为 `Recycled → Mutable → Posted → Recycled`，同一实例只能 post 一次；事件子类的写方法应先调用 `assertMutable()`，从而拒绝 post 后或回池后的修改。场景切换时可调用 `trimPools(retainPerType)` 收缩历史峰值。
 
 ### FixedTimeResource、TimeState、TimerService、RandomService
 

@@ -25,7 +25,7 @@ export class DevProfiler {
         this.patchScheduler();
     }
 
-    /** 返回按 Archetype 汇总的实体数量与 Chunk 内存报告。 */
+    /** 返回按 Archetype 汇总的实体数量与 Buffer 内存报告。 */
     getMemoryReport(): string {
         let totalEntities = 0;
         let totalMemory = 0;
@@ -39,7 +39,7 @@ export class DevProfiler {
         for (let i = 0; i < archetypes.length; i++) {
             const archetype = archetypes[i];
             let memory = 0;
-            for (const table of archetype.tables) memory += table.memory.byteLength;
+            for (const table of archetype.tables) memory += table.byteLength;
             const components = archetype.types.map(type => type.name).join(", ");
             lines.push(
                 padRight(`[${i}]`, 6) +

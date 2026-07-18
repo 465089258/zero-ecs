@@ -1,16 +1,15 @@
 import { describe, expect, test } from "@rstest/core";
 import * as publicApi from "../../src";
-import { EntityMigrationService } from "../../src/ecs/migration/entity-migration-service";
+import { InternalPost } from "../../src/schedule/internal-stage";
 import type { Scheduler } from "../../src/schedule/scheduler";
 import {
     CommandModule,
     Command,
     CommandService,
+    defSystem,
     type Component,
     EcsBuilder,
     EcsPhase,
-    EventModule,
-    EventService,
     Write,
     type Mut,
     Query,
@@ -45,16 +44,14 @@ describe("system registration and scheduling", () => {
     test("runs first/fixed/last before the private command/event Post partitions", () => {
         const order: string[] = [];
         const builder = new EcsBuilder();
-        builder.addSystem(Update.first, () => order.push("first"), []);
-        builder.addSystem(Update.fixed, () => order.push("fixed"), []);
-        builder.addSystem(Update.last, () => order.push("last"), []);
-        // Register in reverse commit order to verify internal partitions, not Module order.
-        builder.addModule(new EventModule());
-        builder.addModule(new CommandModule());
+        builder.addSystem(defSystem(Update.first, () => order.push("first"), []));
+        builder.addSystem(defSystem(Update.fixed, () => order.push("fixed"), []));
+        builder.addSystem(defSystem(Update.last, () => order.push("last"), []));
+        // Register in reverse commit order to verify internal partitions, not registration order.
+        builder.addSystem(defSystem(InternalPost.event, () => order.push("event"), []));
+        builder.addSystem(defSystem(InternalPost.migration, () => order.push("migration"), []));
+        builder.addSystem(defSystem(InternalPost.command, () => order.push("command"), []));
         const ecs = builder.build();
-        ecs.service(CommandService).flush = () => { order.push("command"); };
-        ecs.service(EntityMigrationService).flush = () => { order.push("migration"); };
-        ecs.service(EventService).flush = () => { order.push("event"); };
 
         ecs.init();
         ecs.start();
@@ -64,6 +61,16 @@ describe("system registration and scheduling", () => {
         expect(order).toEqual(["first", "fixed", "last", "command", "migration", "event"]);
         expect("InternalPost" in publicApi).toBe(false);
         expect("EntityMigrationService" in publicApi).toBe(false);
+        expect("CommandState" in publicApi).toBe(false);
+        expect("EntityMigrationState" in publicApi).toBe(false);
+        expect("EventState" in publicApi).toBe(false);
+        expect("TimerState" in publicApi).toBe(false);
+        expect("RandomState" in publicApi).toBe(false);
+        expect("EcsMemoryState" in publicApi).toBe(false);
+        expect("CommandPoolService" in publicApi).toBe(false);
+        expect("EntityMigrationPoolService" in publicApi).toBe(false);
+        expect("EventPoolService" in publicApi).toBe(false);
+        expect("TimerPoolService" in publicApi).toBe(false);
         expect("EntityCommandService" in publicApi).toBe(false);
         expect("Bundle" in publicApi).toBe(false);
         expect("DataSet" in publicApi).toBe(false);
@@ -94,14 +101,15 @@ describe("system registration and scheduling", () => {
 
         const builder = new EcsBuilder();
         builder.addResource(StepResource, new StepResource(25));
-        const time = builder.addSystem(Update.first, timeSystem, [
+        const definedTime = defSystem(Update.first, timeSystem, [
             World,
             StepResource,
             Write(ClockState),
             AuditService,
         ]);
-        builder.addSystem(Update.last, timerSystem, [ClockState, Write(TimerState)], {
-            after: timeSystem,
+        const time = builder.addSystem(definedTime);
+        builder.addSystem(defSystem(Update.last, timerSystem, [ClockState, Write(TimerState)]), {
+            after: definedTime,
         });
         const ecs = builder.build();
         const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
@@ -126,8 +134,9 @@ describe("system registration and scheduling", () => {
         function second(): void { order.push("second"); }
         function first(): void { order.push("first"); }
         const builder = new EcsBuilder();
-        builder.addSystem(Update.fixed, second, [], { after: first });
-        builder.addSystem(Update.fixed, first, []);
+        const firstSystem = defSystem(Update.fixed, first, []);
+        builder.addSystem(defSystem(Update.fixed, second, []), { after: firstSystem });
+        builder.addSystem(firstSystem);
         const ecs = builder.build();
         ecs.init();
         ecs.start();
@@ -140,7 +149,7 @@ describe("system registration and scheduling", () => {
         let received: Query<[PositionType]> | undefined;
         function querySystem(query: Query<[PositionType]>): void { received = query; }
         const builder = new EcsBuilder();
-        const handle = builder.addSystem(Update.fixed, querySystem, [queryType]);
+        const handle = builder.addSystem(defSystem(Update.fixed, querySystem, [queryType]));
         const ecs = builder.build();
         const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
         const access = scheduler.schedule.systems[handle.id].access;
@@ -157,15 +166,15 @@ describe("system registration and scheduling", () => {
         function a(): void {}
         function b(): void {}
         const builder = new EcsBuilder();
-        const ah = builder.addSystem(Update.fixed, a, []);
-        const bh = builder.addSystem(Update.fixed, b, []);
+        const ah = builder.addSystem(defSystem(Update.fixed, a, []));
+        const bh = builder.addSystem(defSystem(Update.fixed, b, []));
         builder.before(ah, bh).before(bh, ah);
         const ecs = builder.build();
         expect(() => ecs.init()).toThrow(/dependency cycle/);
         expect(() => Write(AuditService as never)).toThrow(/only accepts a State/);
 
         const missing = new EcsBuilder();
-        missing.addSystem(Update.fixed, (_step: Readonly<StepResource>) => {}, [StepResource]);
+        missing.addSystem(defSystem(Update.fixed, (_step: Readonly<StepResource>) => {}, [StepResource]));
         expect(() => missing.build()).toThrow(/Missing system Resources: StepResource/);
     });
 
@@ -182,7 +191,7 @@ describe("system registration and scheduling", () => {
 
         DeferredCommand.executions = 0;
         const builder = new EcsBuilder().addModule(new CommandModule());
-        builder.addSystem(Update.fixed, failingSystem, [CommandService]);
+        builder.addSystem(defSystem(Update.fixed, failingSystem, [CommandService]));
         const ecs = builder.build();
         ecs.init();
         ecs.start();

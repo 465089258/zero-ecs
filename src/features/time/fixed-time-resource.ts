@@ -1,4 +1,4 @@
-import { Resource } from "../../context/types";
+import { Resource } from "../../context";
 
 /** 构建前提供的不可变固定步长配置。 */
 export class FixedTimeResource extends Resource {

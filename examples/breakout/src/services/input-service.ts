@@ -32,7 +32,7 @@ export class InputService extends Service {
     private readonly requestSplit = (): void => { this.splitRequests++; };
     private readonly requestStress = (): void => { this.stressRequests++; };
 
-    init(): void {
+    start(): void {
         window.addEventListener("keydown", this.keyDown, { passive: false });
         window.addEventListener("keyup", this.keyUp);
         this.view.canvas.addEventListener("pointermove", this.pointerMove);
@@ -52,7 +52,7 @@ export class InputService extends Service {
         this.stressRequests = 0;
     }
 
-    dispose(): void {
+    stop(): void {
         window.removeEventListener("keydown", this.keyDown);
         window.removeEventListener("keyup", this.keyUp);
         this.view.canvas.removeEventListener("pointermove", this.pointerMove);

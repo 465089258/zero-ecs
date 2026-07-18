@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@rstest/core";
 import {
+    defSystem,
     Ecs,
     EcsBuilder,
     type Module,
@@ -30,8 +31,8 @@ describe("Module lifecycle", () => {
         const second = new LifecycleModule("second", order);
         const builder = new EcsBuilder();
 
-        builder.addSystem(Startup, () => order.push("system:startup"), []);
-        builder.addSystem(Shutdown, () => order.push("system:shutdown"), []);
+        builder.addSystem(defSystem(Startup, () => order.push("system:startup"), []));
+        builder.addSystem(defSystem(Shutdown, () => order.push("system:shutdown"), []));
         builder.addModule(first).addModule(second);
         const ecs = builder.build();
 

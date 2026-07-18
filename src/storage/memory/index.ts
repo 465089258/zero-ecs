@@ -1,3 +1,4 @@
 export * from "./constants";
 export * from "./types";
-export * from "./chunk-allocator";
+export * from "./buffer";
+export * from "./allocator";

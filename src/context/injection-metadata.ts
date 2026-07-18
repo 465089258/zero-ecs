@@ -1,35 +1,38 @@
-/** @internal 可注入对象的容器类别。 */
-export const enum InjectionKind { World, Resource, State, Service }
 
 /** @internal 单个属性的注入元数据。 */
 export interface InjectionEntry {
-    readonly kind: InjectionKind;
     readonly property: string | symbol;
     readonly type?: Function;
 }
 
-const metadata = new WeakMap<Function, InjectionEntry[]>();
-
-function register(owner: Function, entry: InjectionEntry): void {
-    let entries = metadata.get(owner);
+export function getMetadata(owner: any, key: symbol): InjectionEntry[] {
+    let entries: InjectionEntry[] | undefined = Object.prototype.hasOwnProperty.call(owner, key)
+        ? owner[key]
+        : undefined;
     if (!entries) {
         entries = [];
-        metadata.set(owner, entries);
+        owner[key] = entries;
     }
+    return entries;
+}
+
+function register(owner: Function, key: symbol, entry: InjectionEntry): void {
+    let entries = getMetadata(owner, key);
     if (!entries.some(item =>
-        item.kind === entry.kind &&
         item.property === entry.property &&
         item.type === entry.type
     )) entries.push(entry);
 }
 
 /** @internal 读取类自身声明的注入元数据。 */
-export function injectionEntries(owner: Function): readonly InjectionEntry[] | undefined {
-    return metadata.get(owner);
+export function injectionEntries(owner: Function, key: symbol): readonly InjectionEntry[] | undefined {
+    return Object.prototype.hasOwnProperty.call(owner, key)
+        ? (owner as any)[key]
+        : undefined;
 }
 
 /** @internal 创建兼容传统装饰器与 Stage 3 装饰器的属性注入函数。 */
-export function createInjectDecorator(kind: InjectionKind, type?: Function) {
+export function createInjectDecorator(key: symbol, type?: Function) {
     return function (
         target: Object | undefined,
         property: string | symbol | {
@@ -40,12 +43,11 @@ export function createInjectDecorator(kind: InjectionKind, type?: Function) {
         if (target === undefined && typeof property === "object") {
             const context = property;
             context.addInitializer(function () {
-                register(this.constructor, { kind, property: context.name, type });
+                register(this.constructor, key, { property: context.name, type });
             });
             return;
         }
-        register(target!.constructor, {
-            kind,
+        register(target!.constructor, key, {
             property: property as string | symbol,
             type,
         });

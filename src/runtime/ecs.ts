@@ -76,6 +76,7 @@ export class Ecs {
         try {
             this.world.init();
             this._states.init();
+            this._services.bind(this._context);
             this._services.init();
             this._scheduler.init(this._context);
             for (const module of this.modules) module.init?.(this);
@@ -92,6 +93,7 @@ export class Ecs {
         let lastStarted = -1;
         try {
             this._scheduler.run(Startup);
+            this._services.start();
             for (let i = 0; i < this.modules.length; i++) {
                 lastStarted = i;
                 this.modules[i].start?.(this);
@@ -101,6 +103,7 @@ export class Ecs {
             for (let i = lastStarted; i >= 0; i--) {
                 try { this.modules[i].stop?.(this); } catch { /* preserve start error */ }
             }
+            try { this._services.stop(); } catch { /* preserve start error */ }
             try { this._scheduler.run(Shutdown); } catch { /* preserve start error */ }
             this._phase = EcsPhase.Stopped;
             throw error;
@@ -130,6 +133,8 @@ export class Ecs {
             try { this.modules[i].stop?.(this); }
             catch (error) { firstError ??= error; }
         }
+        try { this._services.stop(); }
+        catch (error) { firstError ??= error; }
         try { this._scheduler.run(Shutdown); }
         catch (error) { firstError ??= error; }
         this._phase = EcsPhase.Stopped;
@@ -157,7 +162,7 @@ export class Ecs {
         catch (error) { firstError ??= error; }
         try { this.world.dispose(); }
         catch (error) { firstError ??= error; }
-        try { this._resources.clear(); }
+        try { this._resources.dispose(); }
         catch (error) { firstError ??= error; }
         this._phase = EcsPhase.Disposed;
         if (firstError !== undefined) throw firstError;
