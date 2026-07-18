@@ -2,12 +2,16 @@
 export { Types } from "./storage/typed-array";
 export type { TypedArray, TypedArrayFor } from "./storage/typed-array";
 
-export { Resource, Service, State } from "./context/types";
+export { Resource } from "./context/resource";
+export type { ResourceType } from "./context/resource";
+export { Service } from "./context/service";
 export type {
-    ResourceType,
+    ServiceActivateContext,
+    ServiceInitContext,
     ServiceType,
-    StateType,
-} from "./context/types";
+} from "./context/service";
+export { State } from "./context/state";
+export type { StateType } from "./context/state";
 export { World } from "./context/world";
 export { InjectionService } from "./context/injection-service";
 export { ErrorHandlerService } from "./context/error-handler-service";
@@ -60,9 +64,10 @@ export type { EntityMutator } from "./ecs/command/entity-command";
 export { CommandModule } from "./ecs/command/module";
 
 export { Shutdown, Startup, Update } from "./schedule/stage";
-export { Write } from "./schedule/system";
+export { defSystem, Write } from "./schedule/system";
 export type {
     BareSystemParam,
+    DefinedSystem,
     Mut,
     MutParam,
     SystemArgs,

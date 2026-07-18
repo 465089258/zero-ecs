@@ -1,4 +1,5 @@
 import {
+<<<<<<< HEAD
     CommandModule, EcsBuilder, ErrorHandlerService, FixedTimeResource,
     RandomModule, RandomService, TimeModule,
 } from "zero-ecs-lib";
@@ -48,6 +49,21 @@ const view = new GameViewResource(
     ],
     telemetry,
 );
+=======
+    CommandModule,
+    EcsBuilder,
+    FixedTimeResource,
+    RandomModule,
+    TimeModule,
+} from "zero-ecs-lib";
+import { createGameView } from "./app/create-game-view";
+import { runGame } from "./app/game-runtime";
+import { ShooterZombieModule } from "./modules";
+import "./styles.css";
+
+const FIXED_STEP = 1 / 120;
+const view = createGameView();
+>>>>>>> f2ed160a425365677a1fdc6d6a34dce66590826d
 
 const common   = new CommonModule(view);
 const renderer = new RendererModule();
@@ -63,6 +79,7 @@ const ui       = new UiModule();
 const builder = new EcsBuilder()
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
+<<<<<<< HEAD
     .addModule(new RandomModule());
 
 common.build(builder);
@@ -131,3 +148,10 @@ function frame(now: number): void {
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+=======
+    .addModule(new RandomModule())
+    .addModule(new ShooterZombieModule(view))
+    .build();
+
+runGame(ecs, view, FIXED_STEP);
+>>>>>>> f2ed160a425365677a1fdc6d6a34dce66590826d

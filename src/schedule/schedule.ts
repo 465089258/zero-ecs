@@ -1,9 +1,10 @@
-import { Resource, State } from "../context/types";
-import type { ResourceType, StateType } from "../context/types";
+import { Resource, type ResourceType } from "../context/resource";
+import { State, type StateType } from "../context/state";
 import { World } from "../context/world";
 import type { UpdateStage } from "./stage";
 import {
     isMutParam,
+    type DefinedSystem,
     type SystemAccess,
     type SystemDefinition,
     type SystemFunction,
@@ -13,7 +14,7 @@ import {
 } from "./system";
 
 /** 系统依赖目标；函数重复注册时必须改用 SystemHandle 消除歧义。 */
-export type SystemDependencyTarget = SystemHandle | ((...args: any[]) => void);
+export type SystemDependencyTarget = SystemHandle | DefinedSystem;
 
 /** 注册系统时声明的相对执行顺序。 */
 export interface SystemOptions {

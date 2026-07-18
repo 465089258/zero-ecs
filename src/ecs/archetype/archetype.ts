@@ -6,7 +6,7 @@ import {
     type DataRow,
     type Table,
 } from "../../storage/data-set";
-import type { IChunkAllocator } from "../../storage/memory";
+import type { IAllocator } from "../../storage/memory";
 import { type TypedArray, Types } from "../../storage/typed-array";
 import { type ComponentId, type ComponentMeta } from "../component/component";
 import { Mask } from "../component/mask";
@@ -35,7 +35,7 @@ export class Archetype {
     get tables(): readonly Table[] { return this.data.tables; }
 
     /** 创建指定组件掩码对应的 Archetype。 */
-    constructor(mask: Mask, types: readonly ComponentMeta[] | undefined, allocator: IChunkAllocator) {
+    constructor(mask: Mask, types: readonly ComponentMeta[] | undefined, allocator: IAllocator) {
         this.mask = mask.clone();
         this._types = types === undefined ? [] : [...types].sort((a, b) => a.id - b.id);
         const maxId = this._types.length === 0 ? -1 : this._types[this._types.length - 1].id;

@@ -1,4 +1,4 @@
-import { Service } from "../../context/types";
+import { Service } from "../../context/service";
 import { ArchetypeService } from "../archetype/archetype-service";
 import { ComponentService } from "../component/component-registry";
 import { Query } from "./query";

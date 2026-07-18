@@ -1,4 +1,4 @@
-import { Service } from "../../context/types";
+import { Service } from "../../context/service";
 import { Command } from "../../ecs/command/command";
 import { CommandService } from "../../ecs/command/command-service";
 import type { Entity } from "../../ecs/entity/entity";

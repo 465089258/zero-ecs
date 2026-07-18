@@ -1,14 +1,7 @@
 import {
-    CommandService,
-    RandomService,
-    Startup,
-    TimeState,
-    Update,
-    Write,
     type EcsBuilder,
     type Module,
 } from "zero-ecs-lib";
-import { BallQuery, BrickQuery, GameEntityQuery, PaddleQuery, PowerUpQuery } from "./queries";
 import { GameConfigResource, GameViewResource } from "./resources";
 import { InputService } from "./services/input-service";
 import { MetricsService } from "./services/metrics-service";
@@ -44,83 +37,16 @@ export class BreakoutModule implements Module {
             .addService(SpawnService)
             .addService(RendererService);
 
-        builder.addSystem(Startup, startupGameSystem, [
-            SpawnService,
-            RendererService,
-            Write(GameState),
-            BallQuery,
-            PaddleQuery,
-            BrickQuery,
-            PowerUpQuery,
-        ]);
-
-        const restart = builder.addSystem(Update.fixed, restartSystem, [
-            InputService,
-            CommandService,
-            SpawnService,
-            Write(GameState),
-            GameEntityQuery,
-        ]);
-        const paddle = builder.addSystem(Update.fixed, paddleMovementSystem, [
-            GameConfigResource,
-            TimeState,
-            InputService,
-            GameState,
-            PaddleQuery,
-        ]);
-        const moveBalls = builder.addSystem(Update.fixed, moveBallsSystem, [
-            GameConfigResource,
-            TimeState,
-            GameState,
-            CommandService,
-            BallQuery,
-        ]);
-        const movePowers = builder.addSystem(Update.fixed, movePowersSystem, [
-            GameConfigResource,
-            TimeState,
-            GameState,
-            CommandService,
-            PowerUpQuery,
-        ]);
-        const collide = builder.addSystem(Update.fixed, collisionSystem, [
-            GameConfigResource,
-            Write(GameState),
-            RandomService,
-            CommandService,
-            SpawnService,
-            BallQuery,
-            PaddleQuery,
-            BrickQuery,
-        ]);
-        const collect = builder.addSystem(Update.fixed, collectPowerSystem, [
-            GameConfigResource,
-            Write(GameState),
-            CommandService,
-            SpawnService,
-            BallQuery,
-            PaddleQuery,
-            PowerUpQuery,
-        ]);
-        const stress = builder.addSystem(Update.fixed, stressActionsSystem, [
-            GameConfigResource,
-            InputService,
-            Write(GameState),
-            SpawnService,
-            BallQuery,
-        ]);
-        const lifecycle = builder.addSystem(Update.fixed, lifecycleSystem, [
-            GameConfigResource,
-            Write(GameState),
-            SpawnService,
-            BallQuery,
-        ]);
-        const statistics = builder.addSystem(Update.fixed, statisticsSystem, [
-            Write(GameState),
-            BallQuery,
-            BrickQuery,
-            PowerUpQuery,
-            GameEntityQuery,
-        ]);
+        builder.addSystem(startupGameSystem);
+        const restart = builder.addSystem(restartSystem);
+        const paddle = builder.addSystem(paddleMovementSystem);
+        const moveBalls = builder.addSystem(moveBallsSystem);
+        const movePowers = builder.addSystem(movePowersSystem);
+        const collide = builder.addSystem(collisionSystem);
+        const collect = builder.addSystem(collectPowerSystem);
+        const stress = builder.addSystem(stressActionsSystem);
+        const lifecycle = builder.addSystem(lifecycleSystem);
+        const statistics = builder.addSystem(statisticsSystem);
 
         builder.chain(restart, paddle, moveBalls, movePowers, collide, collect, stress, lifecycle, statistics);
     }

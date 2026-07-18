@@ -9,6 +9,11 @@ assert.equal("DataSet" in root, false);
 assert.equal("Mask" in root, false);
 assert.equal("InternalPost" in root, false);
 assert.equal("EntityMigrationService" in root, false);
+assert.equal("EcsMemoryState" in root, false);
+assert.equal("CommandPoolService" in root, false);
+assert.equal("EntityMigrationPoolService" in root, false);
+assert.equal("EventPoolService" in root, false);
+assert.equal("TimerPoolService" in root, false);
 
 assert.equal(typeof advanced.Scheduler, "function");
 assert.equal(typeof advanced.EntityCommand, "function");
@@ -16,6 +21,11 @@ assert.equal(typeof advanced.DataSet, "function");
 assert.equal(typeof advanced.Mask, "function");
 assert.equal("InternalPost" in advanced, false);
 assert.equal("EntityMigrationService" in advanced, false);
+assert.equal("EcsMemoryState" in advanced, false);
+assert.equal("CommandPoolService" in advanced, false);
+assert.equal("EntityMigrationPoolService" in advanced, false);
+assert.equal("EventPoolService" in advanced, false);
+assert.equal("TimerPoolService" in advanced, false);
 
 assert.throws(() => new root.Ecs(), /Ecs must be created by EcsBuilder/);
 

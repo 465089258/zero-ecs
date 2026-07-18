@@ -17,7 +17,6 @@ import { GameMode, GameState } from "../states";
 import { MetricsService } from "./metrics-service";
 
 const BRICK_COLORS = ["#5ee7f7", "#67a6ff", "#8f7cff", "#d879ff", "#ff7595"] as const;
-
 export class RendererService extends Service {
     @Resource.inject(GameViewResource) private readonly view!: GameViewResource;
     @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;

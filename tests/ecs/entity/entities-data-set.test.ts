@@ -12,7 +12,7 @@ class HealthType implements Component<Health> {
     readonly [Health.value] = Types.I32;
 }
 
-test("EntityService and Archetype share DataSet-backed chunk memory", () => {
+test("EntityService and Archetype share DataSet-backed Buffer memory", () => {
     const ecs = new EcsBuilder().build();
     ecs.init();
     const components = ecs.service(ComponentService);
@@ -44,13 +44,13 @@ test("EntityService and Archetype share DataSet-backed chunk memory", () => {
     expect(entities.getTypes(first)).toEqual([PositionType, HealthType]);
     expect(entities.getCompLocation(second)).toEqual({ tableId: 0, row: 0 });
     const memory = ecs.service(EcsMemoryService);
-    expect(memory.allocator.stats().allocatedChunks).toBeGreaterThanOrEqual(3);
+    expect(memory.allocator.stats().allocatedBuffers).toBeGreaterThanOrEqual(3);
     ecs.dispose();
     expect(memory.allocator.stats()).toEqual({
         blockCount: 0,
-        chunkCapacity: 0,
-        allocatedChunks: 0,
-        freeChunks: 0,
+        bufferCapacity: 0,
+        allocatedBuffers: 0,
+        freeBuffers: 0,
         reservedBytes: 0,
         allocatedBytes: 0,
     });

@@ -1,7 +1,11 @@
 import {
     CommandService,
+    defSystem,
     RandomService,
+    Startup,
     TimeState,
+    Update,
+    Write,
     type Mut,
     type QueryOf,
 } from "zero-ecs-lib";
@@ -35,7 +39,40 @@ type GameEntities = QueryOf<typeof GameEntityQuery>;
 interface PaddleSnapshot { x: number; y: number; halfWidth: number; halfHeight: number }
 const PADDLE_SNAPSHOT: PaddleSnapshot = { x: 0, y: 0, halfWidth: 0, halfHeight: 0 };
 
-export function startupGameSystem(
+export const startupGameSystem = defSystem(Startup, startupGame, [
+    SpawnService, RendererService, Write(GameState), BallQuery, PaddleQuery, BrickQuery, PowerUpQuery,
+]);
+export const restartSystem = defSystem(Update.fixed, restart, [
+    InputService, CommandService, SpawnService, Write(GameState), GameEntityQuery,
+]);
+export const paddleMovementSystem = defSystem(Update.fixed, movePaddle, [
+    GameConfigResource, TimeState, InputService, GameState, PaddleQuery,
+]);
+export const moveBallsSystem = defSystem(Update.fixed, moveBalls, [
+    GameConfigResource, TimeState, GameState, CommandService, BallQuery,
+]);
+export const movePowersSystem = defSystem(Update.fixed, movePowers, [
+    GameConfigResource, TimeState, GameState, CommandService, PowerUpQuery,
+]);
+export const collisionSystem = defSystem(Update.fixed, collide, [
+    GameConfigResource, Write(GameState), RandomService, CommandService, SpawnService,
+    BallQuery, PaddleQuery, BrickQuery,
+]);
+export const collectPowerSystem = defSystem(Update.fixed, collectPower, [
+    GameConfigResource, Write(GameState), CommandService, SpawnService,
+    BallQuery, PaddleQuery, PowerUpQuery,
+]);
+export const stressActionsSystem = defSystem(Update.fixed, runStressActions, [
+    GameConfigResource, InputService, Write(GameState), SpawnService, BallQuery,
+]);
+export const lifecycleSystem = defSystem(Update.fixed, updateLifecycle, [
+    GameConfigResource, Write(GameState), SpawnService, BallQuery,
+]);
+export const statisticsSystem = defSystem(Update.fixed, updateStatistics, [
+    Write(GameState), BallQuery, BrickQuery, PowerUpQuery, GameEntityQuery,
+]);
+
+function startupGame(
     spawn: SpawnService,
     renderer: RendererService,
     game: Mut<GameState>,
@@ -49,7 +86,7 @@ export function startupGameSystem(
     spawn.spawnGame();
 }
 
-export function restartSystem(
+function restart(
     input: InputService,
     commands: CommandService,
     spawn: SpawnService,
@@ -76,7 +113,7 @@ export function restartSystem(
     spawn.spawnGame();
 }
 
-export function paddleMovementSystem(
+function movePaddle(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
     input: InputService,
@@ -101,7 +138,7 @@ export function paddleMovementSystem(
     }
 }
 
-export function moveBallsSystem(
+function moveBalls(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
     game: Readonly<GameState>,
@@ -144,7 +181,7 @@ export function moveBallsSystem(
     }
 }
 
-export function movePowersSystem(
+function movePowers(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
     game: Readonly<GameState>,
@@ -168,7 +205,7 @@ export function movePowersSystem(
     }
 }
 
-export function collisionSystem(
+function collide(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
     random: RandomService,
@@ -271,7 +308,7 @@ export function collisionSystem(
     }
 }
 
-export function collectPowerSystem(
+function collectPower(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
     commands: CommandService,
@@ -302,7 +339,7 @@ export function collectPowerSystem(
     }
 }
 
-export function stressActionsSystem(
+function runStressActions(
     config: Readonly<GameConfigResource>,
     input: InputService,
     game: Mut<GameState>,
@@ -319,7 +356,7 @@ export function stressActionsSystem(
     }
 }
 
-export function lifecycleSystem(
+function updateLifecycle(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
     spawn: SpawnService,
@@ -336,7 +373,7 @@ export function lifecycleSystem(
     }
 }
 
-export function statisticsSystem(
+function updateStatistics(
     game: Mut<GameState>,
     balls: Balls,
     bricks: Bricks,

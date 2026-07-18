@@ -6,6 +6,8 @@ Typed-array ECS runtime for TypeScript.
 
 - [API reference](./docs/api.md)
 - [Architecture and diagrams](./docs/architecture.md)
+- [Game / World architecture proposal](./docs/game-world-architecture.md)
+- [State, Service, System, and Resource guidelines](./docs/development-guidelines.md)
 - [Development plan](./docs/development-plan.md)
 - [Performance and allocation model](./docs/performance.md)
 
@@ -16,11 +18,17 @@ Typed-array ECS runtime for TypeScript.
 ## Usage
 
 ```ts
-import { EcsBuilder, Update, Write } from "zero-ecs-lib";
+import { defSystem, EcsBuilder, Update, Write, type Mut } from "zero-ecs-lib";
+
+const gameSystem = defSystem(Update.fixed, updateGame, [Write(GameState)]);
+
+function updateGame(game: Mut<GameState>): void {
+    // Update the game state.
+}
 
 const builder = new EcsBuilder();
 
-builder.addSystem(Update.fixed, gameSystem, [Write(GameState)]);
+builder.addSystem(gameSystem);
 
 const ecs = builder.build();
 ecs.init();

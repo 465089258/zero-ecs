@@ -1,4 +1,5 @@
-import { Service } from "../../context/types";
+import { Service, State } from "../../context";
+import type { Mut } from "../../schedule/system";
 import {
     DataSet,
     dataRowAt,
@@ -34,16 +35,21 @@ const NONE = 0xFFFFFFFF;
 
 const enum EntityColumn { Version, Archetype, Table, Row }
 
+/** Entity 句柄、位置与槽位分配状态。 */
+export class EntityState extends State {
+    readonly slots: DataSet | undefined;
+    readonly slotRows: DataRow[] = [];
+    readonly freeIndices: number[] = [];
+    readonly counter: number = 0;
+}
+
 /** 管理实体句柄、版本与 Archetype 存储位置。 */
 export class EntityService extends Service {
-    @Service.inject(ArchetypeService) private _archetypes!: ArchetypeService;
-    @Service.inject(EcsMemoryService) private _memory!: EcsMemoryService;
-    @Service.inject(ComponentService) private _components!: ComponentService;
+    @Service.inject(ArchetypeService) private readonly _archetypes!: ArchetypeService;
+    @Service.inject(EcsMemoryService) private readonly _memory!: EcsMemoryService;
+    @Service.inject(ComponentService) private readonly _components!: ComponentService;
 
-    private _slots: DataSet | undefined;
-    private readonly _slotRows: DataRow[] = [];
-    private readonly _freeIndices: number[] = [];
-    private _counter = 0;
+    @State.inject(EntityState) private readonly _state!: Mut<EntityState>;
 
     /** @internal 用于高级诊断的原型只读视图。 */
     get archetypes(): readonly Archetype[] { return this._archetypes.archetypes; }
@@ -54,13 +60,13 @@ export class EntityService extends Service {
 
     /** 初始化实体槽位存储；每个服务实例只能调用一次。 */
     init(): void {
-        if (this._slots) throw new Error("EntityService has already been initialized");
-        this._slots = new DataSet(this._memory.allocator, [Types.U32, Types.U32, Types.U32, Types.U32]);
+        if (this._state.slots) throw new Error("EntityService has already been initialized");
+        this._state.slots = new DataSet(this._memory.allocator, [Types.U32, Types.U32, Types.U32, Types.U32]);
         const sentinel = this.slots.insert();
-        this._slotRows.push(sentinel);
+        this._state.slotRows.push(sentinel);
         this.writeSlot(0, EntityColumn.Version, 0);
         this.clearLocation(0);
-        this._counter = 1;
+        this._state.counter = 1;
     }
 
     /** 立即分配并返回一个有效实体句柄，但暂不为其添加组件。 */
@@ -158,7 +164,7 @@ export class EntityService extends Service {
     valid(entity: Entity): boolean {
         const index = entity >>> ENTITY_VERSION_BITS;
         const version = entity & ENTITY_VERSION_MASK;
-        return version !== 0 && index > 0 && index < this._counter && this.readSlot(index, EntityColumn.Version) === version;
+        return version !== 0 && index > 0 && index < this._state.counter && this.readSlot(index, EntityColumn.Version) === version;
     }
 
     /** @internal 获取实体句柄中的原始索引。 */
@@ -218,12 +224,12 @@ export class EntityService extends Service {
 
     private allocEntity(): Entity {
         let index: number;
-        if (this._freeIndices.length > 0) index = this._freeIndices.pop()!;
+        if (this._state.freeIndices.length > 0) index = this._state.freeIndices.pop()!;
         else {
-            if (this._counter > ENTITY_INDEX_MASK) throw new RangeError(`Entity capacity exceeded: ${ENTITY_INDEX_MASK}`);
-            index = this._counter++;
+            if (this._state.counter > ENTITY_INDEX_MASK) throw new RangeError(`Entity capacity exceeded: ${ENTITY_INDEX_MASK}`);
+            index = this._state.counter++;
             const row = this.slots.insert();
-            this._slotRows.push(row);
+            this._state.slotRows.push(row);
             this.writeSlot(index, EntityColumn.Version, 1);
         }
         let version = this.readSlot(index, EntityColumn.Version) & ENTITY_VERSION_MASK;
@@ -240,7 +246,7 @@ export class EntityService extends Service {
             return;
         }
         this.writeSlot(index, EntityColumn.Version, version + 1);
-        this._freeIndices.push(index);
+        this._state.freeIndices.push(index);
     }
 
     private setLocation(entity: Entity, archId: number, location: ArchetypeRow): void {
@@ -264,18 +270,18 @@ export class EntityService extends Service {
 
     /** 释放实体槽位存储并清空所有句柄状态。 */
     dispose(): void {
-        this._slots?.dispose();
-        this._slots = undefined;
-        this._slotRows.length = 0;
-        this._freeIndices.length = 0;
-        this._counter = 0;
+        this._state.slots?.dispose();
+        this._state.slots = undefined;
+        this._state.slotRows.length = 0;
+        this._state.freeIndices.length = 0;
+        this._state.counter = 0;
     }
 
     private get slots(): DataSet {
-        if (!this._slots) throw new Error("EntityService has not been initialized");
-        return this._slots;
+        if (!this._state.slots) throw new Error("EntityService has not been initialized");
+        return this._state.slots;
     }
 
-    private readSlot(index: number, column: EntityColumn): number { return this.slots.get(this._slotRows[index], column); }
-    private writeSlot(index: number, column: EntityColumn, value: number): void { this.slots.set(this._slotRows[index], column, value); }
+    private readSlot(index: number, column: EntityColumn): number { return this.slots.get(this._state.slotRows[index], column); }
+    private writeSlot(index: number, column: EntityColumn, value: number): void { this.slots.set(this._state.slotRows[index], column, value); }
 }

@@ -2,14 +2,10 @@ import {
     createWorldInjectDecorator,
     type InjectionContext,
 } from "./injection";
-import {
-    type Resource,
-    type ResourceType,
-    type Service,
-    type ServiceType,
-    type State,
-    type StateType,
-} from "./types";
+import type { Resource, ResourceType } from "./resource";
+import type { Service, ServiceType } from "./service";
+import type { State, StateType } from "./state";
+
 
 /**
  * 当前 ECS 实例的底层访问入口。
@@ -30,21 +26,21 @@ export class World {
 
     /** 获取只读 Resource 实例。 */
     resource<T extends Resource>(type: ResourceType<T>): Readonly<T> {
-        return this.context.resources.get(type);
+        return this.context.resources.get<T>(type);
     }
 
     /** 获取只读 State 实例。 */
     state<T extends State>(type: StateType<T>): Readonly<T> {
-        return this.context.states.get(type);
+        return this.context.states.get<T>(type);
     }
 
     /** 获取 Service 实例。 */
     service<T extends Service>(type: ServiceType<T>): T {
-        return this.context.services.get(type);
+        return this.context.services.get<T>(type);
     }
 
     /** World 初始化钩子，子类可覆盖。 */
-    init(): void {}
+    init(): void { }
     /** 解除 World 与当前 ECS 上下文的绑定。 */
     dispose(): void { this._context = undefined; }
 

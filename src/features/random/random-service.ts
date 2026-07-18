@@ -1,26 +1,29 @@
-import { Service } from "../../context/types";
+import { Service } from "../../context/service";
+import { State } from "../../context/state";
+import type { Mut } from "../../schedule/system";
+
+/** 确定性随机数生成器的 World-local 状态。 */
+export class RandomState extends State {
+    readonly a: number = 0;
+    readonly b: number = 0;
+    readonly c: number = 0;
+    readonly d: number = 0;
+}
 
 /** 基于 sfc32、可通过种子复现结果的伪随机服务。 */
 export class RandomService extends Service {
-    // sfc32 所需的四个 32 位状态
-    private _a!: number;
-    private _b!: number;
-    private _c!: number;
-    private _d!: number;
+    @State.inject(RandomState) private readonly _state!: Mut<RandomState>;
 
-    constructor() {
-        super();
-        this.seed(0);
-    }
+    init(): void { this.seed(0); }
 
     /** 使用数字种子重置随机序列。 */
     seed(seed: number): void {
         if (!Number.isFinite(seed)) throw new RangeError(`Random seed must be finite, received ${seed}`);
         let s = seed | 0;
-        s = (s + 0x9e3779b9) | 0; this._a = splitmix32(s);
-        s = (s + 0x9e3779b9) | 0; this._b = splitmix32(s);
-        s = (s + 0x9e3779b9) | 0; this._c = splitmix32(s);
-        s = (s + 0x9e3779b9) | 0; this._d = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._state.a = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._state.b = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._state.c = splitmix32(s);
+        s = (s + 0x9e3779b9) | 0; this._state.d = splitmix32(s);
     }
 
     /**
@@ -28,12 +31,13 @@ export class RandomService extends Service {
      * 返回 [0, 1) 的浮点数
      */
     private next(): number {
-        let t = (this._a + this._b | 0) + this._d | 0;
-        this._d = this._d + 1 | 0;
-        this._a = this._b ^ (this._b >>> 9);
-        this._b = this._c + (this._c << 3) | 0;
-        this._c = (this._c << 21) | (this._c >>> 11);
-        this._c = this._c + t | 0;
+        const state = this._state;
+        let t = (state.a + state.b | 0) + state.d | 0;
+        state.d = state.d + 1 | 0;
+        state.a = state.b ^ (state.b >>> 9);
+        state.b = state.c + (state.c << 3) | 0;
+        state.c = (state.c << 21) | (state.c >>> 11);
+        state.c = state.c + t | 0;
         // 乘法代替除法，返回 32 位精度的 [0,1) 浮点数
         return (t >>> 0) * 2.3283064365386963e-10;
     }

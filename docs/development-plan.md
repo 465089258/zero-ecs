@@ -35,11 +35,11 @@ first → fixed → last → Post
 Post 内部顺序为：
 
 ```text
-CommandService.flush
+flushCommandSystem
         ↓
-EntityMigrationService.flush
+flushEntityMigrationSystem
         ↓
-EventService.flush
+flushEventsSystem
 ```
 
 ### 2.2 严格类型命名
@@ -150,17 +150,17 @@ CommandService.entity()/spawn()
         ↓
 EntityCommand.submit()
         ↓
-Post: CommandService.flush()
+Post: flushCommandSystem
         ├─ 普通 Command 直接执行
         ├─ 纯 Set 且无 pending migration：直接写组件
         ├─ Add/Remove 或已有 pending migration：记录 MigrationPlan
         └─ Despawn：取消 MigrationPlan 后销毁 Entity
         ↓
-Post: EntityMigrationService.flush()
+Post: flushEntityMigrationSystem
         ↓
 每个 Entity 最多一次迁移、重置和字段写入
         ↓
-Post: EventService.flush()
+Post: flushEventsSystem
 ```
 
 ## 5. 目标代码组织
@@ -566,7 +566,7 @@ src/
 - EntityCommand 的 Add 指令记录本地是否创建新实例；幂等 Add 不再遮蔽此前 Set，read-your-writes 与最终提交一致。
 - EventArgs 增加 Mutable、Posted、Recycled 生命周期，重复 post、post 后修改和回收后修改均报错；Event flush 使用 finally 保证回池。
 - RandomService 使用确定默认种子，修复权重选择边界偏差，并验证 seed、范围、空数组和权重输入。
-- EntityService 与 ArchetypeService dispose 所有 DataSet，EcsMemoryService 最终 clear allocator；Ecs.dispose 后 Block/Chunk 统计归零。
+- EntityService 与 ArchetypeService dispose 所有 DataSet，EcsMemoryService 最终 clear allocator；Ecs.dispose 后 Block/Buffer 统计归零。
 - 验证：10 个测试文件、48 个测试通过；`tsc --strict`、`rslib build --no-bundle` 与 Node `--jitless` 冒烟通过。
 
 验收：
@@ -575,7 +575,7 @@ src/
 - EntityMutator 的同步读取与最终迁移结果一致。
 - EventArgs 不会因重复 post 被重复放入对象池。
 - `[1, 1]` 权重池能够选择两个分支，未 seed 的 RandomService 也处于有效状态。
-- Ecs.dispose 后 allocator 的 allocatedChunks 和 blockCount 都为零。
+- Ecs.dispose 后 allocator 的 allocatedBuffers 和 blockCount 都为零。
 
 ### 阶段 12：生命周期与异常安全
 

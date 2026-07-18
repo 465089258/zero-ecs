@@ -1,22 +1,42 @@
-import { byteSizeOf, createTypedArray, type TypedArray, type TypedArrayFor, Types } from "../typed-array";
-import { CHUNK_SIZE, type IChunkAllocator, type MemoryChunk } from "../memory";
+import { byteSizeOf, type TypedArray, type TypedArrayFor, Types } from "../typed-array";
+import { BUFFER_SIZE, type Buffer, type IAllocator } from "../memory";
 
-/** 单列在 Table Chunk 中的内存布局。 */
-export interface ColumnLayout { readonly index: number; readonly type: Types; readonly byteOffset: number; readonly byteLength: number; readonly bytesPerElement: number }
-/** 一个固定大小 Table 的容量与列布局。 */
-export interface TableLayout { readonly capacity: number; readonly columns: readonly ColumnLayout[]; readonly usedBytes: number; readonly unusedBytes: number }
+/** 单列在 Table Buffer 中的内存布局。 */
+export interface ColumnLayout {
+    readonly index: number;
+    readonly type: Types;
+    readonly byteOffset: number;
+    readonly byteLength: number;
+    readonly bytesPerElement: number;
+}
+
+/** 一个固定大小 Table Buffer 的容量与列布局。 */
+export interface TableLayout {
+    readonly capacity: number;
+    readonly columns: readonly ColumnLayout[];
+    readonly usedBytes: number;
+    readonly unusedBytes: number;
+}
+
 declare const DATA_ROW_BRAND: unique symbol;
+
 /** 无对象分配的紧凑行句柄；低 14 位表示 16 KiB Table 内的行索引。 */
 export type DataRow = number & { readonly [DATA_ROW_BRAND]: true };
+
 /** DataSet 删除结果；`Moved` 表示末行已移动到被删除位置。 */
-export const RemoveResult = Object.freeze({ Invalid: 0, Removed: 1, Moved: 2 } as const);
-/** DataSet 删除结果值。 */
-export type RemoveResult = typeof RemoveResult[keyof typeof RemoveResult];
+export enum RemoveResult {
+    Invalid,
+    Removed,
+    Moved
+};
+
 /** DataSet 的内存保留策略。 */
 export interface DataSetOptions { readonly retainEmptyTables?: number }
+
 type ColumnsFor<T extends readonly Types[]> = { readonly [I in keyof T]: T[I] extends Types ? TypedArrayFor<T[I]> : never };
 
-const DATA_ROW_STRIDE = CHUNK_SIZE;
+const DATA_ROW_STRIDE = BUFFER_SIZE;
+
 // 实体槽位以 U32 保存 Table ID，并保留 0xFFFFFFFF 表示空位置。
 const MAX_TABLE_ID = 0xFFFFFFFE;
 
@@ -24,34 +44,41 @@ const MAX_TABLE_ID = 0xFFFFFFFE;
 export function dataRowAt(tableId: number, row: number): DataRow {
     return (tableId * DATA_ROW_STRIDE + row) as DataRow;
 }
+
 /** 从 DataRow 解码 Table ID。 */
-export function dataRowTableId(location: DataRow): number { return Math.floor(location / DATA_ROW_STRIDE); }
+export function dataRowTableId(location: DataRow): number {
+    return Math.floor(location / DATA_ROW_STRIDE);
+}
+
 /** 从 DataRow 解码行索引；零是有效索引。 */
 export function dataRowIndex(location: DataRow): number {
     const tableId = Math.floor(location / DATA_ROW_STRIDE);
     return location - tableId * DATA_ROW_STRIDE;
 }
 
-function alignUp(value: number, alignment: number): number { return Math.ceil(value / alignment) * alignment; }
+function alignUp(value: number, alignment: number): number {
+    return Math.ceil(value / alignment) * alignment;
+}
+
 function calculateUsedBytes(types: readonly Types[], capacity: number): number {
     let offset = 0;
     for (const type of types) { const bytes = byteSizeOf(type); offset = alignUp(offset, bytes) + bytes * capacity; }
     return offset;
 }
 
-/** 计算一组 TypedArray 列在固定 Chunk 中的最大行容量与内存布局。 */
-export function createTableLayout(types: readonly Types[], chunkSize = CHUNK_SIZE): TableLayout {
+/** 计算一组 TypedArray 列在固定 Buffer 中的最大行容量与内存布局。 */
+export function createTableLayout(types: readonly Types[], bufferSize = BUFFER_SIZE): TableLayout {
     if (types.length === 0) throw new Error("DataSet requires at least one column");
-    if (!Number.isInteger(chunkSize) || chunkSize <= 0) throw new RangeError("chunkSize must be a positive integer");
+    if (!Number.isInteger(bufferSize) || bufferSize <= 0) throw new RangeError("bufferSize must be a positive integer");
     let bytesPerRow = 0;
     for (const type of types) bytesPerRow += byteSizeOf(type);
-    let low = 1, high = Math.floor(chunkSize / bytesPerRow), capacity = 0;
+    let low = 1, high = Math.floor(bufferSize / bytesPerRow), capacity = 0;
     while (low <= high) {
         const middle = (low + high) >>> 1;
-        if (calculateUsedBytes(types, middle) <= chunkSize) { capacity = middle; low = middle + 1; }
+        if (calculateUsedBytes(types, middle) <= bufferSize) { capacity = middle; low = middle + 1; }
         else high = middle - 1;
     }
-    if (capacity === 0) throw new RangeError(`DataSet row cannot fit into a ${chunkSize}-byte chunk`);
+    if (capacity === 0) throw new RangeError(`DataSet row cannot fit into a ${bufferSize}-byte Buffer`);
     const columns: ColumnLayout[] = [];
     let offset = 0;
     for (let index = 0; index < types.length; index++) {
@@ -61,10 +88,10 @@ export function createTableLayout(types: readonly Types[], chunkSize = CHUNK_SIZ
         columns.push({ index, type, byteOffset: offset, byteLength, bytesPerElement });
         offset += byteLength;
     }
-    return { capacity, columns, usedBytes: offset, unusedBytes: chunkSize - offset };
+    return { capacity, columns, usedBytes: offset, unusedBytes: bufferSize - offset };
 }
 
-/** 使用一个固定 Chunk 保存多列 TypedArray 的行表。 */
+/** 使用一个固定 Buffer 保存多列 TypedArray 的行表。 */
 export class Table<T extends readonly Types[] = readonly Types[]> {
     readonly columns: ColumnsFor<T>;
     readonly capacity: number;
@@ -75,31 +102,63 @@ export class Table<T extends readonly Types[] = readonly Types[]> {
     get full(): boolean { return this._count === this.capacity; }
     /** Table 是否没有有效行。 */
     get empty(): boolean { return this._count === 0; }
+    /** Table 当前占用的 Buffer 字节数。 */
+    get byteLength(): number { return this.memory.byteLength; }
 
-    /** 使用已分配 Chunk 和预计算布局创建 Table；通常由 DataSet 调用。 */
-    constructor(readonly id: number, readonly memory: MemoryChunk, readonly layout: TableLayout) {
+    /** 使用已分配 Buffer 和预计算布局创建 Table；通常由 DataSet 调用。 */
+    constructor(readonly id: number, private readonly memory: Buffer, readonly layout: TableLayout) {
         this.capacity = layout.capacity;
-        this.columns = layout.columns.map(column => createTypedArray(column.type, memory.buffer, memory.byteOffset + column.byteOffset, layout.capacity)) as ColumnsFor<T>;
+        this.columns = layout.columns.map(column =>
+            memory.alloc(column.type, layout.capacity)
+        ) as ColumnsFor<T>;
+        if (memory.used !== layout.usedBytes) throw new Error("Table layout does not match Buffer allocation");
     }
+
     /** 返回指定列的 TypedArray 视图。 */
-    column<I extends keyof T>(index: I): ColumnsFor<T>[I] { return this.columns[index]; }
+    column<I extends keyof T>(index: I): ColumnsFor<T>[I] {
+        return this.columns[index];
+    }
+
     /** 在末尾分配一行；默认将全部字段清零。 */
-    allocRow(clear = true): number { if (this.full) throw new RangeError("Table is full"); const row = this._count++; if (clear) this.clearRow(row); return row; }
+    allocRow(clear = true): number {
+        if (this.full) throw new RangeError("Table is full");
+        const row = this._count++;
+        if (clear) this.clearRow(row);
+        return row;
+    }
+
     /** 删除末行但不清除其底层数据。 */
-    popRow(): void { if (this.empty) throw new RangeError("Table is empty"); this._count--; }
+    popRow(): void {
+        if (this.empty) throw new RangeError("Table is empty");
+        this._count--;
+    }
+
     /** 将有效行的全部列清零。 */
-    clearRow(row: number): void { this.assertRow(row); const columns = this.columns as readonly TypedArray[]; for (let i = 0; i < columns.length; i++) columns[i][row] = 0; }
+    clearRow(row: number): void {
+        this.assertRow(row);
+        const columns = this.columns as readonly TypedArray[];
+        for (let i = 0; i < columns.length; i++) columns[i][row] = 0;
+    }
+
     /** 将一行复制到布局相同的目标 Table。 */
     copyRowTo(sourceRow: number, target: Table<T>, targetRow: number): void {
         this.assertRow(sourceRow); target.assertRow(targetRow);
         if (target.layout !== this.layout) throw new Error("Cannot copy between incompatible table layouts");
-        const sources = this.columns as readonly TypedArray[], targets = target.columns as readonly TypedArray[];
+        const sources = this.columns as readonly TypedArray[];
+        const targets = target.columns as readonly TypedArray[];
         for (let i = 0; i < sources.length; i++) targets[i][targetRow] = sources[i][sourceRow];
     }
-    private assertRow(row: number): void { if (!Number.isInteger(row) || row < 0 || row >= this._count) throw new RangeError(`Invalid table row: ${row}`); }
+
+    /** @internal 将 Table 占用的 Buffer 归还给 Allocator。 */
+    release(): void { this.memory.release(); }
+
+    private assertRow(row: number): void {
+        if (!Number.isInteger(row) || row < 0 || row >= this._count)
+            throw new RangeError(`Invalid table row: ${row}`);
+    }
 }
 
-/** 以固定 16 KiB Table 组织同构 TypedArray 行数据的存储集合。 */
+/** 以固定 16 KiB Buffer 组织同构 TypedArray 行数据的存储集合。 */
 export class DataSet<T extends readonly Types[] = readonly Types[]> {
     readonly types: T;
     readonly layout: TableLayout;
@@ -116,8 +175,8 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
     /** 当前仍由 DataSet 持有的 Table 只读列表。 */
     get tables(): readonly Table<T>[] { return this._tables; }
 
-    /** 创建列类型固定的 DataSet；每个 Table 占用一个 Chunk。 */
-    constructor(private readonly allocator: IChunkAllocator, types: T, private readonly options: DataSetOptions = {}) {
+    /** 创建列类型固定的 DataSet；每个 Table 占用一个 Buffer。 */
+    constructor(private readonly allocator: IAllocator, types: T, private readonly options: DataSetOptions = {}) {
         this.types = [...types] as unknown as T;
         this.layout = createTableLayout(this.types);
     }
@@ -145,7 +204,9 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
         const lastRow = last.count - 1;
         const same = target === last && row === lastRow;
         if (!same) last.copyRowTo(lastRow, target, row);
-        last.popRow(); this._count--; this.releaseExcessEmptyTables();
+        last.popRow();
+        this._count--;
+        this.releaseExcessEmptyTables();
         return same ? RemoveResult.Removed : RemoveResult.Moved;
     }
     /** 判断 DataRow 当前是否指向有效行。 */
@@ -182,24 +243,30 @@ export class DataSet<T extends readonly Types[] = readonly Types[]> {
     }
     /** 删除全部行，并按配置保留空 Table。 */
     clear(): void { this.assertUsable(); for (const table of this._tables) while (!table.empty) table.popRow(); this._count = 0; this.releaseExcessEmptyTables(); }
-    /** 释放全部 Table Chunk；可重复调用。 */
+    /** 释放全部 Table Buffer；可重复调用。 */
     dispose(): void {
         if (this._disposed) return;
-        for (const table of this._tables) this.allocator.free(table.memory.handle);
+        for (const table of this._tables) table.release();
         if (this._tables.length > 0) this._version++;
         this._tables.length = 0; this._tableById.clear(); this._count = 0; this._disposed = true;
     }
     private createTable(): Table<T> {
         if (this._nextTableId > MAX_TABLE_ID) throw new RangeError(`DataSet Table id capacity exceeded: ${MAX_TABLE_ID}`);
-        const table = new Table<T>(this._nextTableId++, this.allocator.alloc(), this.layout);
-        this._tables.push(table); this._tableById.set(table.id, table); this._version++; return table;
+        const memory = this.allocator.alloc();
+        try {
+            const table = new Table<T>(this._nextTableId++, memory, this.layout);
+            this._tables.push(table); this._tableById.set(table.id, table); this._version++; return table;
+        } catch (error) {
+            memory.release();
+            throw error;
+        }
     }
     private releaseExcessEmptyTables(): void {
         const retain = Math.max(0, this.options.retainEmptyTables ?? 1);
         let emptyCount = 0; for (const table of this._tables) if (table.empty) emptyCount++;
         while (emptyCount > retain) {
             const last = this._tables[this._tables.length - 1]; if (!last.empty) break;
-            this._tables.pop(); this._tableById.delete(last.id); this.allocator.free(last.memory.handle); this._version++; emptyCount--;
+            this._tables.pop(); this._tableById.delete(last.id); last.release(); this._version++; emptyCount--;
         }
     }
     private lastOccupiedTable(): Table<T> | undefined {

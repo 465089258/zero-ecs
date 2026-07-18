@@ -1,5 +1,6 @@
 import {
     ComponentService,
+    defSystem,
     Ecs,
     EcsBuilder,
     Resource,
@@ -11,6 +12,8 @@ import {
     type Component,
     type ComponentDefinition,
     type Mut,
+    type ServiceActivateContext,
+    type ServiceInitContext,
 } from "../../dist/index.js";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "../../dist/index.js";
@@ -47,6 +50,19 @@ class ConfigResource extends Resource { value = 1; }
 class CounterState extends State { count = 0; }
 class ToolService extends Service { increment(value: number): number { return value + 1; } }
 
+class LifecycleService extends Service {
+    init(context: ServiceInitContext): void {
+        context.resource(ConfigResource).value;
+        context.state(CounterState).count;
+        // @ts-expect-error Service lookup is unavailable until every Service has completed init.
+        context.service(ToolService);
+    }
+
+    activate(context: ServiceActivateContext): void {
+        context.service(ToolService).increment(1);
+    }
+}
+
 function readSystem(
     config: Readonly<ConfigResource>,
     state: Readonly<CounterState>,
@@ -63,12 +79,16 @@ function writeSystem(state: Mut<CounterState>): void {
     state.count++;
 }
 
+function plainSystem(): void {}
+
 const builder = new EcsBuilder()
     .addResource(ConfigResource, new ConfigResource())
     .addState(CounterState)
     .addService(ToolService);
-builder.addSystem(Update.fixed, readSystem, [ConfigResource, CounterState, ToolService]);
-builder.addSystem(Update.fixed, writeSystem, [Write(CounterState)]);
+builder.addSystem(defSystem(Update.fixed, readSystem, [ConfigResource, CounterState, ToolService]));
+builder.addSystem(defSystem(Update.fixed, writeSystem, [Write(CounterState)]));
+// @ts-expect-error Only functions returned by defSystem can be registered.
+builder.addSystem(plainSystem);
 
 const ecs = builder.build();
 ecs.resource(ConfigResource).value;
@@ -91,3 +111,4 @@ void Scheduler;
 void defineComponentMeta;
 void getComponentMeta;
 void IncompletePositionType;
+void LifecycleService;

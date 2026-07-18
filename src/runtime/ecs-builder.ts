@@ -18,13 +18,13 @@ import { CoreEcsModule } from "../ecs/core-module";
 import {
     isMutParam,
     Scheduler,
+    systemMetadata,
+    type DefinedSystem,
     type SystemDependencyTarget,
-    type SystemFunction,
     type SystemHandle,
     type SystemOptions,
     type SystemParam,
     SystemScheduleBuilder,
-    type UpdateStage,
 } from "../schedule";
 import { Ecs } from "./ecs";
 import { ECS_CONSTRUCTION_TOKEN } from "./construction-token";
@@ -84,22 +84,19 @@ export class EcsBuilder {
     }
 
     /**
-     * 注册系统函数及其注入参数。
-     * @param stage 执行阶段。
-     * @param fn 系统函数。
-     * @param params 与函数参数顺序一致的类型描述元组。
+     * 注册由 `defSystem()` 定义的系统函数。
+     * @param system 已绑定 Stage 与参数元数据的系统函数。
      * @param options 可选的前后依赖规则。
      * @returns 注册后的系统句柄。
      */
     addSystem<const Params extends readonly SystemParam[]>(
-        stage: UpdateStage,
-        fn: SystemFunction<Params>,
-        params: Params,
+        system: DefinedSystem<Params>,
         options: SystemOptions = {},
     ): SystemHandle {
         this.assertMutable();
+        const { stage, params } = systemMetadata(system);
         this.registerParams(params);
-        return this._schedule.addSystem(stage, fn, params, options);
+        return this._schedule.addSystem(stage, system, params, options);
     }
 
     /** 声明 `system` 在 `target` 之前执行。 */
@@ -151,7 +148,7 @@ export class EcsBuilder {
         const resources = new ResourceContainer();
         const states = new StateContainer();
         const services = new ServiceContainer();
-        for (const [type, instance] of this._resources) resources.add(type, instance);
+        for (const [type, instance] of this._resources) resources.set(type, instance);
         for (const type of this._states) states.add(type);
         for (const type of this._services) services.add(type);
         resources.lock();

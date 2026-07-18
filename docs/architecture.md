@@ -2,6 +2,8 @@
 
 本文档描述当前代码的组织、所有权、生命周期和主要数据流，用于后续架构评审。图中实线表示当前已经存在的关系。
 
+Game、纯实体 World、Scheduler 与参数提供者的目标调整方案见 [Game / World 框架调整方案](./game-world-architecture.md)。本文其余内容仍只描述当前已经实现的架构。
+
 ## 1. 总体分层
 
 ```mermaid
@@ -21,7 +23,7 @@ flowchart TB
 
 | 目录 | 当前职责 |
 | --- | --- |
-| `storage/` | TypedArray、2 MiB Block、16 KiB Chunk、DataSet/Table |
+| `storage/` | TypedArray、2 MiB Block、16 KiB Buffer、DataSet/Table |
 | `context/` | Resource/State/Service、属性注入、容器、World |
 | `ecs/` | Component、Archetype、Entity、Query、Command、ECS 内存服务 |
 | `schedule/` | Stage、System 参数、依赖关系、Scheduler |
@@ -33,6 +35,8 @@ flowchart TB
 ## 2. 运行时所有权
 
 World、三个容器与 Scheduler 是 Ecs 内部拥有的同层对象，World 不拥有 Scheduler。稳定 API 不直接暴露容器或 Scheduler，只提供按类型访问与生命周期操作。
+
+Resource、State、Service 与 System 的代码规范见[状态与行为开发规范](./development-guidelines.md)。底层统一采用“Resource 保存构建期只读依赖或能力、State 保存实例可变模拟数据、Service 提供主动操作、查询和运行时设施、System 承担 Stage 驱动行为”的边界。
 
 ```mermaid
 flowchart TB
@@ -78,7 +82,7 @@ flowchart LR
     Core --> Queries["QueryService"]
 
     Components --> RegistryState
-    Memory --> Allocator["ChunkAllocator"]
+    Memory --> Allocator["Allocator"]
     ArchetypeService --> Memory
     EntityService --> Memory
     EntityService --> ArchetypeService
@@ -90,7 +94,7 @@ flowchart LR
 核心职责：
 
 - ComponentService：World 内组件类的唯一注册入口；稳定方法返回 ComponentDefinition，内部存储使用 ComponentMeta/ID。
-- EcsMemoryService：拥有当前 ECS 的 ChunkAllocator。
+- EcsMemoryService：拥有当前 ECS 的 Allocator。
 - ArchetypeService：按组件 Mask 查找和创建 Archetype。
 - EntityService：管理带版本 Entity slot 和 Entity → ArchetypeRow 位置。
 - QueryService：把静态 QueryType 实例化为绑定当前 World 的 Query。
@@ -99,13 +103,13 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    Allocator["ChunkAllocator"] --> Block["2 MiB Block"]
-    Block --> Chunks["128 × 16 KiB Chunk"]
-    Chunks --> TableA["Table 0"]
-    Chunks --> TableB["Table 1"]
-    Chunks --> TableN["Table N"]
+    Allocator["Allocator"] --> Block["2 MiB Block"]
+    Block --> Buffers["128 × 16 KiB Buffer"]
+    Buffers --> TableA["Table 0"]
+    Buffers --> TableB["Table 1"]
+    Buffers --> TableN["Table N"]
 
-    subgraph TableLayout["每个 Table / Chunk 的 SoA 布局"]
+    subgraph TableLayout["每个 Table / Buffer 的 SoA 布局"]
         EntityColumn["Entity: Uint32Array"]
         PositionX["Position.x: Float32Array"]
         PositionY["Position.y: Float32Array"]
@@ -123,8 +127,8 @@ flowchart TB
 
 1. Allocator 内部扩容单位固定为 2 MiB。
 2. Allocator 对外分配单位固定为 16 KiB。
-3. 一个 Table 精确占用一个 Chunk。
-4. Table 所有列共享同一个 ArrayBuffer，通过 byteOffset 分区。
+3. 一个 Table 精确占用一个 Buffer。
+4. Table 只通过 Buffer 分配 TypedArray 列，不接触底层 Block 和字节偏移。
 5. DataSet 使用 dense row 和尾行 swap-remove；保留的空尾表不会参与搬移源选择。
 6. Archetype 的第 0 列固定保存 Entity，后续列按 ComponentMeta.layout 展开。
 
@@ -187,21 +191,21 @@ flowchart LR
     Manager --> Writer["池化 EntityCommand"]
     Writer --> Ops["add / set / remove / despawn"]
     Ops --> Submit["submit → 统一 Command 队列"]
-    Submit --> Flush["CommandService.flush<br/>Internal Post"]
+    Submit --> Flush["flushCommandSystem<br/>Internal Post"]
     Flush --> Plan["EntityMigrationService.record<br/>合并 MigrationPlan"]
     Plan --> Migrate["Migration Post<br/>EntityService.migrate"]
     Migrate --> Target["最终 Archetype / DataSet"]
 ```
 
-EntityCommand 与普通 Command 使用同一队列和对象池。`spawn()` 立即预留 Entity ID；同一 Post 周期内每个 Entity 只有一个 MigrationPlan，并按“迁移、清零、最终字段写入”提交。
+EntityCommand 与普通 Command 使用同一 CommandState 队列，并由模块内部 Service 统一池化。`spawn()` 立即预留 Entity ID；同一 Post 周期内每个 Entity 只有一个 MigrationPlan，并按“迁移、清零、最终字段写入”提交。
 
 当前 `CommandModule` 的顺序：
 
 ```mermaid
 flowchart LR
-    UserLast["Update.last 用户系统"] --> GenericFlush["Post: CommandService.flush"]
-    GenericFlush --> MigrationFlush["Post: EntityMigrationService.flush"]
-    MigrationFlush --> EventFlush["Post: EventService.flush"]
+    UserLast["Update.last 用户系统"] --> GenericFlush["Post: flushCommandSystem"]
+    GenericFlush --> MigrationFlush["Post: flushEntityMigrationSystem"]
+    MigrationFlush --> EventFlush["Post: flushEventsSystem"]
 ```
 
 Post 使用不从公共入口导出的内部阶段分区，顺序固定为 Command、Migration、Event；普通业务系统只能注册 `first/fixed/last`。
@@ -219,7 +223,7 @@ flowchart TB
     RuntimeSystem --> Run["Scheduler.run(stage)"]
 ```
 
-当前 Scheduler 是串行执行器。SystemAccess 已记录 Resource/State 访问，但尚未自动生成冲突依赖，也没有并行批次。
+当前 Scheduler 是串行执行器。SystemAccess 记录 Resource/State 的调度访问元数据，但不提供运行时权限隔离；它尚未自动生成冲突依赖，也没有并行批次。普通 State 参数仅映射为浅层 `Readonly<T>`，嵌套容器仍可被调用方修改。
 
 系统参数解析发生在 `Scheduler.init()`：
 
@@ -247,10 +251,12 @@ sequenceDiagram
     App->>Ecs: init()
     Ecs->>World: init()
     Ecs->>States: init()（依赖排序）
-    Ecs->>Services: init()（依赖排序）
+    Ecs->>Services: 全部 init(ServiceInitContext)
+    Ecs->>Services: 全部 activate(ServiceActivateContext)
     Ecs->>Scheduler: init(context) / 编译系统
     App->>Ecs: start()
     Ecs->>Scheduler: run(Startup)
+    Ecs->>Services: start()
     loop 每帧 update()
         Ecs->>Scheduler: run(Update.first)
         Ecs->>Scheduler: run(Update.fixed)
@@ -258,6 +264,7 @@ sequenceDiagram
         Ecs->>Scheduler: run(Internal Post)
     end
     App->>Ecs: stop()
+    Ecs->>Services: stop()（逆序）
     Ecs->>Scheduler: run(Shutdown)
     App->>Ecs: dispose()
     Ecs->>Scheduler: dispose()
@@ -266,7 +273,9 @@ sequenceDiagram
     Ecs->>World: dispose()
 ```
 
-Core Service 按依赖逆序释放：EntityService 先释放 slot DataSet，ArchetypeService 再释放全部 Archetype DataSet，最后 EcsMemoryService 校验并清空 ChunkAllocator。正常 dispose 后不保留已分配 Chunk 或 2 MiB Block。
+Core Service 按依赖逆序释放：EntityService 先释放 slot DataSet，ArchetypeService 再释放全部 Archetype DataSet，最后 EcsMemoryService 校验并清空 Allocator。正常 dispose 后不保留已分配 Buffer 或 2 MiB Block。
+
+Service 生命周期使用三道屏障：build 后全部实例已经注册并注入；`init` 只建立自身可用状态；全部 init 完成后，`activate` 才能通过一次性 `ServiceActivateContext` 查询其他已初始化 Service。查询会形成释放依赖，全部 activate 完成后重新计算生命周期顺序。Startup System 完成后才调用 `Service.start` 开放 DOM、Worker 或网络等外部事件源。
 
 一次 `ecs.update()` 有意表示一个固定模拟 Tick。TimeModule 通过 FixedTimeResource 推进 TimeState；真实时间累积、多次追帧和表现插值由上层引擎负责。
 
@@ -287,13 +296,15 @@ flowchart TB
     Time --> TimeState["TimeState"]
     Timer --> FixedTime
     Timer --> TimeState
-    Timer --> TimerService["TimerService"]
+    Timer --> TimerService["TimerService / TimerState"]
     Commands --> CommandsService["CommandService"]
     Event --> EventsService["EventService"]
     Random --> RandomService["RandomService"]
 ```
 
 Module 在 build 阶段注册类型和系统，并作为运行时实例由 Ecs 持有。
+
+Module 同时是开放封闭边界。内部 State、具体实现 Service 和内部 System 可以由 Module 安装但不进入稳定导出；外部确需交互时只公开最小能力契约或稳定 token，不公开可替换实现细节。
 
 ### 10.1 Module 生命周期
 
@@ -317,12 +328,14 @@ sequenceDiagram
     participant Core as World / State / Service / Scheduler
     participant Modules as Module hooks
 
-    Ecs->>Core: init()
+    Ecs->>Core: State.init / Service.init / Service.activate
     Ecs->>Modules: init()（注册顺序）
     Ecs->>Core: run(Startup)
+    Ecs->>Core: Service.start()
     Ecs->>Modules: start()（注册顺序）
     Note over Ecs,Modules: Running
     Ecs->>Modules: stop()（逆注册顺序）
+    Ecs->>Core: Service.stop()（逆序）
     Ecs->>Core: run(Shutdown)
     Ecs->>Modules: dispose()（逆注册顺序）
     Ecs->>Core: dispose()
@@ -331,7 +344,7 @@ sequenceDiagram
 约束建议：
 
 - 每帧行为继续使用 System，不给 Module 增加 update。
-- ECS 内部初始化优先使用 State/Service.init 和 Startup System。
+- ECS 内部自身初始化使用 State/Service.init，跨 Service 连接使用 Service.activate，外部事件源使用 Service.start/stop，模拟启动逻辑使用 Startup System。
 - ECS 内部清理优先使用 Shutdown System 与 State/Service.dispose。
 - Module hook 只处理 Module 自己持有的外部句柄或跨服务协调。
 - hook 保持同步；若未来需要异步生命周期，应单独设计异步 Ecs API。
@@ -360,7 +373,7 @@ CommandService flush 已从 `Update.last` 移入内部 Post。业务系统无法
 - State 的 read/write 已记录但未用于冲突边。
 - Query 没有组件读写声明。
 - World 是不透明访问，但当前不会阻止任何排序或并行。
-- 普通 Resource/State 系统参数已经映射为浅层 `Readonly<T>`；深层 Readonly 与 Query 组件权限仍延期。
+- 普通 Resource/State 系统参数已经映射为浅层 `Readonly<T>`；这只是类型提示和调度元数据，不是安全隔离。深层 Readonly 与 Query 组件权限仍延期。
 
 ### 11.5 GC 与分配边界
 

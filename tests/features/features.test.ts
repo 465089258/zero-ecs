@@ -179,7 +179,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("initializes RandomService and selects every positive weighted branch", () => {
-        const random = new RandomService();
+        const random = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
         expect(random.float()).toBeGreaterThan(0);
 
         random.seed(123);

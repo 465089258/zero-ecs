@@ -1,4 +1,4 @@
-import { State, Service } from "../../context/types";
+import { State, Service } from "../../context";
 import { Types } from "../../storage/typed-array";
 import {
     type ComponentId,

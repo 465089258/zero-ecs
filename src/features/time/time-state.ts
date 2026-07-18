@@ -1,4 +1,4 @@
-import { State } from "../../context/types";
+import { State } from "../../context";
 
 /** 每次 `Ecs.update()` 精确推进一次的确定性模拟时间。 */
 export class TimeState extends State {
