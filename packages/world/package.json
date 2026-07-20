@@ -1,0 +1,19 @@
+{
+  "name": "@zero-ecs/world",
+  "version": "0.1.0",
+  "description": "Pure data-oriented ECS World kernel.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./advanced": { "types": "./dist/advanced.d.ts", "import": "./dist/advanced.js" },
+    "./game-bridge": { "types": "./dist/game-bridge.d.ts", "import": "./dist/game-bridge.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "rslib --config rslib.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

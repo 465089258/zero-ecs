@@ -1,5 +1,6 @@
-import { QueryType, With } from "zero-ecs-lib";
+import { QueryType, With } from "@zero-ecs/game";
 import { PositionType } from "../common/components";
-import { ShooterType } from "./components";
+import { ShooterType, ShotRequestType } from "./components";
 
 export const ShooterQuery = QueryType.from(With(PositionType, ShooterType));
+export const ShotRequestQuery = QueryType.from(With(ShotRequestType));

@@ -1,12 +1,12 @@
 import {
     CommandModule,
-    EcsBuilder,
+    GameBuilder,
     ErrorHandlerService,
     FixedTimeResource,
     RandomModule,
     RandomService,
     TimeModule,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { BreakoutModule } from "./breakout-module";
 import { GameViewResource, type TelemetryElements } from "./resources";
 import { MetricsService } from "./services/metrics-service";
@@ -39,22 +39,22 @@ const view = new GameViewResource(
     telemetry,
 );
 
-const ecs = new EcsBuilder()
+const game = new GameBuilder()
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
     .addModule(new RandomModule())
     .addModule(new BreakoutModule(view))
     .build();
 
-ecs.init();
-ecs.service(RandomService).seed(0x5EED_BA11);
-ecs.service(ErrorHandlerService).setHandler((error, source) => {
+game.init();
+game.service(RandomService).seed(0x5EED_BA11);
+game.service(ErrorHandlerService).setHandler((error, source) => {
     console.error(`[breakout:${source}]`, error);
 });
-ecs.start();
+game.start();
 
-const renderer = ecs.service(RendererService);
-const metrics = ecs.service(MetricsService);
+const renderer = game.service(RendererService);
+const metrics = game.service(MetricsService);
 let previous = performance.now();
 let accumulator = FIXED_STEP;
 let animationFrame = 0;
@@ -70,7 +70,7 @@ function frame(now: number): void {
     let steps = 0;
     try {
         while (accumulator >= FIXED_STEP && steps < MAX_CATCH_UP_STEPS) {
-            ecs.update();
+            game.update();
             accumulator -= FIXED_STEP;
             steps++;
         }
@@ -94,7 +94,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", () => {
     disposed = true;
     cancelAnimationFrame(animationFrame);
-    ecs.dispose();
+    game.dispose();
 }, { once: true });
 
 animationFrame = requestAnimationFrame(frame);

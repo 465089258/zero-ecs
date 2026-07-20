@@ -1,4 +1,4 @@
-import { State } from "zero-ecs-lib";
+import { State } from "@zero-ecs/game";
 
 export const enum GameMode { Playing, Won, GameOver }
 

@@ -1,0 +1,31 @@
+{
+  "name": "@zero-ecs/game",
+  "version": "0.1.0",
+  "description": "ECS Game composition runtime with DI, lifecycle and standard features.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./advanced": { "types": "./dist/advanced.d.ts", "import": "./dist/advanced.js" },
+    "./event": { "types": "./dist/event.d.ts", "import": "./dist/event.js" },
+    "./time": { "types": "./dist/time.d.ts", "import": "./dist/time.js" },
+    "./timer": { "types": "./dist/timer.d.ts", "import": "./dist/timer.js" },
+    "./random": { "types": "./dist/random.d.ts", "import": "./dist/random.js" },
+    "./pool": { "types": "./dist/pool.d.ts", "import": "./dist/pool.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "peerDependencies": {
+    "@zero-ecs/world": "^0.1.0",
+    "@zero-ecs/scheduler": "^0.1.0"
+  },
+  "devDependencies": {
+    "@zero-ecs/world": "0.1.0",
+    "@zero-ecs/scheduler": "0.1.0"
+  },
+  "scripts": {
+    "build": "rslib --config rslib.config.ts",
+    "typecheck": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && tsc -p tsconfig.json --noEmit"
+  }
+}

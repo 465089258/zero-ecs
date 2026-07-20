@@ -1,4 +1,4 @@
-import { State } from "zero-ecs-lib";
+import { State } from "@zero-ecs/game";
 
 export const enum GameMode { Playing, LevelUp, GameOver }
 
@@ -58,6 +58,8 @@ export class GameState extends State {
     skipTick = 0;
     wallHp = 0;
     wallMaxHp = 0;
+    /** 由 Progression 写入、Shooter Integration 消费的跨模块重建意图。 */
+    rebuildShooter = 0;
 
     damageLevel = 1;
     attackSpeedLevel = 1;

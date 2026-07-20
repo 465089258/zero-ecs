@@ -1,12 +1,12 @@
-import { type EcsBuilder, type Module } from "zero-ecs-lib";
-import { shooterFireSystem } from "../shooter/systems";
-import { zombieWallCollisionSystem } from "../zombie/systems";
-import { bulletZombieCollisionSystem, moveBulletsSystem } from "./systems";
+import { type GameBuilder, type Module } from "@zero-ecs/game";
+import { GameplaySet } from "../common/gameplay-schedule";
+import { moveBulletsSystem } from "./systems";
 
 export class ProjectileModule implements Module {
-    build(builder: EcsBuilder): void {
-        builder.addSystem(moveBulletsSystem, { after: shooterFireSystem });
-
-        builder.addSystem(bulletZombieCollisionSystem, { after: zombieWallCollisionSystem });
+    build(builder: GameBuilder): void {
+        builder.addSystem(moveBulletsSystem, {
+            inSet: GameplaySet.projectile,
+            after: GameplaySet.intent,
+        });
     }
 }

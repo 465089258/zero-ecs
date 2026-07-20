@@ -1,4 +1,4 @@
-import type { EcsBuilder, Module } from "zero-ecs-lib";
+import type { GameBuilder, Module } from "@zero-ecs/game";
 import { GameState } from "./game-state";
 import { GameConfigResource, GameViewResource } from "./resources";
 import { InputService } from "./services/input-service";
@@ -11,7 +11,7 @@ export class CommonModule implements Module {
         readonly config = new GameConfigResource(),
     ) {}
 
-    build(builder: EcsBuilder): void {
+    build(builder: GameBuilder): void {
         builder
             .addResource(GameViewResource, this.view)
             .addResource(GameConfigResource, this.config)

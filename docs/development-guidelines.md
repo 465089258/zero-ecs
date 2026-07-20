@@ -1,4 +1,4 @@
-# zero-ecs-lib 状态与行为开发规范
+# Zero ECS 状态与行为开发规范
 
 本文定义底层运行时、内置 Feature 与第三方 Module 共同遵守的所有权和执行边界。新代码必须先确定数据属于 Resource、State 还是运行时局部值，再决定由 Service 或 System 提供行为。
 
@@ -7,8 +7,8 @@
 | 类型 | 职责 | 生命周期特征 | 典型内容 |
 | --- | --- | --- | --- |
 | Resource | 构建时提供、运行期不替换的只读依赖或能力 | 注册关系在构建后锁定 | 固定步长、容量配置、DOM、Canvas、设备句柄 |
-| State | 当前 ECS 实例拥有的可变模拟数据 | 随 Tick 演进 | 时间、随机机状态、实体槽、队列、派生索引 |
-| Service | 操作、查询、算法与运行时能力入口 | 与当前 World 同生命周期 | `spawn()`、`once()`、`event()`、对象池 |
+| State | 当前 Game 实例拥有的可变模拟数据 | 随 Tick 演进 | 时间、随机机状态、队列、派生索引 |
+| Service | 操作、查询、算法与运行时能力入口 | 与当前 Game 同生命周期 | `reserveEntity()`、`once()`、`event()`、对象池 |
 | System | 由 Stage/Tick 驱动的行为 | 由 Stage 调用 | 时间推进、命令提交、迁移、事件分发 |
 
 State 与“将来需要序列化的数据”不是同义词。State 可以保存权威数据、派生索引和瞬态队列；未来只有显式标记的字段进入快照，未标记字段仍然属于 State。
@@ -24,15 +24,29 @@ State 与“将来需要序列化的数据”不是同义词。State 可以保�
 
 允许的例外是 DataSet、Allocator 等底层数据结构自身的方法；这些方法是数据结构原语，不是 World 业务行为。
 
+### 约束层级
+
+能由 TypeScript 泛型映射、readonly 视图、非导出接口或模块边界表达的约束，优先在编译期表达；不重复加入运行时检查。约束层级固定为：
+
+1. TypeScript 类型约束；
+2. Builder/build/start 冷路径校验；
+3. 必要的生命周期、实例归属和动态数据校验；
+4. 热路径运行时检查——仅在类型设计无法替代且基准通过时允许。
+
+类型约束用于防止普通误用，不承诺抵抗 `as`、反射或深路径导入。System 的 `[World]` 参数因此映射为 `WorldView`；State 的只读与可写能力继续由 State 类型和 `Write(StateType)` 映射；这些都不是运行时权限隔离。
+
 ## 3. Service 规则
 
 1. Service 是行为与运行时能力容器，通常围绕 State 提供操作，类似 Rust 的 `impl`，但不要求每个 Service 都存在配套 State。
 2. Service 不应保存随 World 演进的权威模拟状态；运行时策略、宿主回调、外部句柄、对象池和不参与快照的实现字段可以保留在 Service。
-3. 面向调用者主动发起的操作可以保留为 Service 方法，例如 `EntityService.spawn()`、`TimerService.once()` 和 `EventService.on()`。
-4. `init(context)` 只初始化自身并可读取 Resource/State；`activate(context)` 在全部 Service 完成 init 后建立跨 Service 连接；`start()/stop()` 只管理宿主事件、Worker 等外部输入；`dispose()` 释放内部结构。
+3. 面向调用者主动发起的非内核操作可以保留为 Service 方法，例如 `TimerService.once()`、`EventService.on()` 和 `AllocatorService.alloc()`；实体基础操作直接属于 World。
+4. `init(context)` 初始化自身并可读取 Resource/State 和注入的 World；World 在构造时已经可用。全部 Service 完成 init 后，`activate(context)` 再建立跨 Service 连接；`start()/stop()` 只管理宿主事件、Worker 等外部输入；`dispose()` 释放内部结构。Service 必须在 dispose 返回前归还通过 AllocatorService 申请的 Buffer。
 5. `update()`、`advance()`、`flush()`、`tick()` 等由调度时序决定的入口必须实现为 System。System 不应只是对同名 Service 方法的转发。
-6. 字段应按语义判断，而不是机械迁移：例如 `ErrorHandlerService.handler` 是运行时错误策略，`InjectionService` 的 context 是容器绑定，它们都不是 World 模拟状态。
+6. 字段应按语义判断，而不是机械迁移：例如 `ErrorHandlerService.handler` 是运行时错误策略，`InjectionService` 保存的注入能力是 Game 构造依赖，它们都不是 World 模拟状态。
 7. 生命周期 Context 是一次性受限视图，hook 返回后立即失效。不得暴露或保存原始 `InjectionContext`；长期依赖仍使用属性注入，init-only 能力可在 activate 中解析并保存窄句柄。
+8. 构造时即可确定的内建 Service 依赖必须通过构造函数传入，并由 GameBuilder 使用 `Container.set()` 注册完整实例；不要为此暴露 `bindXxx()` 二阶段初始化入口。
+9. `Container.set()` 会把实例注册到具体类型及领域基类之前的原型链 token，后注册的子类自然覆盖父类查询；通用容器通过原型链根边界排除 Resource、State、Service 和 Object，不直接依赖这些领域类型。
+10. System 参数只声明调度依赖和访问元数据，不触发 Resource、State 或 Service 注册；Module/Builder 必须显式登记系统需要的对象，缺失依赖在 start 的参数 prepare 阶段报错。
 
 ## 4. System 规则
 
@@ -63,14 +77,26 @@ builder.addSystem(advanceExampleSystem);
 1. 只读 State 使用 State 类型参数；写 State 必须使用 `Write(StateType)`。
 2. Stage 驱动逻辑直接写在 System 或文件内私有函数中，不藏回 Service。
 3. 私有辅助函数显式接收数据和能力，不自行定位全局上下文。
-4. 内部 Post System 与公开 System 遵守相同规则。
+4. `Update.post` 不提供隐藏功能分区；Command、Migration、Event、Timer 与业务 System
+   使用同一依赖图。必需关系使用 `before/after`，可选 Module 关系使用
+   `beforeIfPresent/afterIfPresent`，不得依赖 Module 注册顺序表达语义。
 5. Service API 若间接修改 State，必须在未来的 Service 访问元数据中声明；在该权限展开机制完成前，不得假设使用 Service 的系统是可并行的。
 6. Module 只注册 `DefinedSystem`，不得再次声明 Stage 和参数；普通函数不能直接传给 `addSystem()`。
 7. `SystemAccess` 是供排序、冲突分析和未来并行规划使用的调度元数据，不是安全边界。普通 State 参数的 `Readonly<T>` 只是浅只读类型，数组、Map、TypedArray 和嵌套对象不会被运行时隔离。
+8. `[World]` 的函数参数必须声明为 `WorldView`。它只提供 `valid/get/has`；普通 System 的结构变更优先使用 Command。显式注入完整 World、使用宿主 StructureWriter 或 advanced unsafe 能力属于调用方主动选择低层入口。
+
+## 3.1 World 内核例外
+
+组件注册表、Archetype 索引、实体 slot 和 Query 数据源由 World 物理持有，不拆成 State/Service。它们共同组成实体存储算法与一致性边界，并要求直接热路径访问。World 可在无 Game、DI 和 Scheduler 时独立构造；其内部辅助类型不得注册到容器或从稳定入口导出。
+
+World 必须显式接收构造方提供的 IAllocator，并且只借用、不拥有。GameBuilder 可以在
+默认构建路径创建 Allocator 并把所有权交给 Game；`setAllocator()` 和自定义 World 的
+分配器仍由调用方拥有。Game 侧 AllocatorService 只是同一分配器的能力门面，不取得
+所有权。
 
 ## 5. Resource 规则
 
-1. Resource 在 `EcsBuilder.build()` 前由调用者创建并注册，构建完成后不能替换注册实例。
+1. Resource 在 `GameBuilder.build()` 前由调用者创建并注册，构建完成后不能替换注册实例。
 2. Resource 可以是静态配置，也可以是 DOM、Canvas、设备句柄等构建期提供的宿主能力。
 3. “只读”表示 ECS 只提供浅只读引用且不替换实例，不保证引用指向的宿主对象不可变。
 4. Resource 不用于保存计数器、队列或可恢复进度；配置一旦需要随 Tick 改变，应拆为固定 Resource 与动态 State。
@@ -81,7 +107,7 @@ Module 是功能安装和组合边界：
 
 ```ts
 export class ExampleModule implements Module {
-    build(builder: EcsBuilder): void {
+    build(builder: GameBuilder): void {
         builder.addState(ExampleState);
         builder.addService(ExampleService);
         builder.addSystem(exampleSystem);

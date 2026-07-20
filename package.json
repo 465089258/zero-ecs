@@ -1,47 +1,30 @@
 {
-  "name": "zero-ecs-lib",
-  "version": "0.0.0",
-  "description": "A data-oriented TypeScript ECS runtime with fixed-size chunk storage.",
+  "name": "zero-ecs-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workspace for the Zero ECS World, Scheduler and Game libraries.",
   "type": "module",
-  "sideEffects": false,
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./advanced": {
-      "types": "./dist/advanced.d.ts",
-      "import": "./dist/advanced.js"
-    }
-  },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "keywords": [
-    "ecs",
-    "entity-component-system",
-    "typescript",
-    "game-development"
+  "workspaces": [
+    "packages/world",
+    "packages/scheduler",
+    "packages/game"
   ],
   "scripts": {
-    "build": "rslib",
-    "dev": "rslib --watch",
+    "build": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && npm run build -w @zero-ecs/game",
+    "dev": "npm run dev --workspaces --if-present",
+    "typecheck": "npm run typecheck -w @zero-ecs/world && npm run typecheck -w @zero-ecs/scheduler && npm run typecheck -w @zero-ecs/game",
+    "test": "rstest",
+    "test:watch": "rstest --watch",
+    "test:types": "npm run build && tsc -p tests/types/tsconfig.json",
+    "test:package": "npm run build && node tests/package-boundary.mjs",
+    "test:no-jit": "npm run build && node --jitless tests/no-jit-smoke.mjs",
     "example:breakout": "npm run build && rsbuild dev --config examples/breakout/rsbuild.config.ts",
     "example:breakout:build": "npm run build && rsbuild build --config examples/breakout/rsbuild.config.ts",
     "example:breakout:typecheck": "npm run build && tsc -p examples/breakout/tsconfig.json",
     "example:shooter-zombie": "npm run build && rsbuild dev --config examples/shooter-zombie/rsbuild.config.ts",
     "example:shooter-zombie:build": "npm run build && rsbuild build --config examples/shooter-zombie/rsbuild.config.ts",
-    "test": "rstest",
-    "typecheck": "tsc --noEmit",
-    "test:types": "tsc -p tests/types/tsconfig.json",
-    "test:package": "node tests/package-boundary.mjs",
-    "test:no-jit": "npm run build && node --jitless tests/no-jit-smoke.mjs",
-    "test:watch": "rstest --watch",
-    "verify:release": "npm run typecheck && npm run test && npm run build && node --jitless tests/no-jit-smoke.mjs && npm run test:types && npm run test:package",
+    "example:shooter-zombie:typecheck": "npm run build && tsc -p examples/shooter-zombie/tsconfig.json",
+    "verify:release": "npm run typecheck && npm test && npm run build && npm run test:no-jit && tsc -p tests/types/tsconfig.json && node tests/package-boundary.mjs && tsc -p examples/breakout/tsconfig.json && tsc -p examples/shooter-zombie/tsconfig.json",
     "prepack": "npm run verify:release"
   },
   "devDependencies": {
@@ -51,5 +34,24 @@
     "@rstest/core": "^0.11.1",
     "@types/node": "^26.1.1",
     "typescript": "^7.0.2"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "dependencies": {
+    "assertion-error": "^2.0.1",
+    "rsbuild-plugin-dts": "^0.23.2",
+    "tslib": "^2.8.1",
+    "undici-types": "^8.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@gitee.com:wuchunlin_admin/zero-ecs-lib.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

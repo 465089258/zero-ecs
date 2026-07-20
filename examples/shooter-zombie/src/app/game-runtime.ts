@@ -1,8 +1,8 @@
 import {
-    Ecs,
+    Game,
     ErrorHandlerService,
     RandomService,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { GameViewResource } from "../modules/common/resources";
 import { MetricsService } from "../modules/common/services/metrics-service";
 import { RendererService } from "../modules/presentation/renderer-service";
@@ -10,7 +10,7 @@ import { RendererService } from "../modules/presentation/renderer-service";
 const MAX_FRAME_DELTA = 0.1;
 const MAX_CATCH_UP_STEPS = 12;
 
-export function runGame(ecs: Ecs, view: GameViewResource, fixedStep: number): void {
+export function runGame(ecs: Game, view: GameViewResource, fixedStep: number): void {
     ecs.init();
     ecs.service(RandomService).seed(0xDEAD_BEEF);
     ecs.service(ErrorHandlerService).setHandler((error, source) => {

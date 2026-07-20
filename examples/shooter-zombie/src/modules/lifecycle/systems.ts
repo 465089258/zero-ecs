@@ -1,5 +1,5 @@
 import {
-    CommandService,
+    Commands,
     defSystem,
     Startup,
     Update,
@@ -7,20 +7,24 @@ import {
     type Entity,
     type Mut,
     type QueryOf,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { GameEntityQuery } from "../common/queries";
 import { GameMode, GameState } from "../common/game-state";
 import { GameConfigResource } from "../common/resources";
 import { InputService } from "../common/services/input-service";
-import { RendererService } from "../presentation/renderer-service";
+import { GameContentService } from "../integration/game-content-service";
+import {
+    PresentationWallQuery,
+    PresentationZombieQuery,
+    RendererService,
+} from "../presentation/renderer-service";
 import { Bullet } from "../projectile/components";
 import { BulletQuery } from "../projectile/queries";
 import { ExpOrb } from "../progression/components";
 import { DamageTextQuery, ExpOrbQuery } from "../progression/queries";
 import { ShooterQuery } from "../shooter/queries";
-import { SpawnService } from "../spawn/spawn-service";
 import { Zombie } from "../zombie/components";
-import { WallQuery, ZombieQuery } from "../zombie/queries";
+import { ZombieQuery } from "../zombie/queries";
 
 type GameEntities = QueryOf<typeof GameEntityQuery>;
 type Bullets = QueryOf<typeof BulletQuery>;
@@ -28,24 +32,24 @@ type Zombies = QueryOf<typeof ZombieQuery>;
 type ExpOrbs = QueryOf<typeof ExpOrbQuery>;
 
 export const startupGameSystem = defSystem(Startup, startupGame, [
-    SpawnService, RendererService, Write(GameState), ShooterQuery, BulletQuery,
-    ZombieQuery, WallQuery, ExpOrbQuery, DamageTextQuery,
+    GameContentService, RendererService, Write(GameState), ShooterQuery, BulletQuery,
+    PresentationZombieQuery, PresentationWallQuery, ExpOrbQuery, DamageTextQuery,
 ]);
 export const restartSystem = defSystem(Update.fixed, restartGame, [
-    InputService, CommandService, SpawnService, Write(GameState), GameEntityQuery,
+    InputService, Commands, GameContentService, Write(GameState), GameEntityQuery,
 ]);
 export const statisticsSystem = defSystem(Update.fixed, updateStatistics, [
     Write(GameState), GameConfigResource, BulletQuery, ZombieQuery, ExpOrbQuery, GameEntityQuery,
 ]);
 
 function startupGame(
-    spawn: SpawnService,
+    spawn: GameContentService,
     renderer: RendererService,
     game: Mut<GameState>,
     shooter: QueryOf<typeof ShooterQuery>,
     bullets: Bullets,
-    zombies: Zombies,
-    walls: QueryOf<typeof WallQuery>,
+    zombies: QueryOf<typeof PresentationZombieQuery>,
+    walls: QueryOf<typeof PresentationWallQuery>,
     expOrbs: ExpOrbs,
     damageTexts: QueryOf<typeof DamageTextQuery>,
 ): void {
@@ -57,8 +61,8 @@ function startupGame(
 
 function restartGame(
     input: InputService,
-    commands: CommandService,
-    spawn: SpawnService,
+    commands: Commands,
+    spawn: GameContentService,
     game: Mut<GameState>,
     entities: GameEntities,
 ): void {
@@ -97,6 +101,7 @@ function restartGame(
     game.waveZombieTotal = 0;
     game.wallHp = 0;
     game.wallMaxHp = 0;
+    game.rebuildShooter = 0;
     game.mode = GameMode.Playing;
     game.skipTick = 1;
     game.upgradeOptions = [];

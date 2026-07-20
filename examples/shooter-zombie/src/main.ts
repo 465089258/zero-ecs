@@ -1,10 +1,10 @@
 import {
     CommandModule,
-    EcsBuilder,
+    GameBuilder,
     FixedTimeResource,
     RandomModule,
     TimeModule,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { createGameView } from "./app/create-game-view";
 import { runGame } from "./app/game-runtime";
 import { ShooterZombieModule } from "./modules";
@@ -13,7 +13,7 @@ import "./styles.css";
 const FIXED_STEP = 1 / 120;
 const view = createGameView();
 
-const ecs = new EcsBuilder()
+const ecs = new GameBuilder()
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
     .addModule(new RandomModule())

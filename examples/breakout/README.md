@@ -1,6 +1,6 @@
 # Splitstorm Breakout
 
-经典打砖块的零依赖 Canvas 示例，用于同时演示 zero-ecs-lib 的运行时 API 和高实体数量场景。
+经典打砖块的零依赖 Canvas 示例，用于同时演示 `@zero-ecs/game` 的运行时 API 和高实体数量场景。
 
 ## 运行
 
@@ -21,7 +21,7 @@ npm run example:breakout:build
 - State：分数、生命、实体统计和游戏阶段。
 - Service：输入、实体生成、性能采样和表现层渲染桥。
 - Query：系统直接遍历复用的 TypedArray 列。
-- EntityCommand：砖块销毁、掉落物、球分裂和重开均在内部 Post 统一提交。
+- EntityCommand：砖块销毁、掉落物、球分裂和重开均在 `Update.post` 按依赖图统一提交。
 
 模拟以 120 Hz 固定 Tick 运行。`Startup` 系统只把 Query 实例交给 RendererService，之后 Canvas 在浏览器 RAF 中独立渲染，不进入 ECS 固定更新时序。
 

@@ -1,5 +1,5 @@
 import {
-    CommandService,
+    Commands,
     defSystem,
     RandomService,
     Startup,
@@ -8,7 +8,7 @@ import {
     Write,
     type Mut,
     type QueryOf,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import {
     Ball,
     BallType,
@@ -43,23 +43,23 @@ export const startupGameSystem = defSystem(Startup, startupGame, [
     SpawnService, RendererService, Write(GameState), BallQuery, PaddleQuery, BrickQuery, PowerUpQuery,
 ]);
 export const restartSystem = defSystem(Update.fixed, restart, [
-    InputService, CommandService, SpawnService, Write(GameState), GameEntityQuery,
+    InputService, Commands, SpawnService, Write(GameState), GameEntityQuery,
 ]);
 export const paddleMovementSystem = defSystem(Update.fixed, movePaddle, [
     GameConfigResource, TimeState, InputService, GameState, PaddleQuery,
 ]);
 export const moveBallsSystem = defSystem(Update.fixed, moveBalls, [
-    GameConfigResource, TimeState, GameState, CommandService, BallQuery,
+    GameConfigResource, TimeState, GameState, Commands, BallQuery,
 ]);
 export const movePowersSystem = defSystem(Update.fixed, movePowers, [
-    GameConfigResource, TimeState, GameState, CommandService, PowerUpQuery,
+    GameConfigResource, TimeState, GameState, Commands, PowerUpQuery,
 ]);
 export const collisionSystem = defSystem(Update.fixed, collide, [
-    GameConfigResource, Write(GameState), RandomService, CommandService, SpawnService,
+    GameConfigResource, Write(GameState), RandomService, Commands, SpawnService,
     BallQuery, PaddleQuery, BrickQuery,
 ]);
 export const collectPowerSystem = defSystem(Update.fixed, collectPower, [
-    GameConfigResource, Write(GameState), CommandService, SpawnService,
+    GameConfigResource, Write(GameState), Commands, SpawnService,
     BallQuery, PaddleQuery, PowerUpQuery,
 ]);
 export const stressActionsSystem = defSystem(Update.fixed, runStressActions, [
@@ -88,7 +88,7 @@ function startupGame(
 
 function restart(
     input: InputService,
-    commands: CommandService,
+    commands: Commands,
     spawn: SpawnService,
     game: Mut<GameState>,
     entities: GameEntities,
@@ -142,7 +142,7 @@ function moveBalls(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
     game: Readonly<GameState>,
-    commands: CommandService,
+    commands: Commands,
     balls: Balls,
 ): void {
     if (game.skipTick || game.mode !== GameMode.Playing) return;
@@ -185,7 +185,7 @@ function movePowers(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
     game: Readonly<GameState>,
-    commands: CommandService,
+    commands: Commands,
     powers: Powers,
 ): void {
     if (game.skipTick || game.mode !== GameMode.Playing) return;
@@ -209,7 +209,7 @@ function collide(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
     random: RandomService,
-    commands: CommandService,
+    commands: Commands,
     spawn: SpawnService,
     balls: Balls,
     paddles: Paddles,
@@ -311,7 +311,7 @@ function collide(
 function collectPower(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
-    commands: CommandService,
+    commands: Commands,
     spawn: SpawnService,
     balls: Balls,
     paddles: Paddles,

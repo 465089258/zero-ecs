@@ -1,9 +1,12 @@
-import { type EcsBuilder, type Module } from "zero-ecs-lib";
-import { spawnSystem } from "../zombie/systems";
+import { type GameBuilder, type Module } from "@zero-ecs/game";
+import { GameplaySet } from "../common/gameplay-schedule";
 import { shooterFireSystem } from "./systems";
 
 export class ShooterModule implements Module {
-    build(builder: EcsBuilder): void {
-        builder.addSystem(shooterFireSystem, { after: spawnSystem });
+    build(builder: GameBuilder): void {
+        builder.addSystem(shooterFireSystem, {
+            inSet: GameplaySet.intent,
+            after: GameplaySet.spawn,
+        });
     }
 }

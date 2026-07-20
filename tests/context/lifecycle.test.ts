@@ -1,10 +1,14 @@
 import { expect, test } from "@rstest/core";
 import {
     defSystem,
-    EcsBuilder,
+    ErrorHandlerService,
+    GameBuilder,
+    Inject,
     InjectionService,
     Write,
     type Mut,
+    ObjectPoolService,
+    definePool,
     Resource,
     Service,
     type ServiceActivateContext,
@@ -12,18 +16,35 @@ import {
     Startup,
     State,
     Update,
-    World,
-} from "../../src";
+    type WorldView,
+} from "@zero-ecs/game";
+
+interface PooledValue { value: number }
+const ValuePool = definePool<PooledValue>({
+    name: "value",
+    maxRetained: 1,
+    reset: value => { value.value = 0; },
+    clear: value => { value.value = -1; },
+});
+
+test("Game provides a reusable token-keyed ObjectPoolService", () => {
+    const game = new GameBuilder().build();
+    const pools = game.service(ObjectPoolService);
+    pools.bind(ValuePool, () => ({ value: 5 }));
+    const first = pools.acquire(ValuePool);
+    expect(first.value).toBe(0);
+    first.value = 9;
+    pools.release(ValuePool, first);
+    expect(first.value).toBe(-1);
+    expect(pools.acquire(ValuePool)).toBe(first);
+    game.dispose();
+});
 
 class ConfigResource extends Resource {
     constructor(readonly value: number) { super(); }
 }
 
 const lifecycle: string[] = [];
-
-class TestWorld extends World {
-    override init(): void { lifecycle.push("world:init"); }
-}
 
 class CounterState extends State {
     @Resource.inject(ConfigResource) readonly config!: ConfigResource;
@@ -35,7 +56,7 @@ class CounterState extends State {
 }
 
 class CounterService extends Service {
-    @World.inject() readonly world!: World;
+    @Inject.world() readonly world!: WorldView;
     @Resource.inject(ConfigResource) readonly config!: ConfigResource;
     @State.inject(CounterState) readonly counter!: CounterState;
     initialized = false;
@@ -45,7 +66,32 @@ class CounterService extends Service {
     }
 }
 
-test("Ecs separates build, init, start and system updates", () => {
+class ConstructedService extends Service {
+    constructor(readonly source: string, readonly builtWorld?: WorldView) { super(); }
+}
+
+test("GameBuilder accepts Service instances and cold-path factories", () => {
+    const existing = new ConstructedService("instance");
+    const instanceGame = new GameBuilder()
+        .setService(ConstructedService, existing)
+        .build();
+    expect(instanceGame.service(ConstructedService)).toBe(existing);
+    instanceGame.dispose();
+
+    let factoryCalls = 0;
+    const factoryGame = new GameBuilder()
+        .setServiceFactory(ConstructedService, context => {
+            factoryCalls++;
+            return new ConstructedService("factory", context.world);
+        })
+        .build();
+    expect(factoryCalls).toBe(1);
+    expect(factoryGame.service(ConstructedService).source).toBe("factory");
+    expect(factoryGame.service(ConstructedService).builtWorld).toBe(factoryGame.world);
+    factoryGame.dispose();
+});
+
+test("Game separates build, init, start and system updates", () => {
     lifecycle.length = 0;
     function startup(service: CounterService): void {
         expect(service.initialized).toBe(true);
@@ -57,9 +103,10 @@ test("Ecs separates build, init, start and system updates", () => {
     }
 
     const config = new ConfigResource(10);
-    const builder = new EcsBuilder();
-    builder.setWorld(new TestWorld());
+    const builder = new GameBuilder();
     builder.addResource(ConfigResource, config);
+    builder.addState(CounterState);
+    builder.addService(CounterService);
     builder.addSystem(defSystem(Startup, startup, [CounterService]));
     builder.addSystem(defSystem(Update.fixed, increment, [Write(CounterState)]));
     const ecs = builder.build();
@@ -68,7 +115,7 @@ test("Ecs separates build, init, start and system updates", () => {
     expect(() => ecs.start()).toThrow(/invalid during phase Built/);
 
     ecs.init();
-    expect(lifecycle).toEqual(["world:init", "state:init", "service:init"]);
+    expect(lifecycle).toEqual(["state:init", "service:init"]);
     const service = ecs.service(CounterService);
     expect(service.world).toBe(ecs.world);
     expect(service.config).toBe(config);
@@ -76,7 +123,7 @@ test("Ecs separates build, init, start and system updates", () => {
 
     ecs.start();
     ecs.update();
-    expect(lifecycle).toEqual(["world:init", "state:init", "service:init", "startup", "update"]);
+    expect(lifecycle).toEqual(["state:init", "service:init", "startup", "update"]);
     expect(ecs.state(CounterState).count).toBe(12);
     expect("resources" in ecs).toBe(false);
     expect("states" in ecs).toBe(false);
@@ -85,24 +132,24 @@ test("Ecs separates build, init, start and system updates", () => {
 });
 
 class InvalidState extends State {
-    @World.inject() world!: World;
+    @Inject.world() world!: WorldView;
 }
 
 test("State cannot inject World", () => {
-    const builder = new EcsBuilder();
+    const builder = new GameBuilder();
     builder.addState(InvalidState);
     expect(() => builder.build()).toThrow(/cannot inject World/);
 });
 
 class RuntimeHelper {
-    @World.inject() readonly world!: World;
+    @Inject.world() readonly world!: WorldView;
     @Resource.inject(ConfigResource) readonly config!: ConfigResource;
     @State.inject(CounterState) readonly counter!: CounterState;
     @Service.inject(CounterService) readonly service!: CounterService;
 }
 
-function buildInjectionTestEcs(value: number) {
-    const builder = new EcsBuilder();
+function buildInjectionTestGame(value: number) {
+    const builder = new GameBuilder();
     builder.addResource(ConfigResource, new ConfigResource(value));
     builder.addState(CounterState);
     builder.addService(CounterService);
@@ -110,9 +157,11 @@ function buildInjectionTestEcs(value: number) {
 }
 
 test("InjectionService is the single dynamic injection entry", () => {
-    const ecs = buildInjectionTestEcs(21);
+    const ecs = buildInjectionTestGame(21);
     const injection = ecs.service(InjectionService);
     const helper = new RuntimeHelper();
+
+    expect("bind" in injection).toBe(false);
 
     expect(injection.inject(helper)).toBe(helper);
     expect(injection.inject(helper)).toBe(helper);
@@ -123,18 +172,68 @@ test("InjectionService is the single dynamic injection entry", () => {
     expect("inject" in ecs.world).toBe(false);
 
     ecs.dispose();
-    expect(() => injection.inject(new RuntimeHelper())).toThrow(/has not been bound/);
+    expect(() => injection.inject(new RuntimeHelper())).toThrow(/disposed/);
 });
 
-test("InjectionService rejects objects already injected by another Ecs", () => {
-    const first = buildInjectionTestEcs(1);
-    const second = buildInjectionTestEcs(2);
+test("InjectionService rejects objects already injected by another Game", () => {
+    const first = buildInjectionTestGame(1);
+    const second = buildInjectionTestGame(2);
     const helper = first.service(InjectionService).inject(new RuntimeHelper());
 
-    expect(() => second.service(InjectionService).inject(helper)).toThrow(/another Ecs/);
+    expect(() => second.service(InjectionService).inject(helper)).toThrow(/another Game/);
 
     first.dispose();
     second.dispose();
+});
+
+const overrideLifecycle: string[] = [];
+
+class CustomErrorHandlerService extends ErrorHandlerService {
+    init(): void { overrideLifecycle.push("error:init"); }
+}
+
+class ErrorHandlerConsumerService extends Service {
+    @Service.inject(ErrorHandlerService) readonly errors!: ErrorHandlerService;
+
+    init(): void {
+        expect(this.errors).toBeInstanceOf(CustomErrorHandlerService);
+        overrideLifecycle.push("consumer:init");
+    }
+}
+
+test("Service implementation types override a registration token", () => {
+    overrideLifecycle.length = 0;
+    const game = new GameBuilder()
+        .addService(CustomErrorHandlerService)
+        .addService(ErrorHandlerConsumerService)
+        .build();
+
+    expect(game.service(ErrorHandlerService)).toBeInstanceOf(CustomErrorHandlerService);
+    expect(() => game.service(Service as unknown as typeof ErrorHandlerService)).toThrow(/Instance not found/);
+    game.init();
+    expect(overrideLifecycle).toEqual(["error:init", "consumer:init"]);
+    game.dispose();
+});
+
+class BaseResource extends Resource {}
+class CustomResource extends BaseResource {}
+class BaseState extends State {}
+class CustomState extends BaseState {}
+
+test("containers expose subclass instances through parent tokens but exclude domain roots", () => {
+    const resource = new CustomResource();
+    const game = new GameBuilder()
+        .addResource(CustomResource, resource)
+        .addState(CustomState)
+        .build();
+
+    expect(game.resource(CustomResource)).toBe(resource);
+    expect(game.resource(BaseResource)).toBe(resource);
+    expect(game.state(CustomState)).toBeInstanceOf(CustomState);
+    expect(game.state(BaseState)).toBe(game.state(CustomState));
+    expect(() => game.resource(Resource as unknown as typeof BaseResource)).toThrow(/Instance not found/);
+    expect(() => game.state(State as unknown as typeof BaseState)).toThrow(/Instance not found/);
+    game.dispose();
 });
 
 const dependencyLifecycle: string[] = [];
@@ -159,7 +258,7 @@ class ThrowingDisposeService extends Service {
 
 test("Services dispose in reverse dependency order and continue after an error", () => {
     dependencyLifecycle.length = 0;
-    const ecs = new EcsBuilder()
+    const ecs = new GameBuilder()
         .addService(DependentService)
         .addService(DependencyService)
         .addService(ThrowingDisposeService)
@@ -215,7 +314,7 @@ class PhaseConsumerService extends Service {
 
 test("Service init, activate and start form barriers with scoped lookup contexts", () => {
     phaseLifecycle.length = 0;
-    const builder = new EcsBuilder()
+    const builder = new GameBuilder()
         .addResource(ConfigResource, new ConfigResource(7))
         .addState(CounterState)
         .addService(PhaseConsumerService)

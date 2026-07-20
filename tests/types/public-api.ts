@@ -1,30 +1,49 @@
 import {
-    ComponentService,
+    AllocatorService,
+    Buffer,
+    Commands,
+    defaultAllocatorConfig,
+    DefaultCoreModule,
     defSystem,
     Ecs,
     EcsBuilder,
+    ErrorHandlerService,
+    Game,
+    GameBuilder,
+    Inject,
     Resource,
     Service,
     State,
+    TimerService,
     Types,
     Update,
     Write,
+    World,
     type Component,
     type ComponentDefinition,
+    type EntityCommand,
+    type IAllocator,
+    type AllocatorOptions,
     type Mut,
+    type RuntimeErrorHandler,
+    type RuntimeErrorSource,
+    type StructureWriter,
+    type SystemParamValue,
+    type WorldView,
     type ServiceActivateContext,
     type ServiceInitContext,
-} from "../../dist/index.js";
+} from "@zero-ecs/game";
 // @ts-expect-error Scheduler is available only from the advanced entry.
-import { Scheduler as RootScheduler } from "../../dist/index.js";
-// @ts-expect-error EntityCommand construction is available only from the advanced entry.
-import { EntityCommand as RootEntityCommand } from "../../dist/index.js";
+import { Scheduler as RootScheduler } from "@zero-ecs/game";
+// @ts-expect-error unsafe structure access is available only from the advanced entry.
+import { unsafeStructureWriter as rootUnsafeStructureWriter } from "@zero-ecs/game";
 import {
-    EntityCommand,
-    Scheduler,
     defineComponentMeta,
     getComponentMeta,
-} from "../../dist/advanced.js";
+    unsafeStructureWriter,
+} from "@zero-ecs/game/advanced";
+import { Scheduler } from "@zero-ecs/scheduler";
+import type { EntityCommand as RawEntityCommand } from "@zero-ecs/world";
 
 const enum Position { x, y }
 
@@ -38,8 +57,12 @@ class IncompletePositionType implements Component<Position> {
     readonly [Position.x] = Types.F32;
 }
 
-declare const components: ComponentService;
-const definition: ComponentDefinition<PositionType> = components.def(PositionType);
+declare const componentWorld: World;
+declare const worldAllocator: IAllocator;
+new World(worldAllocator);
+// @ts-expect-error World never creates or owns an implicit Allocator.
+new World();
+const definition: ComponentDefinition<PositionType> = componentWorld.defineComponent(PositionType);
 definition.layout;
 // @ts-expect-error World-local IDs are not part of the stable definition.
 definition.id;
@@ -49,6 +72,13 @@ definition.mask;
 class ConfigResource extends Resource { value = 1; }
 class CounterState extends State { count = 0; }
 class ToolService extends Service { increment(value: number): number { return value + 1; } }
+class CustomToolService extends ToolService { override increment(value: number): number { return value + 2; } }
+
+type Equal<A, B> =
+    (<T>() => T extends A ? 1 : 2) extends
+    (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+type WorldParamIsView = Assert<Equal<SystemParamValue<typeof World>, WorldView>>;
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {
@@ -81,12 +111,41 @@ function writeSystem(state: Mut<CounterState>): void {
 
 function plainSystem(): void {}
 
+declare const entity: import("@zero-ecs/world").Entity;
+function worldSystem(world: WorldView): void {
+    world.valid(entity);
+    // @ts-expect-error WorldView intentionally excludes immediate structure changes.
+    world.despawn(entity);
+    // @ts-expect-error World no longer exposes Game dependency injection.
+    world.service(ToolService);
+}
+
+class WorldHelper {
+    @Inject.world() readonly world!: WorldView;
+}
+
+// Decorator metadata cannot enforce the exact field declaration; this is an explicit escape hatch.
+class FullWorldHelper {
+    @Inject.world() readonly world!: World;
+}
+
 const builder = new EcsBuilder()
     .addResource(ConfigResource, new ConfigResource())
     .addState(CounterState)
     .addService(ToolService);
+new GameBuilder().addModule(new DefaultCoreModule());
+new GameBuilder().addService(CustomToolService);
+// @ts-expect-error Service overrides are expressed by subclass registration, not token/implementation pairs.
+new GameBuilder().addService(ToolService, CustomToolService);
 builder.addSystem(defSystem(Update.fixed, readSystem, [ConfigResource, CounterState, ToolService]));
 builder.addSystem(defSystem(Update.fixed, writeSystem, [Write(CounterState)]));
+builder.addSystem(defSystem(Update.fixed, worldSystem, [World]));
+const optionalDependencySystem = defSystem(Update.post, () => {}, []);
+const optionalPostSystem = defSystem(Update.post, () => {}, []);
+builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem });
+builder.addSystem(optionalDependencySystem);
+// @ts-expect-error [World] supplies WorldView, not the nominal full World type.
+builder.addSystem(defSystem(Update.fixed, (_world: World) => {}, [World]));
 // @ts-expect-error Only functions returned by defSystem can be registered.
 builder.addSystem(plainSystem);
 
@@ -104,11 +163,58 @@ ecs.scheduler;
 // @ts-expect-error Ecs instances must be built by EcsBuilder.
 new Ecs();
 
+const game = new GameBuilder().build();
+const writer: StructureWriter = game.structureWriter();
+writer.reserveEntity();
+writer.createEntityCommand(entity);
+// @ts-expect-error Game exposes only the non-structural WorldView by default.
+game.world.query;
+game.service(AllocatorService).alloc;
+const allocatorContract: IAllocator = game.service(AllocatorService);
+const allocatorOptions: AllocatorOptions = defaultAllocatorConfig;
+const allocated: Buffer = allocatorContract.alloc();
+allocated.dispose();
+const directBuffer = new Buffer(new ArrayBuffer(16));
+directBuffer.dispose();
+const customErrorSource: RuntimeErrorSource = "network.receive";
+const runtimeErrorHandler: RuntimeErrorHandler = (_error, source) => {
+    const diagnosticSource: string = source;
+    void diagnosticSource;
+};
+game.service(ErrorHandlerService).setHandler(runtimeErrorHandler).report(
+    new Error("network failure"),
+    customErrorSource,
+);
+unsafeStructureWriter(componentWorld).despawn(entity);
+// @ts-expect-error Game is a composition root, not a SystemParam.
+defSystem(Update.fixed, (_game: Game) => {}, [Game]);
+// @ts-expect-error Game instances must be built by GameBuilder.
+new Game();
+
 void RootScheduler;
-void RootEntityCommand;
-void EntityCommand;
+void rootUnsafeStructureWriter;
+const entityCommand: EntityCommand = game.service(Commands).spawn();
+game.service(TimerService).once(1, entityCommand);
+entityCommand.submit();
+declare const rawEntityCommand: RawEntityCommand;
+// @ts-expect-error Timer depends only on the submit task protocol, not RawEntityCommand.
+game.service(TimerService).once(1, rawEntityCommand);
+// @ts-expect-error World EntityCommand has no Game submit callback.
+rawEntityCommand.submit();
 void Scheduler;
 void defineComponentMeta;
 void getComponentMeta;
 void IncompletePositionType;
 void LifecycleService;
+void WorldHelper;
+void FullWorldHelper;
+void allocatorContract;
+void worldAllocator;
+void allocatorOptions;
+void directBuffer;
+void customErrorSource;
+void runtimeErrorHandler;
+void optionalDependencySystem;
+void optionalPostSystem;
+void entityCommand;
+void rawEntityCommand;

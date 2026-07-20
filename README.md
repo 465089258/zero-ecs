@@ -1,64 +1,71 @@
-# zero-ecs-lib
+# Zero ECS
 
-Typed-array ECS runtime for TypeScript.
+Zero ECS 是一个面向游戏数据层的 TypeScript ECS workspace，由三个可独立安装的库组成：
 
-## Documentation
+- `@zero-ecs/world`：实体、组件、Archetype、Table、Query 与单实体事务；
+- `@zero-ecs/scheduler`：不知道 ECS 的通用静态调度器；
+- `@zero-ecs/game`：组合 World、Scheduler、依赖注入、生命周期与标准功能模块。
 
-- [API reference](./docs/api.md)
-- [Architecture and diagrams](./docs/architecture.md)
-- [Game / World architecture proposal](./docs/game-world-architecture.md)
-- [State, Service, System, and Resource guidelines](./docs/development-guidelines.md)
-- [Development plan](./docs/development-plan.md)
-- [Performance and allocation model](./docs/performance.md)
+依赖方向固定为 `game -> world + scheduler`，World 与 Scheduler 之间互不依赖。
 
-## Examples
-
-- [Splitstorm Breakout](./examples/breakout/README.md) — fixed-Tick Canvas breakout with power-up ball splitting and a 10,000-ball stress mode.
-
-## Usage
+## 快速开始
 
 ```ts
-import { defSystem, EcsBuilder, Update, Write, type Mut } from "zero-ecs-lib";
+import {
+    Commands,
+    DefaultCoreModule,
+    GameBuilder,
+    Types,
+    type Component,
+} from "@zero-ecs/game";
 
-const gameSystem = defSystem(Update.fixed, updateGame, [Write(GameState)]);
-
-function updateGame(game: Mut<GameState>): void {
-    // Update the game state.
+const enum Position { x, y }
+class PositionType implements Component<Position> {
+    readonly [Position.x] = Types.F32;
+    readonly [Position.y] = Types.F32;
 }
 
-const builder = new EcsBuilder();
+const game = new GameBuilder()
+    .addModule(new DefaultCoreModule())
+    .build();
+game.init();
+game.start();
 
-builder.addSystem(gameSystem);
+const commands = game.service(Commands);
+const command = commands.spawn()
+    .set(PositionType, Position.x, 10)
+    .set(PositionType, Position.y, 20);
+const entity = command.entity;
+command.submit();
+game.update();
 
-const ecs = builder.build();
-ecs.init();
-ecs.start();
-ecs.update();
-ecs.dispose();
+console.log(game.world.get(entity, PositionType, Position.x)); // 10
+game.dispose();
 ```
 
-## Source layout
+`DefaultCoreModule` 一次安装 Commands、Time、Timer、Event 与 Random。需要减小运行时组成时，
+仍可只注册 `CommandModule`、`TimeModule` 等独立模块。
 
-- `storage/`: typed arrays, 2 MiB block allocator, 16 KiB chunks and DataSet.
-- `context/`: peer World, Resource, State and Service types, injection and containers.
-- `ecs/`: component, archetype, entity, query, command and ECS memory domains.
-- `schedule/`: stages, system parameters, immutable schedules and Scheduler.
-- `runtime/`: Ecs lifecycle, EcsBuilder and Module contract.
-- `features/`: optional event, time, timer and random functionality.
-- `internal/`: non-public reusable implementation helpers.
-- `dev/`: development-only tooling.
+World 也可以完全脱离 Game 使用：
 
-Internal modules use direct file imports. Barrel files are reserved for module and public API boundaries.
+```ts
+import { Allocator, World } from "@zero-ecs/world";
 
-Stable runtime APIs are exported from `zero-ecs-lib`. Low-level storage and diagnostics are available from `zero-ecs-lib/advanced`; internal Post and migration implementation are not exported.
+const allocator = new Allocator();
+const world = new World(allocator);
+const entity = world.reserveEntity();
+const command = world.createEntityCommand(entity);
+world.applyEntityCommand(command);
+world.dispose();
+allocator.clear();
+```
 
-The published ESM output targets ES2015 and is emitted bundleless so applications and game engines can tree-shake the stable and advanced entry points independently.
+## 开发命令
 
-## Commands
+- `npm run typecheck`：分别检查三个包；
+- `npm test`：运行源码行为测试；
+- `npm run build`：按 world → scheduler → game 生成三个包；
+- `npm run verify:release`：运行类型、行为、声明、包边界、no-JIT 与示例验证。
 
-- `npm run build`
-- `npm run dev`
-- `npm run test`
-- `npm run typecheck`
-- `npm run verify:release`
-- `npm run test:watch`
+架构说明见 [三库架构](./docs/three-library-architecture.md)，公共 API 见
+[API 参考](./docs/api.md)。

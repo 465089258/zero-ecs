@@ -1,8 +1,12 @@
-# zero-ecs-lib 开发计划
+# 历史开发计划
 
-本文档规划 zero-ecs-lib 从当前实现迁移到下一版纯数据 ECS 运行时的开发任务。`api.md` 与 `architecture.md` 继续描述仓库当前行为；本文档描述已经确认的目标、事务语义、实施顺序和验收标准。
+> 本文是单包时期的历史迁移记录，不再描述当前目录和公共 API。当前事实以
+> [architecture.md](./architecture.md) 与 [three-library-architecture.md](./three-library-architecture.md)
+> 为准。
 
-实施状态：阶段 0～13、15 已完成；阶段 14 的工程配置已完成，正式发布信息待项目所有者确认（2026-07-14）。
+本文档记录旧单包迁移到纯数据 ECS 运行时的阶段性任务。
+
+实施状态：阶段 0～13、15 已完成；阶段 14 的工程配置已完成，正式发布信息待项目所有者确认（2026-07-14）。2026-07-20 完成的 World 内核去 Service 化是后续架构决策，覆盖本文中 ComponentService、ArchetypeService、EntityService、QueryService、EcsMemoryService 与 CoreEcsModule 的历史计划描述。同日删除 InternalPost，新增公开 `Update.post`，Command、Migration、Event、Timer 改由系统依赖图排序；该决策覆盖阶段 2、7、9 中的历史阶段描述。当前事实以 [architecture.md](./architecture.md) 和 [game-world-architecture.md](./game-world-architecture.md) 为准。
 
 ## 1. 项目目标
 
@@ -12,7 +16,7 @@
 - `ecs.update()` 表示推进一个固定数据 Tick；真实时间累积、追帧和渲染插值由上层负责。
 - Scheduler 保持确定性串行执行，近期不实现并行批次。
 - EntityCommand 支持多个封闭 Service 在同一事务中动态组装实体。
-- 所有结构变更在内部 Post 阶段统一提交，一个 Entity 每个提交周期最多迁移一次。
+- 所有延迟结构变更在 `Update.post` 统一提交，一个 Entity 每个提交周期最多迁移一次。
 - 稳定容量下的核心路径不依赖 JIT 内联、逃逸分析或临时对象消除。
 - Resource、State、Service 的类型名和职责保持确定、无歧义。
 
@@ -20,27 +24,31 @@
 
 ### 2.1 更新时序
 
-删除 `Update.update`，公开业务阶段调整为：
+删除 `Update.update`，标准生命周期调整为：
 
 ```text
-Update.first → Update.fixed → Update.last
+Startup
+→ Update.first
+→ Update.fixed
+→ Update.last
+→ Update.post
+→ Shutdown
 ```
 
-框架在最后执行不对普通业务代码开放的内部 Post 阶段：
+`Update.post` 不内建功能分区。默认功能关系通过系统注册依赖图表达为：
 
 ```text
-first → fixed → last → Post
-```
-
-Post 内部顺序为：
-
-```text
+advanceTimersSystem
+        ↓
 flushCommandSystem
         ↓
 flushEntityMigrationSystem
         ↓
 flushEventsSystem
 ```
+
+这些边只在相关 System 同时存在时建立；严格依赖使用 `before/after`，可选 Module
+依赖使用 `beforeIfPresent/afterIfPresent`。无依赖的同阶段系统保持注册顺序。
 
 ### 2.2 严格类型命名
 
@@ -285,7 +293,7 @@ src/
 - 根入口不再导出旧名称。
 - 全部测试、声明文件和构建通过。
 
-### 阶段 2：固定 Tick 与内部 Post
+### 阶段 2：固定 Tick 与内部 Post（历史实现，已由 Update.post 取代）
 
 状态：已完成（2026-07-14）。
 
@@ -655,7 +663,7 @@ src/
 
 完成记录：
 
-- DataRow 改为低 14 位行号的安全整数句柄；DataSet.remove 返回数字状态，Entity/Archetype 迁移不再创建 location、RemoveResult、from/to 对象。
+- DataRow 最终收敛为 U32 物理位置：每个 DataSet 使用自身 Table 容量作为编码步长，`0xFFFFFFFF` 保留为无效值，释放的 Table ID 可复用。句柄可无损保存到 Uint32Array，但只在相关结构未变化期间有效。DataSet.remove 返回数字状态，Entity/Archetype 迁移不再创建 location、RemoveResult、from/to 对象。
 - EntityService 热路径移除 `{ arch, row }` locate 对象；公开诊断位置仍按需物化。
 - Archetype.copyCommonTo 改为索引循环，避免 ES2015 无 JIT 环境中的迭代器临时值。
 - Timer 时间轮槽直接保存池化 InnerTask，删除 LevelTask 与 pending/deferred 临时数组。

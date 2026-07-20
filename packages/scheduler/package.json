@@ -1,0 +1,15 @@
+{
+  "name": "@zero-ecs/scheduler",
+  "version": "0.1.0",
+  "description": "Framework-agnostic static scheduler.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "rslib --config rslib.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

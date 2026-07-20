@@ -1,4 +1,4 @@
-import { Service } from "zero-ecs-lib";
+import { Service } from "@zero-ecs/game";
 
 export class MetricsService extends Service {
     fps = 0;

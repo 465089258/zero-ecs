@@ -1,11 +1,11 @@
 import { describe, expect, test } from "@rstest/core";
 import {
     type Component,
-    ComponentService,
-    EcsBuilder,
+    GameBuilder,
     Types,
-} from "../../../src";
-import { defineComponentMeta } from "../../../src/advanced";
+    World,
+} from "@zero-ecs/game";
+import { defineComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -18,22 +18,21 @@ class HealthType implements Component<Health> {
     readonly [Health.value] = Types.I32;
 }
 
-function components(): ComponentService {
-    const ecs = new EcsBuilder().build();
-    ecs.init();
-    return ecs.service(ComponentService);
+function components(): World {
+    const ecs = new GameBuilder().build();
+    return ecs.world;
 }
 
-describe("ComponentService", () => {
+describe("World component registry", () => {
     test("defines a component lazily and idempotently", () => {
         const registry = components();
 
-        expect(registry.get(PositionType)).toBeUndefined();
-        const first = registry.def(PositionType);
-        const second = registry.def(PositionType);
+        expect(registry.component(PositionType)).toBeUndefined();
+        const first = registry.defineComponent(PositionType);
+        const second = registry.defineComponent(PositionType);
 
         expect(second).toBe(first);
-        expect(registry.get(PositionType)).toBe(first);
+        expect(registry.component(PositionType)).toBe(first);
         expect(first.type).toBe(PositionType);
         expect(first.layout).toEqual([Types.F32, Types.F32]);
         expect(Object.isFrozen(first)).toBe(true);
@@ -49,11 +48,11 @@ describe("ComponentService", () => {
         expect(defineComponentMeta(first, PositionType).id).toBe(0);
         expect(defineComponentMeta(first, HealthType).id).toBe(1);
         expect(defineComponentMeta(second, HealthType).id).toBe(0);
-        expect(second.get(PositionType)).toBeUndefined();
+        expect(second.component(PositionType)).toBeUndefined();
     });
 
     test("rejects non-consecutive runtime fields", () => {
         class InvalidType { readonly 1 = Types.F32; }
-        expect(() => components().def(InvalidType)).toThrow(/consecutive integers/);
+        expect(() => components().defineComponent(InvalidType)).toThrow(/consecutive integers/);
     });
 });

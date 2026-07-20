@@ -1,4 +1,4 @@
-import { RandomService } from "zero-ecs-lib";
+import { RandomService } from "@zero-ecs/game";
 import { UpgradeType } from "./game-state";
 
 const ALL_UPGRADES: readonly UpgradeType[] = [

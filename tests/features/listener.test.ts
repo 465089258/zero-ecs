@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
-import { Listener } from "../../src/features/event/listener";
+import { Listener } from "@zero-ecs/game/event";
 
 describe("Listener retention", () => {
     test("clear removes remaining callbacks during a re-entrant dispatch", () => {

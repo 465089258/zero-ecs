@@ -1,9 +1,8 @@
-import { Types, type Component } from "zero-ecs-lib";
+import { Types, type Component } from "@zero-ecs/game";
 
-export const enum Bullet { damage, radius, speed, splitCount, ricochetCount, pierce, lifetime, active }
+export const enum Bullet { radius, speed, splitCount, ricochetCount, pierce, lifetime, active }
 
 export class BulletType implements Component<Bullet> {
-    readonly [Bullet.damage] = Types.F32;
     readonly [Bullet.radius] = Types.F32;
     readonly [Bullet.speed] = Types.F32;
     readonly [Bullet.splitCount] = Types.U8;

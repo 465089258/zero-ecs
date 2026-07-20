@@ -1,7 +1,7 @@
 import {
-    type EcsBuilder,
+    type GameBuilder,
     type Module,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { GameConfigResource, GameViewResource } from "./resources";
 import { InputService } from "./services/input-service";
 import { MetricsService } from "./services/metrics-service";
@@ -27,7 +27,7 @@ export class BreakoutModule implements Module {
         readonly config = new GameConfigResource(),
     ) {}
 
-    build(builder: EcsBuilder): void {
+    build(builder: GameBuilder): void {
         builder
             .addResource(GameViewResource, this.view)
             .addResource(GameConfigResource, this.config)

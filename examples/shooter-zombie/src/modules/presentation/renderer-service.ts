@@ -1,12 +1,13 @@
 import {
+    QueryType,
     Resource,
     Service,
     State,
+    With,
     type QueryOf,
-} from "zero-ecs-lib";
-import {
-    Position,
-} from "../common/components";
+} from "@zero-ecs/game";
+import { Health, HealthType } from "../attribute/components";
+import { Position, PositionType, VelocityType } from "../common/components";
 import { GameMode, GameState, UPGRADE_DESCRIPTIONS, UPGRADE_NAMES, UpgradeType } from "../common/game-state";
 import { GameConfigResource, GameViewResource } from "../common/resources";
 import { MetricsService } from "../common/services/metrics-service";
@@ -16,8 +17,12 @@ import { DamageText, ExpOrb } from "../progression/components";
 import { DamageTextQuery, ExpOrbQuery } from "../progression/queries";
 import { Shooter } from "../shooter/components";
 import { ShooterQuery } from "../shooter/queries";
-import { Wall, Zombie } from "../zombie/components";
-import { WallQuery, ZombieQuery } from "../zombie/queries";
+import { WallType, Zombie, ZombieType } from "../zombie/components";
+
+export const PresentationZombieQuery = QueryType.from(With(
+    PositionType, VelocityType, ZombieType, HealthType,
+));
+export const PresentationWallQuery = QueryType.from(With(PositionType, WallType, HealthType));
 
 const GROUND_COLOR = "#1a2a1a";
 const GRID_COLOR = "rgba(50, 90, 50, 0.15)";
@@ -38,8 +43,8 @@ export class RendererService extends Service {
 
     private shooter: QueryOf<typeof ShooterQuery> | undefined;
     private bullets: QueryOf<typeof BulletQuery> | undefined;
-    private zombies: QueryOf<typeof ZombieQuery> | undefined;
-    private walls: QueryOf<typeof WallQuery> | undefined;
+    private zombies: QueryOf<typeof PresentationZombieQuery> | undefined;
+    private walls: QueryOf<typeof PresentationWallQuery> | undefined;
     private expOrbs: QueryOf<typeof ExpOrbQuery> | undefined;
     private damageTexts: QueryOf<typeof DamageTextQuery> | undefined;
     private background: CanvasGradient | undefined;
@@ -60,8 +65,8 @@ export class RendererService extends Service {
     bind(
         shooter: QueryOf<typeof ShooterQuery>,
         bullets: QueryOf<typeof BulletQuery>,
-        zombies: QueryOf<typeof ZombieQuery>,
-        walls: QueryOf<typeof WallQuery>,
+        zombies: QueryOf<typeof PresentationZombieQuery>,
+        walls: QueryOf<typeof PresentationWallQuery>,
         expOrbs: QueryOf<typeof ExpOrbQuery>,
         damageTexts: QueryOf<typeof DamageTextQuery>,
     ): void {
@@ -225,11 +230,11 @@ export class RendererService extends Service {
         if (!query) return;
         const iter = query.iter();
         while (iter.next()) {
-            const [count, , positions, , zombies] = iter.current;
+            const [count, , positions, , zombies, healthValues] = iter.current;
             const xs = positions[Position.x];
             const ys = positions[Position.y];
-            const hp = zombies[Zombie.hp];
-            const maxHp = zombies[Zombie.maxHp];
+            const hp = healthValues[Health.current];
+            const maxHp = healthValues[Health.max];
             const active = zombies[Zombie.active];
             const radius = this.config.zombieRadius;
             const halfW = this.config.zombieHalfWidth;
@@ -278,12 +283,12 @@ export class RendererService extends Service {
         if (!query) return;
         const iter = query.iter();
         while (iter.next()) {
-            const [count, , positions, walls] = iter.current;
+            const [count, , positions, , healthValues] = iter.current;
             for (let i = 0; i < count; i++) {
                 const x = positions[Position.x][i];
                 const y = positions[Position.y][i];
-                const hp = walls[Wall.hp][i];
-                const maxHp = walls[Wall.maxHp][i];
+                const hp = healthValues[Health.current][i];
+                const maxHp = healthValues[Health.max][i];
                 const health = hp / maxHp;
 
                 const c = this.config;

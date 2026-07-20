@@ -1,0 +1,381 @@
+# 可插拔、最小依赖的 ECS 模块设计规范
+
+## 1. 目标
+
+本规范用于设计可独立安装、替换和复用的 ECS 功能模块。这里的“最小依赖”不是追求形式上的零 `import`，而是让模块只依赖完成自身职责所必需、稳定的数据契约。
+
+核心判断是：
+
+> 当前系统真正依赖什么数据才能运行，而不是这些数据目前由哪个模块提供。
+
+例如单位移动系统真正依赖的是 `MovementParameters`，并不天然依赖 Attribute 模块。数据可以来自属性计算、模板、服务器同步或测试夹具。数据来源与单位运行数据之间的投影，应由 Integration 完成。
+
+本规范希望达到以下性质：
+
+- 功能模块只实现单一领域机制。
+- 移除可选模块后，其余模块仍然可以构建和运行。
+- 跨模块业务耦合集中在可替换的 Integration 中。
+- 运行时通信使用可查询、可调度、可回放的数据契约。
+- 数据的定义方、写入方和消费方清晰。
+- 调度依赖稳定语义阶段，而不是其他模块的具体系统函数。
+
+## 2. 基础分层
+
+推荐把项目分成四层：
+
+```text
+ECS Core
+├─ Entity / Component / Query
+├─ Scheduler / SystemSet
+├─ Commands
+└─ Module lifecycle
+
+Feature Modules
+├─ Unit / Shooter
+├─ Skill
+├─ Buff
+├─ Projectile
+├─ Damage
+└─ Attribute
+
+Integration Modules
+├─ Skill-Damage
+├─ Skill-Buff
+├─ Projectile-Damage
+├─ Damage-Attribute
+└─ Unit-Attribute
+
+Game Content / Composition Root
+├─ 单位、技能和 Buff 配置
+├─ 模块安装顺序
+└─ 本游戏特有的组合规则
+```
+
+各层职责如下：
+
+- ECS Core 提供机制无关的基础设施。
+- Feature Module 定义“我能做什么”和“我需要什么数据”。
+- Integration 定义“一个模块的输出对另一个模块意味着什么”。
+- Game Content 定义“本游戏具体组合成什么”。
+
+不可避免的业务耦合不会消失。例如“火球命中造成火焰伤害”天然同时涉及 Skill 与 Damage。正确做法是把它放进内容或 Integration，而不是让 Skill Core 直接依赖 Damage Core。
+
+## 3. 依赖规则
+
+### 3.1 功能模块不反向依赖 Integration
+
+允许：
+
+```text
+Skill-Damage Integration → Skill
+Skill-Damage Integration → Damage
+```
+
+禁止：
+
+```text
+Skill → Skill-Damage Integration
+Damage → Skill-Damage Integration
+```
+
+Integration 是上层组合规则，Feature Module 必须能在没有它时独立存在。
+
+### 3.2 消费者定义输入契约
+
+系统应依赖本领域可直接消费的运行数据：
+
+```ts
+MovementParameters {
+    maxSpeed,
+    acceleration,
+    rotationSpeed,
+}
+```
+
+Attribute 模块可以输出通用属性，但 `Unit-Attribute Integration` 负责把属性投影成 `MovementParameters`。单位移动系统只读取最终结果，不追溯力量、装备、Buff 或地形等来源。
+
+### 3.3 提供者不猜测消费者
+
+Attribute 模块只认识 Entity、Attribute、Modifier 和变化请求，不认识 Unit、Skill 或 Damage。Damage 模块只认识 `DamageRequest` 和 `DamageResult`，不关心请求来自技能、投射物还是陷阱。
+
+### 3.4 硬依赖必须表达真实约束
+
+如果一个模块脱离另一个模块后没有任何合理含义，可以声明硬依赖。如果只是当前实现碰巧从另一个模块取数，应优先定义本模块输入数据并用 Integration 投影。
+
+## 4. 数据契约与所有权
+
+每种运行数据都应明确以下角色：
+
+| 数据 | 定义方 | 写入方 | 读取方 |
+|---|---|---|---|
+| `MovementParameters` | Unit | Integration | Unit movement |
+| `SkillCastParameters` | Skill | Integration | Skill execution |
+| `DamageRequest` | Damage | Integration | Damage resolver |
+| `DamageResult` | Damage | Damage resolver | Integration |
+| `AttributeChangeRequest` | Attribute | Integration | Attribute resolver |
+| `Health` | Attribute | Attribute resolver | Presentation/Integration |
+
+推荐遵守：
+
+> 定义方拥有结构和约束；Integration 可以生成消费者的输入；业务系统只读取自己的输入。
+
+多个来源共同影响一个结果时，不应让所有来源直接写最终组件。它们应提交 Modifier 或 Contribution，再由唯一归并系统产生最终数据。
+
+## 5. Request、Result 与事实组件
+
+模块间通信优先使用三类数据：
+
+### 5.1 Request
+
+Request 是消费者定义的输入命令：
+
+```ts
+DamageRequest {
+    source,
+    target,
+    amount,
+}
+```
+
+生产者只表达意图，消费者负责验证、约束和执行。
+
+### 5.2 Result
+
+Result 是机制执行后的事实：
+
+```ts
+DamageResult {
+    source,
+    target,
+    requested,
+    final,
+}
+```
+
+扣血、吸血、统计、伤害数字和被动触发等系统都可以独立消费 Result。Damage Core 不回调这些模块。
+
+### 5.3 持久事实组件
+
+`Health`、`Transform`、`CooldownState` 等表示当前世界事实。短生命周期 Request/Result 处理完毕后应统一清理；持久事实由其所有者维护。
+
+相比字符串 EventBus，实体化 Request/Result 具有以下优势：
+
+- 可被 Query 和 Scheduler 管理。
+- 参数结构可以静态检查。
+- 可以记录、检查和回放。
+- 不会因即时回调形成隐藏调用栈。
+- 与 Commands 的结构变更边界一致。
+
+## 6. Skill、Buff、Effect、Damage 与 Attribute
+
+### 6.1 Skill Core
+
+Skill 只负责：
+
+- 释放验证。
+- 目标上下文。
+- 前摇、执行、后摇和冷却。
+- 在时间轴节点提交 Effect。
+
+Skill 不计算伤害，也不直接添加 Buff 或修改属性。
+
+### 6.2 Buff Core
+
+Buff 只负责：
+
+- 添加、刷新、层数和唯一性。
+- 持续时间与周期 Tick。
+- 驱散分类。
+- `onApply`、`onTick`、`onStack`、`onRemove`、`onExpire` 触发点。
+
+Buff 不需要知道自己由 Skill 添加，也不直接调用 Damage。
+
+### 6.3 通用 Effect Runtime
+
+当 Skill、Buff、Item、Projectile 和 Aura 都需要产生效果时，应引入通用 Effect Runtime，而不是为每对模块建立一套专属事件：
+
+```text
+Skill ───────┐
+Buff ────────┤
+Projectile ──┼─→ EffectRequest → Effect Handler
+Item ────────┤
+Aura ────────┘
+```
+
+典型类型化 Effect 包括：
+
+- `DealDamageEffect`
+- `ApplyBuffEffect`
+- `HealEffect`
+- `ModifyAttributeEffect`
+- `SpawnEntityEffect`
+
+Effect Runtime 只负责注册、校验、上下文传播和调度；具体业务由 Handler/Integration 完成。
+
+效果上下文至少应保留：
+
+```ts
+EffectContext {
+    source,
+    instigator,
+    target,
+    origin,
+    correlationId,
+    depth,
+}
+```
+
+其中 `correlationId` 用于追踪完整效果链，`depth` 和效果标记用于避免伤害反弹、被动等机制形成无限递归。
+
+### 6.4 标准伤害管线
+
+```text
+Skill/Buff/Projectile
+        ↓
+DealDamageEffect 或命中事实
+        ↓
+Integration
+        ↓
+DamageRequest
+        ↓
+Damage resolver
+        ↓
+DamageResult
+        ↓
+Damage-Attribute Integration
+        ↓
+AttributeChangeRequest
+        ↓
+Health change
+        ↓
+Death/Presentation/Progression Integration
+```
+
+Damage 决定“最终伤害是多少”；Attribute 决定“数值如何存储、约束和变化”；死亡、掉落和计分属于更上层的业务反应。
+
+### 6.5 Buff 属性修饰
+
+持续性 Buff 不应在添加时乘一次属性、移除时再做反向运算。应创建归属于 Buff 实体的 Attribute Modifier：
+
+```text
+Buff Entity
+└─ owns → AttributeModifier Entity
+```
+
+Buff 移除时级联删除 Modifier，再由 Attribute 模块重算最终值。这样可以正确处理叠加顺序、覆盖、驱散和提前结束。
+
+## 7. 调度规范
+
+模块不应为了排序而导入另一个模块的具体系统函数：
+
+```ts
+// 不推荐：形成实现级依赖
+builder.addSystem(move, { after: otherModuleSystem });
+```
+
+应使用共享的语义化 `SystemSet`：
+
+```text
+Lifecycle
+  ↓
+Spawn
+  ↓
+Intent
+  ↓
+Projectile
+  ↓
+Collision
+  ↓
+Damage
+  ↓
+Attribute
+  ↓
+Reaction
+  ↓
+Progression
+  ↓
+Statistics
+```
+
+功能模块声明自己属于哪个阶段，Integration 声明跨阶段投影顺序。这样可以替换系统实现，而不改变其他模块的 import。
+
+使用 Commands 生成的 Request 通常会在结构提交后、下一 Tick 才可查询。设计管线时必须明确这个延迟，而不是假设同一系统调用栈内立即完成全部结算。
+
+## 8. 模块与插件生命周期
+
+可插拔模块至少要考虑：
+
+- 注册哪些 Component、Service、Resource 和 System。
+- 必选、可选和冲突依赖。
+- 安装失败是否保持构建器一致。
+- 卸载时如何注销系统与监听。
+- 模块拥有的实体和外部资源如何清理。
+
+如果框架支持运行时卸载，推荐为每个模块提供 `ModuleScope`，由 Scope 记录注册项并统一释放。只支持构建期组合时，模块仍应保持单向依赖和独立构建能力。
+
+## 9. shooter-zombie 示例映射
+
+示例使用 Shooter、Projectile、Damage 和 Attribute 演示了上述规则：
+
+```text
+Shooter Core
+  └─ 产生 ShotRequest
+           ↓
+Shooter-Projectile Integration
+  └─ 选择 Zombie 目标并组装 Bullet + ProjectileDamagePayload
+           ↓
+Projectile Core
+  └─ 只处理移动、边界和生命周期
+           ↓
+Projectile-Damage Integration
+  └─ 碰撞后产生 DamageRequest
+           ↓
+Damage Core
+  └─ 产生 DamageResult
+           ↓
+Damage-Attribute Integration
+  └─ 产生 AttributeChangeRequest
+           ↓
+Attribute Core
+  └─ 修改 Health
+           ↓
+Reaction Integration
+  └─ 僵尸死亡、经验掉落、防线失败、计分与伤害表现
+```
+
+关键目录：
+
+```text
+examples/shooter-zombie/src/modules/
+├─ attribute/       # 通用 Health 与属性变化机制
+├─ damage/          # DamageRequest → DamageResult
+├─ shooter/         # 射击状态机与 ShotRequest
+├─ projectile/      # 投射物运动机制
+├─ zombie/          # 僵尸身份与运动机制
+└─ integration/     # 目标选择、碰撞、伤害投影、死亡掉落、内容组装
+```
+
+`GameContentService` 位于 Integration，因为它明确知道本游戏的组合事实，例如：
+
+- Zombie 同时拥有 `ZombieType` 与 `HealthType`。
+- Bullet 同时拥有 `BulletType` 与 `ProjectileDamagePayloadType`。
+- Shooter 的运行参数来自升级进度与游戏配置。
+
+这些规则不属于任何单一 Feature Core，集中在组合边界比隐藏在通用 Spawn Service 中更容易审查和替换。
+
+## 10. 代码审查清单
+
+新增或修改模块时检查：
+
+1. 系统完成职责所需的最小数据是什么？
+2. 这些数据是否使用本模块的业务语言？
+3. 系统是否不必要地知道数据来源？
+4. 数据来源改变时，当前模块是否也被迫修改？
+5. 是否存在 Feature Module 反向导入 Integration？
+6. 是否直接修改了另一个模块拥有的数据？
+7. 跨模块含义是否集中在 Integration？
+8. 请求、结果和持久事实的生命周期是否明确？
+9. 是否通过 SystemSet 而非具体外部系统建立排序？
+10. 移除一个可选模块后，其余模块是否仍能独立构建？
+
+如果一个系统同时回答“技能何时释放”“伤害怎么算”“生命如何扣除”“死亡掉什么”，说明它跨越了过多边界，应拆成 Request → Result → Integration 管线。

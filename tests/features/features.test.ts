@@ -1,22 +1,24 @@
 import { describe, expect, test } from "@rstest/core";
 import {
     type Component,
+    Command,
     CommandModule,
-    CommandService,
-    EcsBuilder,
-    EntityService,
+    Commands,
+    DefaultCoreModule,
+    GameBuilder,
     EventArgs,
     EventModule,
     EventService,
     FixedTimeResource,
     RandomModule,
     RandomService,
+    Service,
     TimeModule,
     TimeState,
     TimerModule,
     TimerService,
     Types,
-} from "../../src";
+} from "@zero-ecs/game";
 
 const enum Position { x }
 class PositionType implements Component<Position> {
@@ -29,7 +31,16 @@ class PingEvent extends EventArgs {
     clear(): void { this.value = 0; }
 }
 
-function start(builder: EcsBuilder) {
+class EmitPingCommand extends Command {
+    @Service.inject(EventService) private readonly events!: EventService;
+    value = 0;
+
+    set(value: number): this { this.assertMutable(); this.value = value; return this; }
+    execute(): void { this.events.event(PingEvent).set(this.value).post(); }
+    protected clear(): void { this.value = 0; }
+}
+
+function start(builder: GameBuilder) {
     const ecs = builder.build();
     ecs.init();
     ecs.start();
@@ -37,8 +48,24 @@ function start(builder: EcsBuilder) {
 }
 
 describe("fixed time and optional features", () => {
+    test("DefaultCoreModule installs the standard Game infrastructure", () => {
+        const ecs = start(new GameBuilder().addModule(
+            new DefaultCoreModule(new FixedTimeResource(0.25)),
+        ));
+
+        ecs.service(Commands);
+        ecs.service(EventService);
+        ecs.service(RandomService);
+        ecs.service(TimerService);
+        ecs.update();
+
+        expect(ecs.state(TimeState).tick).toBe(1);
+        expect(ecs.state(TimeState).delta).toBe(0.25);
+        ecs.dispose();
+    });
+
     test("advances deterministic TimeState without reading wall clock", () => {
-        const ecs = start(new EcsBuilder().addModule(
+        const ecs = start(new GameBuilder().addModule(
             new TimeModule(new FixedTimeResource(0.25)),
         ));
 
@@ -53,7 +80,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("fires Timer tasks on deterministic ticks", () => {
-        const ecs = start(new EcsBuilder()
+        const ecs = start(new GameBuilder()
             .addModule(new TimerModule())
             .addModule(new TimeModule(new FixedTimeResource(0.02))));
         const timer = ecs.service(TimerService);
@@ -69,7 +96,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("demotes hierarchical Timer tasks without wrapper nodes", () => {
-        const ecs = start(new EcsBuilder()
+        const ecs = start(new GameBuilder()
             .addModule(new TimeModule(new FixedTimeResource(1)))
             .addModule(new TimerModule()));
         const timer = ecs.service(TimerService);
@@ -84,12 +111,12 @@ describe("fixed time and optional features", () => {
     });
 
     test("can delay an EntityCommand until a later fixed tick", () => {
-        const ecs = start(new EcsBuilder()
+        const ecs = start(new GameBuilder()
             .addModule(new CommandModule())
             .addModule(new TimeModule(new FixedTimeResource(0.02)))
             .addModule(new TimerModule()));
-        const commands = ecs.service(CommandService);
-        const entities = ecs.service(EntityService);
+        const commands = ecs.service(Commands);
+        const entities = ecs.world;
         const timer = ecs.service(TimerService);
         const command = commands.spawn().set(PositionType, Position.x, 7);
         const entity = command.entity;
@@ -103,7 +130,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("does not auto-submit a pending Timer task during dispose", () => {
-        const ecs = start(new EcsBuilder()
+        const ecs = start(new GameBuilder()
             .addModule(new TimeModule())
             .addModule(new TimerModule()));
         let calls = 0;
@@ -113,7 +140,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("flushes Events last in Post and defers recursively posted events", () => {
-        const ecs = start(new EcsBuilder().addModule(new EventModule()));
+        const ecs = start(new GameBuilder().addModule(new EventModule()));
         const events = ecs.service(EventService);
         const values: number[] = [];
         events.on(PingEvent, event => {
@@ -128,8 +155,22 @@ describe("fixed time and optional features", () => {
         expect(values).toEqual([1, 2]);
     });
 
+    test("uses Post dependencies instead of Module registration order", () => {
+        const ecs = start(new GameBuilder()
+            .addModule(new EventModule())
+            .addModule(new CommandModule()));
+        const values: number[] = [];
+        ecs.service(EventService).on(PingEvent, event => values.push(event.value));
+        ecs.service(Commands).cmd(EmitPingCommand).set(7).submit();
+
+        ecs.update();
+
+        expect(values).toEqual([7]);
+        ecs.dispose();
+    });
+
     test("guards EventArgs lifecycle and never loans the same pooled instance twice", () => {
-        const ecs = start(new EcsBuilder().addModule(new EventModule()));
+        const ecs = start(new GameBuilder().addModule(new EventModule()));
         const events = ecs.service(EventService);
         const event = events.event(PingEvent).set(1);
         event.post();
@@ -149,7 +190,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("trims pooled EventArgs at an explicit boundary", () => {
-        const ecs = start(new EcsBuilder().addModule(new EventModule()));
+        const ecs = start(new GameBuilder().addModule(new EventModule()));
         const events = ecs.service(EventService);
         const first = events.event(PingEvent);
         const second = events.event(PingEvent);
@@ -169,8 +210,8 @@ describe("fixed time and optional features", () => {
     });
 
     test("produces the same RandomService sequence for the same seed", () => {
-        const first = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
-        const second = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
+        const first = start(new GameBuilder().addModule(new RandomModule())).service(RandomService);
+        const second = start(new GameBuilder().addModule(new RandomModule())).service(RandomService);
         first.seed(12345);
         second.seed(12345);
         const firstValues = [first.int(), first.int(), first.float(), first.int(10, 20)];
@@ -179,7 +220,7 @@ describe("fixed time and optional features", () => {
     });
 
     test("initializes RandomService and selects every positive weighted branch", () => {
-        const random = start(new EcsBuilder().addModule(new RandomModule())).service(RandomService);
+        const random = start(new GameBuilder().addModule(new RandomModule())).service(RandomService);
         expect(random.float()).toBeGreaterThan(0);
 
         random.seed(123);

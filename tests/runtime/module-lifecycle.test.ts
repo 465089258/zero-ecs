@@ -1,12 +1,12 @@
 import { describe, expect, test } from "@rstest/core";
 import {
     defSystem,
-    Ecs,
-    EcsBuilder,
+    Game,
+    GameBuilder,
     type Module,
     Shutdown,
     Startup,
-} from "../../src";
+} from "@zero-ecs/game";
 
 class LifecycleModule implements Module {
     constructor(
@@ -15,7 +15,7 @@ class LifecycleModule implements Module {
     ) {}
 
     build(): void { this.order.push(`${this.name}:build`); }
-    init(ecs: Ecs): void {
+    init(ecs: Game): void {
         expect(ecs.modules).toContain(this);
         this.order.push(`${this.name}:init`);
     }
@@ -29,7 +29,7 @@ describe("Module lifecycle", () => {
         const order: string[] = [];
         const first = new LifecycleModule("first", order);
         const second = new LifecycleModule("second", order);
-        const builder = new EcsBuilder();
+        const builder = new GameBuilder();
 
         builder.addSystem(defSystem(Startup, () => order.push("system:startup"), []));
         builder.addSystem(defSystem(Shutdown, () => order.push("system:shutdown"), []));
@@ -37,7 +37,7 @@ describe("Module lifecycle", () => {
         const ecs = builder.build();
 
         expect(order).toEqual(["first:build", "second:build"]);
-        expect(ecs.modules.slice(1)).toEqual([first, second]);
+        expect(ecs.modules).toEqual([first, second]);
 
         ecs.init();
         ecs.start();
@@ -63,7 +63,7 @@ describe("Module lifecycle", () => {
 
     test("rejects registering the same Module instance twice", () => {
         const module = new LifecycleModule("single", []);
-        const builder = new EcsBuilder().addModule(module);
+        const builder = new GameBuilder().addModule(module);
 
         expect(() => builder.addModule(module)).toThrow(/already registered/);
     });

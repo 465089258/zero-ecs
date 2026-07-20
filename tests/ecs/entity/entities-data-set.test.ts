@@ -1,5 +1,5 @@
 import { expect, test } from "@rstest/core";
-import { type Component, ComponentService, defineComponentMeta, EcsBuilder, EcsMemoryService, type Entity, EntityService, Types } from "../../../src/advanced";
+import { AllocatorService, type Component, defineComponentMeta, GameBuilder, type Entity, Types } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -12,17 +12,16 @@ class HealthType implements Component<Health> {
     readonly [Health.value] = Types.I32;
 }
 
-test("EntityService and Archetype share DataSet-backed Buffer memory", () => {
-    const ecs = new EcsBuilder().build();
+test("World entities and Archetypes share DataSet-backed Buffer memory", () => {
+    const ecs = new GameBuilder().build();
     ecs.init();
-    const components = ecs.service(ComponentService);
-    const position = defineComponentMeta(components, PositionType);
-    const health = defineComponentMeta(components, HealthType);
+    const entities = ecs.world;
+    const position = defineComponentMeta(entities, PositionType);
+    const health = defineComponentMeta(entities, HealthType);
     const positionId = position.id;
     const healthId = health.id;
-    const entities = ecs.service(EntityService);
-    const first = entities.spawn();
-    const second = entities.spawn();
+    const first = entities.reserveEntity();
+    const second = entities.reserveEntity();
 
     entities.migrate(first, position.mask, [position], (arch, row) => {
         arch.setField(row, positionId, 0, 12.5);
@@ -43,10 +42,10 @@ test("EntityService and Archetype share DataSet-backed Buffer memory", () => {
     expect(entities.view(first, PositionType)?.[Position.x][0]).toBe(12.5);
     expect(entities.getTypes(first)).toEqual([PositionType, HealthType]);
     expect(entities.getCompLocation(second)).toEqual({ tableId: 0, row: 0 });
-    const memory = ecs.service(EcsMemoryService);
-    expect(memory.allocator.stats().allocatedBuffers).toBeGreaterThanOrEqual(3);
+    const allocator = ecs.service(AllocatorService).allocator;
+    expect(allocator.stats().allocatedBuffers).toBeGreaterThanOrEqual(3);
     ecs.dispose();
-    expect(memory.allocator.stats()).toEqual({
+    expect(allocator.stats()).toEqual({
         blockCount: 0,
         bufferCapacity: 0,
         allocatedBuffers: 0,
@@ -57,11 +56,11 @@ test("EntityService and Archetype share DataSet-backed Buffer memory", () => {
 });
 
 test("Entity handles stay unsigned when the packed high bit is set", () => {
-    const ecs = new EcsBuilder().build();
+    const ecs = new GameBuilder().build();
     ecs.init();
-    const entities = ecs.service(EntityService);
+    const entities = ecs.world;
     let entity = 0 as Entity;
-    for (let i = 0; i < 524_288; i++) entity = entities.spawn();
+    for (let i = 0; i < 524_288; i++) entity = entities.reserveEntity();
 
     expect(entity).toBe(entity >>> 0);
     expect(entities.valid(entity)).toBe(true);
@@ -69,15 +68,15 @@ test("Entity handles stay unsigned when the packed high bit is set", () => {
 });
 
 test("retires an Entity slot before its generation can wrap", () => {
-    const ecs = new EcsBuilder().build();
+    const ecs = new GameBuilder().build();
     ecs.init();
-    const entities = ecs.service(EntityService);
-    const stale = entities.spawn();
+    const entities = ecs.world;
+    const stale = entities.reserveEntity();
     let current = stale;
 
     for (let i = 0; i < 4095; i++) {
         expect(entities.despawn(current)).toBe(true);
-        current = entities.spawn();
+        current = entities.reserveEntity();
     }
 
     expect(entities.valid(stale)).toBe(false);

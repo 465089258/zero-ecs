@@ -1,15 +1,13 @@
 import { describe, expect, test } from "@rstest/core";
-import * as publicApi from "../../src";
-import { InternalPost } from "../../src/schedule/internal-stage";
-import type { Scheduler } from "../../src/schedule/scheduler";
+import * as publicApi from "@zero-ecs/game";
 import {
     CommandModule,
     Command,
-    CommandService,
+    Commands,
     defSystem,
     type Component,
-    EcsBuilder,
-    EcsPhase,
+    GameBuilder,
+    GamePhase,
     Write,
     type Mut,
     Query,
@@ -21,7 +19,8 @@ import {
     Update,
     With,
     World,
-} from "../../src";
+    type WorldView,
+} from "@zero-ecs/game";
 
 class StepResource extends Resource {
     constructor(readonly value: number) { super(); }
@@ -41,23 +40,26 @@ class PositionType implements Component<Position> {
 }
 
 describe("system registration and scheduling", () => {
-    test("runs first/fixed/last before the private command/event Post partitions", () => {
+    test("runs first/fixed/last/post and orders Post systems by dependencies", () => {
         const order: string[] = [];
-        const builder = new EcsBuilder();
+        const builder = new GameBuilder();
         builder.addSystem(defSystem(Update.first, () => order.push("first"), []));
         builder.addSystem(defSystem(Update.fixed, () => order.push("fixed"), []));
         builder.addSystem(defSystem(Update.last, () => order.push("last"), []));
-        // Register in reverse commit order to verify internal partitions, not registration order.
-        builder.addSystem(defSystem(InternalPost.event, () => order.push("event"), []));
-        builder.addSystem(defSystem(InternalPost.migration, () => order.push("migration"), []));
-        builder.addSystem(defSystem(InternalPost.command, () => order.push("command"), []));
+        const command = defSystem(Update.post, () => order.push("command"), []);
+        const migration = defSystem(Update.post, () => order.push("migration"), []);
+        const event = defSystem(Update.post, () => order.push("event"), []);
+        // Reverse registration proves that the graph, rather than registration order, decides Post order.
+        builder.addSystem(event, { after: migration });
+        builder.addSystem(migration, { after: command });
+        builder.addSystem(command);
         const ecs = builder.build();
 
         ecs.init();
         ecs.start();
         ecs.update();
 
-        expect(Update.stages).toEqual([Update.first, Update.fixed, Update.last]);
+        expect(Update.stages).toEqual([Update.first, Update.fixed, Update.last, Update.post]);
         expect(order).toEqual(["first", "fixed", "last", "command", "migration", "event"]);
         expect("InternalPost" in publicApi).toBe(false);
         expect("EntityMigrationService" in publicApi).toBe(false);
@@ -71,19 +73,50 @@ describe("system registration and scheduling", () => {
         expect("EntityMigrationPoolService" in publicApi).toBe(false);
         expect("EventPoolService" in publicApi).toBe(false);
         expect("TimerPoolService" in publicApi).toBe(false);
-        expect("EntityCommandService" in publicApi).toBe(false);
+        expect("EntityCommands" in publicApi).toBe(false);
         expect("Bundle" in publicApi).toBe(false);
         expect("DataSet" in publicApi).toBe(false);
         expect("Mask" in publicApi).toBe(false);
         expect("Archetype" in publicApi).toBe(false);
     });
 
+    test("optional dependencies apply when present and do not require optional Modules", () => {
+        const absentOrder: string[] = [];
+        const optionalTarget = defSystem(Update.post, () => absentOrder.push("target"), []);
+        const optionalFollower = defSystem(Update.post, () => absentOrder.push("follower"), []);
+        const absent = new GameBuilder();
+        absent.addSystem(optionalFollower, { afterIfPresent: optionalTarget });
+        const absentGame = absent.build();
+        absentGame.init();
+        absentGame.start();
+        absentGame.update();
+        expect(absentOrder).toEqual(["follower"]);
+        absentGame.dispose();
+
+        const presentOrder: string[] = [];
+        const target = defSystem(Update.post, () => presentOrder.push("target"), []);
+        const follower = defSystem(Update.post, () => presentOrder.push("follower"), []);
+        const present = new GameBuilder();
+        present.addSystem(follower, { afterIfPresent: target });
+        present.addSystem(target);
+        const presentGame = present.build();
+        presentGame.init();
+        presentGame.start();
+        presentGame.update();
+        expect(presentOrder).toEqual(["target", "follower"]);
+        presentGame.dispose();
+
+        const strict = new GameBuilder();
+        strict.addSystem(follower, { after: target });
+        expect(() => strict.build()).toThrow(/is not registered/);
+    });
+
     test("injects peer World, Resource, State and Service parameters", () => {
         const order: string[] = [];
-        let receivedWorld: World | undefined;
+        let receivedWorld: WorldView | undefined;
 
         function timeSystem(
-            world: World,
+            world: WorldView,
             step: Readonly<StepResource>,
             time: Mut<ClockState>,
             audit: AuditService,
@@ -99,26 +132,20 @@ describe("system registration and scheduling", () => {
             order.push("timer");
         }
 
-        const builder = new EcsBuilder();
+        const builder = new GameBuilder();
         builder.addResource(StepResource, new StepResource(25));
+        builder.addState(ClockState);
+        builder.addState(TimerState);
+        builder.addService(AuditService);
         const definedTime = defSystem(Update.first, timeSystem, [
             World,
             StepResource,
             Write(ClockState),
             AuditService,
         ]);
-        const time = builder.addSystem(definedTime);
-        builder.addSystem(defSystem(Update.last, timerSystem, [ClockState, Write(TimerState)]), {
-            after: definedTime,
-        });
+        builder.addSystem(definedTime);
+        builder.addSystem(defSystem(Update.last, timerSystem, [ClockState, Write(TimerState)]));
         const ecs = builder.build();
-        const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
-        const access = scheduler.schedule.systems[time.id].access;
-        expect(access.world).toBe(true);
-        expect(access.reads.has(StepResource)).toBe(true);
-        expect(access.reads.has(AuditService as never)).toBe(false);
-        expect(access.writes.has(ClockState)).toBe(true);
-
         ecs.init();
         ecs.start();
         ecs.update();
@@ -133,7 +160,7 @@ describe("system registration and scheduling", () => {
         const order: string[] = [];
         function second(): void { order.push("second"); }
         function first(): void { order.push("first"); }
-        const builder = new EcsBuilder();
+        const builder = new GameBuilder();
         const firstSystem = defSystem(Update.fixed, first, []);
         builder.addSystem(defSystem(Update.fixed, second, []), { after: firstSystem });
         builder.addSystem(firstSystem);
@@ -148,24 +175,33 @@ describe("system registration and scheduling", () => {
         const queryType = QueryType.from(With(PositionType));
         let received: Query<[PositionType]> | undefined;
         function querySystem(query: Query<[PositionType]>): void { received = query; }
-        const builder = new EcsBuilder();
-        const handle = builder.addSystem(defSystem(Update.fixed, querySystem, [queryType]));
+        const builder = new GameBuilder();
+        builder.addSystem(defSystem(Update.fixed, querySystem, [queryType]));
         const ecs = builder.build();
-        const scheduler = (ecs as unknown as { _scheduler: Scheduler })._scheduler;
-        const access = scheduler.schedule.systems[handle.id].access;
-        expect(access.reads.size).toBe(0);
-        expect(access.writes.size).toBe(0);
-        expect(access.world).toBe(false);
         ecs.init();
         ecs.start();
         ecs.update();
         expect(received).toBeInstanceOf(Query);
     });
 
+    test("system parameters do not register State or Service types", () => {
+        const builder = new GameBuilder();
+        builder.addSystem(defSystem(
+            Update.fixed,
+            (_clock: Readonly<ClockState>, _audit: AuditService) => {},
+            [ClockState, AuditService],
+        ));
+        const game = builder.build();
+
+        expect(() => game.state(ClockState)).toThrow(/Instance not found: ClockState/);
+        expect(() => game.service(AuditService)).toThrow(/Instance not found: AuditService/);
+        game.dispose();
+    });
+
     test("rejects dependency cycles, missing Resources and Mut(Service)", () => {
         function a(): void {}
         function b(): void {}
-        const builder = new EcsBuilder();
+        const builder = new GameBuilder();
         const ah = builder.addSystem(defSystem(Update.fixed, a, []));
         const bh = builder.addSystem(defSystem(Update.fixed, b, []));
         builder.before(ah, bh).before(bh, ah);
@@ -173,9 +209,12 @@ describe("system registration and scheduling", () => {
         expect(() => ecs.init()).toThrow(/dependency cycle/);
         expect(() => Write(AuditService as never)).toThrow(/only accepts a State/);
 
-        const missing = new EcsBuilder();
+        const missing = new GameBuilder();
         missing.addSystem(defSystem(Update.fixed, (_step: Readonly<StepResource>) => {}, [StepResource]));
-        expect(() => missing.build()).toThrow(/Missing system Resources: StepResource/);
+        const missingGame = missing.build();
+        missingGame.init();
+        expect(() => missingGame.start()).toThrow(/Instance not found: StepResource/);
+        missingGame.dispose();
     });
 
     test("stops after a failed Tick and discards deferred Commands during dispose", () => {
@@ -184,20 +223,20 @@ describe("system registration and scheduling", () => {
             execute(): void { DeferredCommand.executions++; }
         }
 
-        function failingSystem(commands: CommandService): void {
+        function failingSystem(commands: Commands): void {
             commands.cmd(DeferredCommand).submit();
             throw new Error("expected system failure");
         }
 
         DeferredCommand.executions = 0;
-        const builder = new EcsBuilder().addModule(new CommandModule());
-        builder.addSystem(defSystem(Update.fixed, failingSystem, [CommandService]));
+        const builder = new GameBuilder().addModule(new CommandModule());
+        builder.addSystem(defSystem(Update.fixed, failingSystem, [Commands]));
         const ecs = builder.build();
         ecs.init();
         ecs.start();
 
         expect(() => ecs.update()).toThrow(/expected system failure/);
-        expect(ecs.phase).toBe(EcsPhase.Stopped);
+        expect(ecs.phase).toBe(GamePhase.Stopped);
         expect(() => ecs.update()).toThrow(/invalid during phase Stopped/);
         ecs.dispose();
         expect(DeferredCommand.executions).toBe(0);

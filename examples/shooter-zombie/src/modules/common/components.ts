@@ -1,4 +1,4 @@
-import { Types, type Component } from "zero-ecs-lib";
+import { Types, type Component } from "@zero-ecs/game";
 
 export const enum Position { x, y }
 

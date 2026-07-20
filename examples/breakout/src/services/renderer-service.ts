@@ -3,7 +3,7 @@ import {
     Service,
     State,
     type QueryOf,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import {
     Ball,
     Brick,

@@ -2,18 +2,15 @@ import { describe, expect, test } from "@rstest/core";
 import {
     All,
     Any,
-    ArchetypeService,
     type Component,
-    ComponentService,
     defineComponentMeta,
-    EcsBuilder,
+    GameBuilder,
     Optional,
-    QueryService,
     QueryType,
     Types,
     With,
     Without,
-} from "../../../src/advanced";
+} from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -25,7 +22,7 @@ class PlayerType implements Component<Player> { readonly [Player.level] = Types.
 class DeathTagType implements Component<never> {}
 
 function setup() {
-    const ecs = new EcsBuilder().build();
+    const ecs = new GameBuilder().build();
     ecs.init();
     return ecs;
 }
@@ -33,30 +30,29 @@ function setup() {
 describe("QueryType and QueryIter", () => {
     test("returns optional component columns as a table-level undefined", () => {
         const ecs = setup();
-        const components = ecs.service(ComponentService);
-        const archetypes = ecs.service(ArchetypeService);
-        const position = defineComponentMeta(components, PositionType);
-        const player = defineComponentMeta(components, PlayerType);
-        const death = defineComponentMeta(components, DeathTagType);
+        const world = ecs.world;
+        const position = defineComponentMeta(world, PositionType);
+        const player = defineComponentMeta(world, PlayerType);
+        const death = defineComponentMeta(world, DeathTagType);
 
         const queryType = QueryType.from(All(
             With(PositionType),
             Optional(PlayerType),
             Without(DeathTagType),
         ));
-        const query = ecs.service(QueryService).create(queryType);
+        const query = world.query(queryType);
 
-        const positionArch = archetypes.getOrNewAtMask(position.mask, [position]);
+        const positionArch = world.getOrCreateArchetype(position.mask, [position]);
         const first = positionArch.insert(1 as never);
         positionArch.setField(first, position.id, Position.x, 10);
 
         const playerMask = position.mask.or(player.mask);
-        const playerArch = archetypes.getOrNewAtMask(playerMask, [position, player]);
+        const playerArch = world.getOrCreateArchetype(playerMask, [position, player]);
         const second = playerArch.insert(2 as never);
         playerArch.setField(second, player.id, Player.level, 7);
 
         const deathMask = position.mask.or(death.mask);
-        const deathArch = archetypes.getOrNewAtMask(deathMask, [position, death]);
+        const deathArch = world.getOrCreateArchetype(deathMask, [position, death]);
         deathArch.insert(3 as never);
 
         const iter = query.iter();
@@ -76,19 +72,18 @@ describe("QueryType and QueryIter", () => {
 
     test("skips empty tables while advancing the reused current field", () => {
         const ecs = setup();
-        const components = ecs.service(ComponentService);
-        const archetypes = ecs.service(ArchetypeService);
-        const position = defineComponentMeta(components, PositionType);
-        const player = defineComponentMeta(components, PlayerType);
+        const world = ecs.world;
+        const position = defineComponentMeta(world, PositionType);
+        const player = defineComponentMeta(world, PlayerType);
 
-        const emptyArchetype = archetypes.getOrNewAtMask(position.mask, [position]);
+        const emptyArchetype = world.getOrCreateArchetype(position.mask, [position]);
         const emptyRow = emptyArchetype.insert(1 as never);
         emptyArchetype.remove(emptyRow);
 
-        const populatedArchetype = archetypes.getOrNewAtMask(position.mask.or(player.mask), [position, player]);
+        const populatedArchetype = world.getOrCreateArchetype(position.mask.or(player.mask), [position, player]);
         populatedArchetype.insert(2 as never);
 
-        const iter = ecs.service(QueryService).create(QueryType.from(With(PositionType))).iter();
+        const iter = world.query(QueryType.from(With(PositionType))).iter();
         expect(iter.next()).toBe(true);
         expect(iter.current[0]).toBe(1);
         expect(iter.current[1][0]).toBe(2);
@@ -98,6 +93,6 @@ describe("QueryType and QueryIter", () => {
     test("rejects Optional inside Any", () => {
         const ecs = setup();
         const type = QueryType.from(Any(With(PositionType), Optional(PlayerType)));
-        expect(() => ecs.service(QueryService).create(type)).toThrow(/Optional cannot be used inside Any/);
+        expect(() => ecs.world.query(type)).toThrow(/Optional cannot be used inside Any/);
     });
 });

@@ -1,9 +1,9 @@
 import {
-    CommandService,
+    Commands,
     RandomService,
     Resource,
     Service,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import {
     Ball,
     BallType,
@@ -22,7 +22,7 @@ import {
 import { GameConfigResource } from "../resources";
 
 export class SpawnService extends Service {
-    @Service.inject(CommandService) private readonly commands!: CommandService;
+    @Service.inject(Commands) private readonly commands!: Commands;
     @Service.inject(RandomService) private readonly random!: RandomService;
     @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
 

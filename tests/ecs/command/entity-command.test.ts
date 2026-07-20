@@ -3,15 +3,14 @@ import {
     type Component,
     Command,
     CommandModule,
-    CommandService,
-    ComponentService,
-    EcsBuilder,
+    Commands,
+    GameBuilder,
     ErrorHandlerService,
     type Entity,
     type EntityMutator,
-    EntityService,
     Types,
-} from "../../../src";
+    World,
+} from "@zero-ecs/game";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -40,17 +39,37 @@ class ThrowCommand extends Command {
 }
 
 function setup() {
-    const ecs = new EcsBuilder().addModule(new CommandModule()).build();
+    const ecs = new GameBuilder().addModule(new CommandModule()).build();
     ecs.init();
     ecs.start();
     return ecs;
 }
 
-describe("unified CommandService", () => {
+describe("unified Commands", () => {
+    test("pools EntityCommand through the ordinary Command channel", () => {
+        const ecs = setup();
+        const commands = ecs.service(Commands);
+        const firstCommand = commands.spawn().set(PositionType, Position.x, 3);
+        const firstEntity = firstCommand.entity;
+
+        firstCommand.submit();
+        expect(() => firstCommand.submit()).toThrow(/already been submitted/);
+        ecs.update();
+        expect(ecs.world.get(firstEntity, PositionType, Position.x)).toBe(3);
+
+        const secondCommand = commands.spawn().set(PositionType, Position.x, 5);
+        const secondEntity = secondCommand.entity;
+        expect(secondCommand).toBe(firstCommand);
+        secondCommand.submit();
+        ecs.update();
+        expect(ecs.world.get(secondEntity, PositionType, Position.x)).toBe(5);
+        ecs.dispose();
+    });
+
     test("pools ordinary commands and enforces their lifecycle", () => {
         CountCommand.total = 0;
         const ecs = setup();
-        const commands = ecs.service(CommandService);
+        const commands = ecs.service(Commands);
         const command = commands.cmd(CountCommand);
         command.set(3).submit();
 
@@ -69,7 +88,7 @@ describe("unified CommandService", () => {
 
     test("trims command and migration pools only at an idle boundary", () => {
         const ecs = setup();
-        const commands = ecs.service(CommandService);
+        const commands = ecs.service(Commands);
         const first = commands.cmd(CountCommand);
         const second = commands.cmd(CountCommand);
         first.submit();
@@ -90,7 +109,7 @@ describe("unified CommandService", () => {
 
     test("recycles a command even when execute throws", () => {
         const ecs = setup();
-        const commands = ecs.service(CommandService);
+        const commands = ecs.service(Commands);
         const errors: unknown[] = [];
         ecs.service(ErrorHandlerService).setHandler((error, source) => {
             expect(source).toBe("command");
@@ -106,20 +125,19 @@ describe("unified CommandService", () => {
 
     test("reserves spawn IDs immediately and executes EntityCommand in the same queue", () => {
         const ecs = setup();
-        const entities = ecs.service(EntityService);
-        const commands = ecs.service(CommandService);
-        const components = ecs.service(ComponentService);
+        const entities = ecs.structureWriter() as World;
+        const commands = ecs.service(Commands);
         const command = commands.spawn();
         const entity = command.entity;
 
         expect(entities.valid(entity)).toBe(true);
-        expect(components.get(PositionType)).toBeUndefined();
+        expect(entities.component(PositionType)).toBeUndefined();
         command
             .add(PositionType)
             .set(PositionType, Position.x, 10)
             .set(PositionType, Position.y, 20)
-            .add(PlayerTagType)
-            .submit();
+            .add(PlayerTagType);
+        command.submit();
         expect(() => command.remove(PlayerTagType)).toThrow(/already been submitted/);
         ecs.update();
 
@@ -128,15 +146,16 @@ describe("unified CommandService", () => {
         expect(entities.get(entity, PositionType, Position.x)).toBe(10);
         expect(entities.get(entity, PositionType, Position.y)).toBe(20);
 
-        commands.entity(entity).remove(PlayerTagType).submit();
+        const removeTag = commands.entity(entity).remove(PlayerTagType);
+        removeTag.submit();
         ecs.update();
         expect(entities.has(entity, PlayerTagType)).toBe(false);
     });
 
     test("batch despawns across retained empty Tables and can immediately reuse Entity slots", () => {
         const ecs = setup();
-        const commands = ecs.service(CommandService);
-        const entities = ecs.service(EntityService);
+        const commands = ecs.service(Commands);
+        const entities = ecs.structureWriter() as World;
         const errors: unknown[] = [];
         ecs.service(ErrorHandlerService).setHandler(error => errors.push(error));
         const original: Entity[] = [];
@@ -170,8 +189,8 @@ describe("unified CommandService", () => {
 
     test("keeps unsubmitted EntityCommand alive and makes despawn terminal", () => {
         const ecs = setup();
-        const entities = ecs.service(EntityService);
-        const commands = ecs.service(CommandService);
+        const entities = ecs.structureWriter() as World;
+        const commands = ecs.service(Commands);
         const command = commands.spawn();
         const entity = command.entity;
         const other = commands.entity(entity);
@@ -180,7 +199,8 @@ describe("unified CommandService", () => {
         ecs.update();
         expect(entities.valid(entity)).toBe(true);
 
-        command.add(PositionType).submit();
+        command.add(PositionType);
+        command.submit();
         ecs.update();
         expect(entities.has(entity, PositionType)).toBe(true);
 
@@ -193,21 +213,19 @@ describe("unified CommandService", () => {
 
     test("read access does not register an unseen component", () => {
         const ecs = setup();
-        const entities = ecs.service(EntityService);
-        const components = ecs.service(ComponentService);
-        const entity = entities.spawn();
+        const entities = ecs.structureWriter() as World;
+        const entity = entities.reserveEntity();
 
         expect(entities.has(entity, PositionType)).toBe(false);
         expect(entities.get(entity, PositionType, Position.x)).toBeNull();
         expect(entities.view(entity, PositionType)).toBeNull();
-        expect(components.get(PositionType)).toBeUndefined();
+        expect(entities.component(PositionType)).toBeUndefined();
     });
 
     test("uses idempotent Add/Remove and Set implicitly adds a zeroed component", () => {
         const ecs = setup();
-        const entities = ecs.service(EntityService);
-        const commands = ecs.service(CommandService);
-        const components = ecs.service(ComponentService);
+        const entities = ecs.structureWriter() as World;
+        const commands = ecs.service(Commands);
         const create = commands.spawn();
         const entity = create.entity;
         create
@@ -221,12 +239,12 @@ describe("unified CommandService", () => {
 
         expect(entities.get(entity, PositionType, Position.x)).toBe(12);
         expect(entities.get(entity, PositionType, Position.y)).toBe(0);
-        expect(components.get(PlayerTagType)).toBeUndefined();
+        expect(entities.component(PlayerTagType)).toBeUndefined();
 
-        commands.entity(entity)
+        const update = commands.entity(entity)
             .add(PositionType)
-            .set(PositionType, Position.y, 8)
-            .submit();
+            .set(PositionType, Position.y, 8);
+        update.submit();
         ecs.update();
         expect(entities.get(entity, PositionType, Position.x)).toBe(12);
         expect(entities.get(entity, PositionType, Position.y)).toBe(8);
@@ -234,30 +252,30 @@ describe("unified CommandService", () => {
 
     test("treats Remove then Add or Set as a fresh zeroed component", () => {
         const ecs = setup();
-        const entities = ecs.service(EntityService);
-        const commands = ecs.service(CommandService);
+        const entities = ecs.structureWriter() as World;
+        const commands = ecs.service(Commands);
         const create = commands.spawn();
         const entity = create.entity;
         create
             .set(PositionType, Position.x, 1)
-            .set(PositionType, Position.y, 2)
-            .submit();
+            .set(PositionType, Position.y, 2);
+        create.submit();
         ecs.update();
 
-        commands.entity(entity)
+        const reset = commands.entity(entity)
             .set(PositionType, Position.x, 99)
             .remove(PositionType)
             .add(PositionType)
-            .set(PositionType, Position.y, 7)
-            .submit();
+            .set(PositionType, Position.y, 7);
+        reset.submit();
         ecs.update();
         expect(entities.get(entity, PositionType, Position.x)).toBe(0);
         expect(entities.get(entity, PositionType, Position.y)).toBe(7);
 
-        commands.entity(entity)
+        const replace = commands.entity(entity)
             .remove(PositionType)
-            .set(PositionType, Position.x, 5)
-            .submit();
+            .set(PositionType, Position.x, 5);
+        replace.submit();
         ecs.update();
         expect(entities.get(entity, PositionType, Position.x)).toBe(5);
         expect(entities.get(entity, PositionType, Position.y)).toBe(0);
@@ -265,8 +283,8 @@ describe("unified CommandService", () => {
 
     test("provides read-your-writes through a shared zero-wrapper EntityMutator view", () => {
         const ecs = setup();
-        const commands = ecs.service(CommandService);
-        const entities = ecs.service(EntityService);
+        const commands = ecs.service(Commands);
+        const entities = ecs.structureWriter() as World;
         const command = commands.spawn();
         const entity = command.entity;
 
@@ -294,14 +312,16 @@ describe("unified CommandService", () => {
 
     test("keeps Add-to-Remove and Set-to-Remove entities without the component", () => {
         const ecs = setup();
-        const commands = ecs.service(CommandService);
-        const entities = ecs.service(EntityService);
+        const commands = ecs.service(Commands);
+        const entities = ecs.structureWriter() as World;
         const added = commands.spawn();
         const addedEntity = added.entity;
-        added.add(PositionType).remove(PositionType).submit();
+        added.add(PositionType).remove(PositionType);
+        added.submit();
         const set = commands.spawn();
         const setEntity = set.entity;
-        set.set(PositionType, Position.x, 1).remove(PositionType).submit();
+        set.set(PositionType, Position.x, 1).remove(PositionType);
+        set.submit();
         ecs.update();
 
         expect(entities.has(addedEntity, PositionType)).toBe(false);

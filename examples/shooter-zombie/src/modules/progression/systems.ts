@@ -1,5 +1,5 @@
 import {
-    CommandService,
+    Commands,
     defSystem,
     RandomService,
     TimeState,
@@ -8,14 +8,13 @@ import {
     type Entity,
     type Mut,
     type QueryOf,
-} from "zero-ecs-lib";
+} from "@zero-ecs/game";
 import { Position, Velocity } from "../common/components";
 import { GameMode, GameState, UpgradeType } from "../common/game-state";
 import { GameConfigResource } from "../common/resources";
 import { pickUpgrades } from "../common/upgrade-utils";
 import { InputService } from "../common/services/input-service";
 import { ShooterQuery } from "../shooter/queries";
-import { SpawnService } from "../spawn/spawn-service";
 import { DamageText, ExpOrb } from "./components";
 import { DamageTextQuery, ExpOrbQuery } from "./queries";
 
@@ -24,19 +23,19 @@ type ExpOrbs = QueryOf<typeof ExpOrbQuery>;
 type DamageTexts = QueryOf<typeof DamageTextQuery>;
 
 export const expCollectSystem = defSystem(Update.fixed, collectExperience, [
-    GameConfigResource, Write(GameState), CommandService, ExpOrbQuery, ShooterQuery,
+    GameConfigResource, Write(GameState), Commands, ExpOrbQuery, ShooterQuery,
 ]);
 export const damageTextUpdateSystem = defSystem(Update.fixed, updateDamageTexts, [
-    TimeState, GameState, CommandService, DamageTextQuery,
+    TimeState, GameState, Commands, DamageTextQuery,
 ]);
 export const levelUpSystem = defSystem(Update.fixed, processLevelUp, [
-    Write(GameState), RandomService, InputService, SpawnService, CommandService, ShooterQuery,
+    Write(GameState), RandomService, InputService,
 ]);
 
 function collectExperience(
     config: Readonly<GameConfigResource>,
     game: Mut<GameState>,
-    commands: CommandService,
+    commands: Commands,
     expOrbs: ExpOrbs,
     shooter: Shooters,
 ): void {
@@ -85,7 +84,7 @@ function collectExperience(
 function updateDamageTexts(
     time: Readonly<TimeState>,
     game: Readonly<GameState>,
-    commands: CommandService,
+    commands: Commands,
     texts: DamageTexts,
 ): void {
     if (game.skipTick || game.mode === GameMode.GameOver) return;
@@ -110,9 +109,6 @@ function processLevelUp(
     game: Mut<GameState>,
     random: RandomService,
     input: InputService,
-    spawn: SpawnService,
-    commands: CommandService,
-    shooter: Shooters,
 ): void {
     if (game.skipTick) return;
 
@@ -123,12 +119,7 @@ function processLevelUp(
         if (selected === undefined) return;
         applyUpgrade(game, selected);
 
-        const iter = shooter.iter();
-        while (iter.next()) {
-            const [count, entities] = iter.current;
-            for (let i = 0; i < count; i++) commands.entity(entities[i] as Entity).despawn().submit();
-        }
-        spawn.spawnShooter();
+        game.rebuildShooter = 1;
         game.mode = GameMode.Playing;
         game.skipTick = 1;
         game.upgradeOptions = [];

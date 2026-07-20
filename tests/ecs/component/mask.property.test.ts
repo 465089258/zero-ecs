@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@rstest/core";
-import { Mask } from "../../../src/advanced";
+import { Mask } from "@zero-ecs/game/advanced";
 
 function createRandom(seed: number): () => number {
     let state = seed >>> 0;

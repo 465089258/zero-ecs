@@ -1,4 +1,4 @@
-import { Resource, Service } from "zero-ecs-lib";
+import { Resource, Service } from "@zero-ecs/game";
 import { GameViewResource } from "../resources";
 
 export class InputService extends Service {
