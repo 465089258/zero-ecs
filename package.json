@@ -23,8 +23,20 @@
     "example:breakout:typecheck": "npm run build && tsc -p examples/breakout/tsconfig.json",
     "example:shooter-zombie": "npm run build && rsbuild dev --config examples/shooter-zombie/rsbuild.config.ts",
     "example:shooter-zombie:build": "npm run build && rsbuild build --config examples/shooter-zombie/rsbuild.config.ts",
+<<<<<<< HEAD
     "example:shooter-zombie:typecheck": "npm run build && tsc -p examples/shooter-zombie/tsconfig.json",
     "verify:release": "npm run typecheck && npm test && npm run build && npm run test:no-jit && tsc -p tests/types/tsconfig.json && node tests/package-boundary.mjs && tsc -p examples/breakout/tsconfig.json && tsc -p examples/shooter-zombie/tsconfig.json",
+=======
+    "example:shooter-zombie-oop": "rsbuild dev --config examples/oop-shooter-zombie/rsbuild.config.ts",
+    "example:shooter-zombie-oop:build": "rsbuild build --config examples/oop-shooter-zombie/rsbuild.config.ts",
+    "test": "rstest",
+    "typecheck": "tsc --noEmit",
+    "test:types": "tsc -p tests/types/tsconfig.json",
+    "test:package": "node tests/package-boundary.mjs",
+    "test:no-jit": "npm run build && node --jitless tests/no-jit-smoke.mjs",
+    "test:watch": "rstest --watch",
+    "verify:release": "npm run typecheck && npm run test && npm run build && node --jitless tests/no-jit-smoke.mjs && npm run test:types && npm run test:package",
+>>>>>>> eaf72ceda28153b79b4d08389972371de2242457
     "prepack": "npm run verify:release"
   },
   "devDependencies": {

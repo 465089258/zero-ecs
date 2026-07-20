@@ -1,4 +1,4 @@
-import { Resource } from "@zero-ecs/game";
+import { Resource } from "zero-ecs-lib";
 
 export class GameConfigResource extends Resource {
     readonly width = 960;
