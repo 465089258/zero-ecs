@@ -1,5 +1,9 @@
 import { type IAllocator, type StructureWriter, World } from "@zero-ecs/world";
-import { allocatorOfWorld, isWorldDisposed } from "@zero-ecs/world/game-bridge";
+import {
+    allocatorOfWorld,
+    finalizeWorldKernel,
+    isWorldDisposed,
+} from "@zero-ecs/world/game-bridge";
 
 interface WorldClaim {
     readonly owner: symbol;
@@ -19,8 +23,13 @@ export function claimWorld(world: World, owner: symbol): void {
 export function finalizeWorld(world: World, owner: symbol): void {
     const claim = requireClaim(world, owner);
     if (claim.finalized) return;
+    let firstError: unknown;
     try { world.dispose(); }
-    finally { claim.finalized = true; }
+    catch (error) { firstError = error; }
+    try { finalizeWorldKernel(world); }
+    catch (error) { firstError ??= error; }
+    claim.finalized = true;
+    if (firstError !== undefined) throw firstError;
 }
 
 export function structureWriterOf(world: World, owner: symbol): StructureWriter {

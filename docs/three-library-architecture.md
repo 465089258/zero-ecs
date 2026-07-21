@@ -1,9 +1,8 @@
 # World / Scheduler / Game 三库架构设计
 
-> 状态：已于 2026-07-20 实施。仓库已迁移为 `world`、`scheduler`、`game` 三个
-> workspace 包，旧单包 `src/` 已删除。实施没有改变 Query、Archetype、DataSet 核心
-> 算法；Table 回收策略继续按
-> [performance.md](./performance.md) 作为独立实验处理。
+> 状态：已实施。仓库已迁移为 `world`、`scheduler`、`game` 三个 workspace 包，旧单包
+> `src/` 已删除。后续存储收敛已把行所有权从 DataSet 移到 Archetype/EntitySlots；
+> Query 直接遍历 Archetype Chunk。
 
 ## 1. 最终结论
 
@@ -66,7 +65,7 @@ Service 和 System，只导出 Module 与面向上层的 Service。
 
 ### 3.1 定位与目录
 
-World 是实体、组件、Archetype、Table、Query 和结构事务的物理所有者，可以脱离
+World 是实体、组件、Archetype Chunk、Table、Query 和结构事务的物理所有者，可以脱离
 Game 和 Scheduler 单独使用：
 
 ```ts
@@ -105,6 +104,7 @@ World 不提供 Resource、State、Service、Injection、Stage、System、Schedu
 
 ```ts
 export interface WorldView {
+    ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
     get<T extends object, F extends ComponentFields<T>>(
         entity: Entity,
@@ -135,7 +135,11 @@ World 独立使用时没有调度阶段，因此结构方法是直接能力，�
 Game 依靠参数类型隔离普通 System；取得 writer 后的正确使用遵守君子协议。
 
 `getTypes()`、`getCompLocation()` 是会分配对象的诊断 API，不进入 `WorldView`。
-Table 列视图和 raw location 只进入 advanced；批量组件访问继续使用 Query。
+后者返回 `{ chunkIdx, row }`。Archetype 的 `views[chunkIdx][componentId][fieldId]`、
+`entities[chunkIdx]` 和 raw location 只进入 advanced；批量组件访问继续使用 Query。
+
+`WorldView.ref(entity)` 是显式分配的低频只读入口。EntityRef 只绑定 WorldView 与带版本
+句柄，不缓存物理位置、不参与 Query，也不扩大到 StructureWriter 能力。
 
 ### 3.3 Allocator 所有权
 
@@ -368,7 +372,7 @@ QueryType                -> Query
 ResourceType             -> Readonly<Resource>
 StateType                -> Readonly<State>
 Write(StateType)         -> Mut<State>
-ServiceType              -> Service
+ServiceToken             -> Service
 ```
 
 `Game`、`StructureWriter` 和完整 World 不进入普通 SystemParam。系统参数不自动注册
@@ -391,6 +395,10 @@ Shutdown
 生命周期顺序固定为：启动时运行 Startup；每个 Tick 依次运行 `Update.first`、
 `Update.fixed`、`Update.last`、`Update.post`；停止时运行 Shutdown。Game 明确调用这些
 阶段，Scheduler 不拥有完整 Tick。
+
+渲染、编辑器面板等与固定 Tick 不同频的上层能力可声明 `ManualStage`，由宿主在 Running
+阶段调用 `game.runStage(stage)`。`ManualStage` 具有类型品牌，标准 Update、Startup 和
+Shutdown 不能传入该入口；手动阶段也不会被 `Game.update()` 隐式执行。
 
 `Update.post` 只是普通的 Tick 收尾阶段，不内建 Command、Migration、Event 或 Timer
 顺序。命令提交、实体事务应用、事件分发、计时器触发等都注册为普通 System；同阶段
@@ -433,6 +441,11 @@ SystemSet 自身没有隐含顺序，只是依赖图节点。每个 set 绑定�
 容器沿实现类原型链注册 token，但在领域根类之前按结构停止，不硬编码
 `Resource/State/Service/Object` 排除表。生命周期数组只保存唯一实例，别名不重复
 init/dispose。
+
+Service 类型区分查找 token 与具体实现：`ServiceToken<T>` 接受抽象父类，用于 System
+参数、属性注入、`Game.service()` 和临时生命周期上下文；`ServiceType<T>` 只接受可
+实例化类型，用于 `GameBuilder.addService()`。因此注册 `CanvasRenderService extends
+RenderService` 后，通过两个类型取得的是同一个实例，不创建 wrapper 或转发层。
 
 普通 Service 支持无参类型注册。需要构造参数或替换内建 Service 时提供冷路径工厂：
 

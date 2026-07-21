@@ -2,6 +2,7 @@ import { ErrorHandlerService } from "../context/error-handler-service";
 import { InjectionService } from "../context/injection/service";
 import { Inject, Service } from "../context";
 import {
+    type ComponentFieldValue,
     type ComponentFields,
     type ComponentType,
     type Entity,
@@ -21,6 +22,12 @@ export interface ICommands {
     cmd<T extends Command>(type: CommandType<T>): Omit<T, "execute">;
     entity(entity: Entity): EntityCommand;
     spawn(): EntityCommand;
+}
+
+/** Commands 提交边界上的组合层扩展协议；不得由 World 内核依赖。 */
+export interface CommandFlushExtension {
+    /** 普通 Command 已执行、实体事务尚未合并时调用。 */
+    flushCommands(commands: Commands): void;
 }
 
 /**
@@ -46,6 +53,7 @@ export class Commands extends Service implements ICommands {
     private readonly _entityToAccumulator = new EntityPlanIndex();
     private readonly _accumulators: InternalRawEntityCommand[] = [];
     private _accumulatorUsed = 0;
+    private readonly _flushExtensions: CommandFlushExtension[] = [];
 
     private readonly _submitCommand = (command: Command): void => { this.enqueueCommand(command); };
 
@@ -90,37 +98,64 @@ export class Commands extends Service implements ICommands {
         else this._entityPending.push(internal);
     }
 
+    /** @internal 注册一个提交扩展；通常由可选 Game Module 的 Service.activate 调用。 */
+    addFlushExtension(extension: CommandFlushExtension): void {
+        if (this._flushExtensions.indexOf(extension) !== -1) return;
+        this._flushExtensions.push(extension);
+    }
+
+    /** @internal 移除此前注册的提交扩展。 */
+    removeFlushExtension(extension: CommandFlushExtension): void {
+        const index = this._flushExtensions.indexOf(extension);
+        if (index !== -1) this._flushExtensions.splice(index, 1);
+    }
+
+    /** @internal 尚未合并的 World 原始实体事务数量。 */
+    get pendingEntityCommandCount(): number { return this._entityPendingUsed; }
+
+    /** @internal 读取尚未合并事务的目标实体。 */
+    pendingEntityAt(index: number): Entity {
+        return this.requirePendingEntityCommand(index).entity;
+    }
+
+    /** @internal 判断尚未合并的事务是否以 despawn 终止。 */
+    pendingEntityWillDespawnAt(index: number): boolean {
+        return this.requirePendingEntityCommand(index)._willDespawn();
+    }
+
     /** @internal 执行普通命令，并按实体把已提交局部事务合并为 accumulator。 */
     flush(): void {
         let firstError: unknown;
         let batches = 0;
-        while (this._pendingUsed > 0 && batches++ < 1000) {
-            const batch = this._pending;
-            const used = this._pendingUsed;
-            this._pending = this._processing;
-            this._pendingUsed = 0;
-            this._processing = batch;
-            for (let i = 0; i < used; i++) {
-                const command = batch[i];
-                try { command._execute(); }
-                catch (error) { firstError ??= this.report(error, "command", command); }
-                finally {
-                    try { command._recycle(); }
+        for (;;) {
+            while (this._pendingUsed > 0 && batches++ < 1000) {
+                const batch = this._pending;
+                const used = this._pendingUsed;
+                this._pending = this._processing;
+                this._pendingUsed = 0;
+                this._processing = batch;
+                for (let i = 0; i < used; i++) {
+                    const command = batch[i];
+                    try { command._execute(); }
                     catch (error) { firstError ??= this.report(error, "command", command); }
-                    finally { this.recycleCommand(command); }
+                    finally {
+                        try { command._recycle(); }
+                        catch (error) { firstError ??= this.report(error, "command", command); }
+                        finally { this.recycleCommand(command); }
+                    }
                 }
             }
-        }
-        if (this._pendingUsed > 0) {
-            const used = this._pendingUsed;
-            this._pendingUsed = 0;
-            for (let i = 0; i < used; i++) {
-                const command = this._pending[i];
-                try { command._recycle(); }
-                catch (error) { firstError ??= this.report(error, "command", command); }
-                finally { this.recycleCommand(command); }
+            if (this._pendingUsed > 0) {
+                firstError ??= this.report(new Error("Commands flush safety limit reached"), "command");
+                break;
             }
-            firstError ??= this.report(new Error("Commands flush safety limit reached"), "command");
+            const extensions = this._flushExtensions;
+            for (let i = 0; i < extensions.length; i++) {
+                const extension = extensions[i];
+                try { extension.flushCommands(this); }
+                catch (error) { firstError ??= this.report(error, "command", extension); }
+            }
+            if (this._pendingUsed === 0) break;
         }
         firstError ??= this.collectEntityCommands();
         if (firstError !== undefined) throw firstError;
@@ -201,6 +236,7 @@ export class Commands extends Service implements ICommands {
         this._entityToAccumulator.trim();
         this._commandPools.clear();
         this._entityPool.length = 0;
+        this._flushExtensions.length = 0;
         if (firstError !== undefined) throw firstError;
     }
 
@@ -218,6 +254,13 @@ export class Commands extends Service implements ICommands {
             this._commandPools.set(type, pool);
         }
         pool.push(command);
+    }
+
+    private requirePendingEntityCommand(index: number): InternalRawEntityCommand {
+        if (!Number.isInteger(index) || index < 0 || index >= this._entityPendingUsed) {
+            throw new RangeError(`Pending EntityCommand index ${index} is outside the active range`);
+        }
+        return this._entityPending[index];
     }
 
     private collectEntityCommands(): unknown {
@@ -281,7 +324,7 @@ export class EntityCommand extends Command implements EntityMutator {
     get<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-    ): number | null {
+    ): ComponentFieldValue<T, Field> | null {
         this.assertMutable();
         return this.requireRaw().get(type, field);
     }
@@ -301,7 +344,7 @@ export class EntityCommand extends Command implements EntityMutator {
     set<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-        value: number,
+        value: ComponentFieldValue<T, Field>,
     ): this {
         this.assertMutable();
         this.requireRaw().set(type, field, value);

@@ -3,37 +3,34 @@ import {
     defSystem,
     TimeState,
     Update,
-    type Entity,
     type QueryOf,
 } from "@zero-ecs/game";
-import { Position, Velocity } from "../common/components";
-import { GameMode, GameState } from "../common/game-state";
-import { GameConfigResource } from "../common/resources";
+import { Float2, GameConfigResource, GameMode, GameSessionState } from "../common";
 import { Bullet } from "./components";
 import { BulletQuery } from "./queries";
 
 type Bullets = QueryOf<typeof BulletQuery>;
 
 export const moveBulletsSystem = defSystem(Update.fixed, moveBullets, [
-    GameConfigResource, TimeState, GameState, Commands, BulletQuery,
+    GameConfigResource, TimeState, GameSessionState, Commands, BulletQuery,
 ]);
 
 function moveBullets(
     config: Readonly<GameConfigResource>,
     time: Readonly<TimeState>,
-    game: Readonly<GameState>,
+    session: Readonly<GameSessionState>,
     commands: Commands,
     bullets: Bullets,
 ): void {
-    if (game.skipTick || game.mode !== GameMode.Playing) return;
+    if (session.skipTick || session.mode !== GameMode.Playing) return;
     const wallInset = 10;
     const iter = bullets.iter();
     while (iter.next()) {
         const [count, entities, positions, velocities, data] = iter.current;
-        const xs = positions[Position.x];
-        const ys = positions[Position.y];
-        const vxs = velocities[Velocity.x];
-        const vys = velocities[Velocity.y];
+        const xs = positions[Float2.x];
+        const ys = positions[Float2.y];
+        const vxs = velocities[Float2.x];
+        const vys = velocities[Float2.y];
         const ricochets = data[Bullet.ricochetCount];
         const lifetimes = data[Bullet.lifetime];
         const active = data[Bullet.active];
@@ -72,7 +69,7 @@ function moveBullets(
                     lifetimes[i] += 0.5;
                 } else {
                     active[i] = 0;
-                    commands.entity(entities[i] as Entity).despawn().submit();
+                    commands.entity(entities[i]).despawn().submit();
                     continue;
                 }
             }
@@ -80,7 +77,7 @@ function moveBullets(
             ys[i] = y;
             if (lifetimes[i] <= 0) {
                 active[i] = 0;
-                commands.entity(entities[i] as Entity).despawn().submit();
+                commands.entity(entities[i]).despawn().submit();
             }
         }
     }

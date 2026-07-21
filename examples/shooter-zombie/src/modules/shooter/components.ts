@@ -45,7 +45,7 @@ export const enum ShotRequest {
 }
 
 export class ShotRequestType implements Component<ShotRequest> {
-    readonly [ShotRequest.source] = Types.U32;
+    readonly [ShotRequest.source] = Types.Entity;
     readonly [ShotRequest.x] = Types.F32;
     readonly [ShotRequest.y] = Types.F32;
     readonly [ShotRequest.damage] = Types.F32;

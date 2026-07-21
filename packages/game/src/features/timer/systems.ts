@@ -4,7 +4,7 @@ import { Update } from "../../runtime/stage";
 import { TimeState } from "../time/time-state";
 import {
     type InnerTask,
-    TimerConfig,
+    TimerConfigResource,
     type TimerLevel,
     TimerPoolService,
     TimerState,
@@ -14,64 +14,81 @@ import {
 export const advanceTimersSystem = defSystem(
     Update.fixed,
     advanceTimers,
-    [TimeState, Write(TimerState)],
+    [TimeState, Write(TimerState), TimerConfigResource],
 );
 
 /** 在 Post 阶段提交到期任务；具体相对顺序由 Module 依赖图决定。 */
 export const dispatchTimerCallbacksSystem = defSystem(
     Update.post,
     dispatchTimerCallbacks,
-    [TimeState, Write(TimerState), TimerPoolService, ErrorHandlerService],
+    [TimeState, Write(TimerState), TimerConfigResource, TimerPoolService, ErrorHandlerService],
 );
 
-function advanceTimers(time: Readonly<TimeState>, timer: Mut<TimerState>): void {
+function advanceTimers(
+    time: Readonly<TimeState>,
+    timer: Mut<TimerState>,
+    config: Readonly<TimerConfigResource>,
+): void {
     while (timer.globalTick < time.tick) {
         timer.globalTick++;
-        tick(timer);
+        tick(timer, config);
     }
 }
 
-function tick(timer: Mut<TimerState>): void {
+function tick(timer: Mut<TimerState>, config: Readonly<TimerConfigResource>): void {
     const level0 = timer.levels[0];
-    level0.currentSlot = (level0.currentSlot + 1) & (TimerConfig.SLOT_COUNT - 1);
-    processSlot(level0, 0, timer);
-    if (level0.currentSlot === 0) advanceLevel(1, timer);
+    level0.currentSlot = (level0.currentSlot + 1) & config.slotMask;
+    processSlot(level0, 0, timer, config);
+    if (level0.currentSlot === 0) advanceLevel(1, timer, config);
 }
 
-function advanceLevel(levelIndex: number, timer: Mut<TimerState>): void {
+function advanceLevel(
+    levelIndex: number,
+    timer: Mut<TimerState>,
+    config: Readonly<TimerConfigResource>,
+): void {
     if (levelIndex >= timer.levels.length) return;
     const level = timer.levels[levelIndex];
-    level.currentSlot = (level.currentSlot + 1) & (TimerConfig.SLOT_COUNT - 1);
-    processSlot(level, levelIndex, timer);
-    if (level.currentSlot === 0) advanceLevel(levelIndex + 1, timer);
+    level.currentSlot = (level.currentSlot + 1) & config.slotMask;
+    processSlot(level, levelIndex, timer, config);
+    if (level.currentSlot === 0) advanceLevel(levelIndex + 1, timer, config);
 }
 
-function processSlot(level: TimerLevel, levelIndex: number, timer: Mut<TimerState>): void {
+function processSlot(
+    level: TimerLevel,
+    levelIndex: number,
+    timer: Mut<TimerState>,
+    config: Readonly<TimerConfigResource>,
+): void {
     const bucket = level.slots[level.currentSlot];
     const count = bucket.length;
     for (let i = 0; i < count; i++) {
         const task = bucket[i];
         if (levelIndex === 0) enqueueReady(task, timer);
-        else addTaskByTargetTick(task, timer);
+        else addTaskByTargetTick(task, timer, config);
     }
     bucket.length = 0;
 }
 
-function addTaskByTargetTick(task: InnerTask, timer: Mut<TimerState>): void {
+function addTaskByTargetTick(
+    task: InnerTask,
+    timer: Mut<TimerState>,
+    config: Readonly<TimerConfigResource>,
+): void {
     const remaining = task.targetTick - timer.globalTick;
     if (remaining <= 0) {
         enqueueReady(task, timer);
         return;
     }
     let levelIndex = 0;
-    while (levelIndex < timer.levels.length) {
+    for (;;) {
+        if (levelIndex >= timer.levels.length) createNewLevel(timer, config);
         if (remaining < timer.levels[levelIndex].totalTicksPerRound) break;
         levelIndex++;
     }
-    while (levelIndex >= timer.levels.length) createNewLevel(timer);
     const level = timer.levels[levelIndex];
     const delta = Math.floor(remaining / level.tickPerSlot);
-    const slot = (level.currentSlot + delta) & (TimerConfig.SLOT_COUNT - 1);
+    const slot = (level.currentSlot + delta) & config.slotMask;
     level.slots[slot].push(task);
 }
 
@@ -84,16 +101,18 @@ function enqueueReady(task: InnerTask, timer: Mut<TimerState>): void {
 function dispatchTimerCallbacks(
     time: Readonly<TimeState>,
     timer: Mut<TimerState>,
+    config: Readonly<TimerConfigResource>,
     pool: TimerPoolService,
     errors: ErrorHandlerService,
 ): void {
     const used = timer.readyUsed;
     timer.readyUsed = 0;
+    let firstError: unknown;
     for (let i = 0; i < used; i++) {
         const task = timer.ready[i];
         try {
             task.taskObject.submit();
-            if (TimerConfig.DEBUG) {
+            if (config.debug) {
                 const difference = time.elapsed - task.expectedTime;
                 console.log(
                     `[Timer] 触发任务: 实际=${time.elapsed.toFixed(3)}s, ` +
@@ -102,20 +121,23 @@ function dispatchTimerCallbacks(
                 );
             }
         } catch (error) {
-            errors.report(error, "timer", task.taskObject);
+            try { errors.report(error, "timer", task.taskObject); }
+            catch (handlerError) { firstError ??= handlerError; }
         } finally {
             pool.recycle(task);
+            timer.ready[i] = undefined!;
         }
     }
+    if (firstError !== undefined) throw firstError;
 }
 
-function createNewLevel(timer: Mut<TimerState>): void {
+function createNewLevel(timer: Mut<TimerState>, config: Readonly<TimerConfigResource>): void {
     const index = timer.levels.length;
-    const tickPerSlot = Math.pow(TimerConfig.SLOT_COUNT, index);
+    const tickPerSlot = Math.pow(config.slotCount, index);
     timer.levels.push({
-        slots: Array.from({ length: TimerConfig.SLOT_COUNT }, () => []),
+        slots: Array.from({ length: config.slotCount }, () => []),
         currentSlot: 0,
         tickPerSlot,
-        totalTicksPerRound: tickPerSlot * TimerConfig.SLOT_COUNT,
+        totalTicksPerRound: tickPerSlot * config.slotCount,
     });
 }

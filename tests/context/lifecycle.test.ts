@@ -8,6 +8,7 @@ import {
     Write,
     type Mut,
     ObjectPoolService,
+    ObjectPool,
     definePool,
     Resource,
     Service,
@@ -38,6 +39,39 @@ test("Game provides a reusable token-keyed ObjectPoolService", () => {
     expect(first.value).toBe(-1);
     expect(pools.acquire(ValuePool)).toBe(first);
     game.dispose();
+});
+
+test("ObjectPool cleanup continues after a disposer throws and leaves a terminal pool", () => {
+    const disposed: number[] = [];
+    const pool = new ObjectPool(
+        () => ({ value: 0 }),
+        {
+            maxRetained: 3,
+            dispose(value): void {
+                disposed.push(value.value);
+                if (value.value === 2) throw new Error("expected pooled disposer failure");
+            },
+        },
+    );
+    const values = [pool.acquire(), pool.acquire(), pool.acquire()];
+    for (let i = 0; i < values.length; i++) {
+        values[i].value = i + 1;
+        pool.release(values[i]);
+    }
+
+    expect(() => pool.dispose()).toThrow(/expected pooled disposer failure/);
+    expect(disposed.sort()).toEqual([1, 2, 3]);
+    expect(pool.retained).toBe(0);
+    expect(() => pool.acquire()).toThrow(/disposed/);
+});
+
+test("InjectionService records ownership only after injection succeeds", () => {
+    const helper = {};
+    const failing = new InjectionService(() => { throw new Error("expected injection failure"); });
+    const succeeding = new InjectionService(() => {});
+
+    expect(() => failing.inject(helper)).toThrow(/expected injection failure/);
+    expect(succeeding.inject(helper)).toBe(helper);
 });
 
 class ConfigResource extends Resource {
@@ -213,6 +247,41 @@ test("Service implementation types override a registration token", () => {
     game.init();
     expect(overrideLifecycle).toEqual(["error:init", "consumer:init"]);
     game.dispose();
+});
+
+abstract class AbstractRenderService extends Service {
+    abstract readonly backend: string;
+}
+
+class CanvasRenderService extends AbstractRenderService {
+    readonly backend = "canvas";
+}
+
+class RenderConsumerService extends Service {
+    @Service.inject(AbstractRenderService)
+    readonly renderer!: AbstractRenderService;
+}
+
+test("abstract Service tokens resolve a registered concrete subclass", () => {
+    let systemRenderer: AbstractRenderService | undefined;
+    const readRenderer = defSystem(Startup, (renderer: AbstractRenderService): void => {
+        systemRenderer = renderer;
+    }, [AbstractRenderService]);
+
+    const game = new GameBuilder()
+        .addService(CanvasRenderService)
+        .addService(RenderConsumerService);
+    game.addSystem(readRenderer);
+    const runtime = game.build();
+
+    runtime.init();
+    const concrete = runtime.service(CanvasRenderService);
+    expect(runtime.service(AbstractRenderService)).toBe(concrete);
+    expect(runtime.service(RenderConsumerService).renderer).toBe(concrete);
+
+    runtime.start();
+    expect(systemRenderer).toBe(concrete);
+    runtime.dispose();
 });
 
 class BaseResource extends Resource {}

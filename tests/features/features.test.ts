@@ -9,6 +9,7 @@ import {
     EventArgs,
     EventModule,
     EventService,
+    ErrorHandlerService,
     FixedTimeResource,
     RandomModule,
     RandomService,
@@ -16,6 +17,7 @@ import {
     TimeModule,
     TimeState,
     TimerModule,
+    TimerConfigResource,
     TimerService,
     Types,
 } from "@zero-ecs/game";
@@ -38,6 +40,19 @@ class EmitPingCommand extends Command {
     set(value: number): this { this.assertMutable(); this.value = value; return this; }
     execute(): void { this.events.event(PingEvent).set(this.value).post(); }
     protected clear(): void { this.value = 0; }
+}
+
+let reentrantCommandCalls = 0;
+class ReentrantCommand extends Command {
+    @Service.inject(Commands) private readonly commands!: Commands;
+    private remaining = 0;
+
+    set(remaining: number): this { this.assertMutable(); this.remaining = remaining; return this; }
+    execute(): void {
+        reentrantCommandCalls++;
+        if (this.remaining > 1) this.commands.cmd(ReentrantCommand).set(this.remaining - 1).submit();
+    }
+    protected clear(): void { this.remaining = 0; }
 }
 
 function start(builder: GameBuilder) {
@@ -110,6 +125,31 @@ describe("fixed time and optional features", () => {
         expect(() => timer.trimPool(-1)).toThrow(/non-negative/);
     });
 
+    test("validates Timer targets and creates enough levels for a large delay", () => {
+        const ecs = start(new GameBuilder()
+            .addModule(new TimeModule(new FixedTimeResource(1)))
+            .addModule(new TimerModule()));
+        const timer = ecs.service(TimerService);
+
+        expect(() => timer.once(Number.NaN, { submit(): void {} })).toThrow(/finite/);
+        expect(() => timer.once(-1, { submit(): void {} })).toThrow(/non-negative/);
+        timer.once(64 ** 3 + 1, { submit(): void {} });
+        expect((timer as unknown as { _state: { levels: unknown[] } })._state.levels.length).toBe(4);
+        ecs.dispose();
+    });
+
+    test("uses a build-time TimerConfigResource instead of fixed package constants", () => {
+        const config = new TimerConfigResource({ slotCount: 8, maxTaskPoolSize: 2 });
+        const ecs = start(new GameBuilder()
+            .addModule(new TimeModule(new FixedTimeResource(1)))
+            .addModule(new TimerModule(config)));
+        expect(ecs.resource(TimerConfigResource)).toBe(config);
+        expect(config.slotMask).toBe(7);
+        expect(() => new TimerConfigResource({ slotCount: 7 })).toThrow(/power-of-two/);
+        expect(() => new TimerConfigResource({ maxTaskPoolSize: -1 })).toThrow(/non-negative/);
+        ecs.dispose();
+    });
+
     test("can delay an EntityCommand until a later fixed tick", () => {
         const ecs = start(new GameBuilder()
             .addModule(new CommandModule())
@@ -166,6 +206,57 @@ describe("fixed time and optional features", () => {
         ecs.update();
 
         expect(values).toEqual([7]);
+        ecs.dispose();
+    });
+
+    test("retains commands beyond the re-entrant safety limit for the next Tick", () => {
+        reentrantCommandCalls = 0;
+        const errors: string[] = [];
+        const ecs = start(new GameBuilder().addModule(new CommandModule()));
+        ecs.service(ErrorHandlerService).setHandler((_error, source) => { errors.push(source); });
+        ecs.service(Commands).cmd(ReentrantCommand).set(1001).submit();
+
+        ecs.update();
+        expect(reentrantCommandCalls).toBe(1000);
+        expect(errors).toEqual(["command"]);
+        ecs.update();
+        expect(reentrantCommandCalls).toBe(1001);
+        ecs.dispose();
+    });
+
+    test("Event cleanup processes the remaining queue after a fatal error handler", () => {
+        const ecs = start(new GameBuilder().addModule(new EventModule()));
+        const events = ecs.service(EventService);
+        const received: number[] = [];
+        events.on(PingEvent, event => {
+            if (event.value === 1) throw new Error("listener failed");
+            received.push(event.value);
+        });
+        ecs.service(ErrorHandlerService).setHandler(() => { throw new Error("fatal event handler"); });
+        const first = events.event(PingEvent).set(1);
+        const second = events.event(PingEvent).set(2);
+        first.post();
+        second.post();
+
+        expect(() => ecs.update()).toThrow(/fatal event handler/);
+        expect(received).toEqual([2]);
+        expect(() => first.set(3)).toThrow(/recycled/);
+        expect(() => second.set(3)).toThrow(/recycled/);
+        ecs.dispose();
+    });
+
+    test("Timer cleanup processes every ready task after a fatal error handler", () => {
+        const ecs = start(new GameBuilder()
+            .addModule(new TimeModule(new FixedTimeResource(1)))
+            .addModule(new TimerModule()));
+        let attempts = 0;
+        ecs.service(ErrorHandlerService).setHandler(() => { throw new Error("fatal timer handler"); });
+        const timer = ecs.service(TimerService);
+        timer.once(0, { submit(): void { attempts++; throw new Error("task failed"); } });
+        timer.once(0, { submit(): void { attempts++; throw new Error("task failed"); } });
+
+        expect(() => ecs.update()).toThrow(/fatal timer handler/);
+        expect(attempts).toBe(2);
         ecs.dispose();
     });
 

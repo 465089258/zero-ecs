@@ -1,18 +1,16 @@
-import { Types, type Component } from "@zero-ecs/game";
+import { Types, type Component, type ComponentTag } from "@zero-ecs/game";
 
-export const enum Position { x, y }
-
-export class PositionType implements Component<Position> {
-    readonly [Position.x] = Types.F32;
-    readonly [Position.y] = Types.F32;
+export const enum Float2 { x, y }
+export class PositionType implements Component<Float2> {
+    readonly [Float2.x] = Types.F32;
+    readonly [Float2.y] = Types.F32;
 }
 
-export const enum Velocity { x, y }
 
-export class VelocityType implements Component<Velocity> {
-    readonly [Velocity.x] = Types.F32;
-    readonly [Velocity.y] = Types.F32;
+export class VelocityType implements Component<Float2> {
+    readonly [Float2.x] = Types.F32;
+    readonly [Float2.y] = Types.F32;
 }
 
 /** 标记由本示例创建、重开游戏时需要统一销毁的实体。 */
-export class GameEntityType implements Component<never> {}
+export class GameEntityType implements ComponentTag { }

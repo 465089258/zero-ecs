@@ -1,14 +1,10 @@
-import {
-    DataSet,
-    type DataRow,
-} from "./storage/data-set";
 import type { IAllocator } from "./storage/memory";
-import { Types } from "./storage/typed-array";
 import { Archetype, type ArchetypeRow } from "./archetype/archetype";
 import { ArchetypeStore } from "./archetype/archetype-store";
 import {
     type ComponentColumns,
     type ComponentDefinition,
+    type ComponentFieldValue,
     type ComponentFields,
     type ComponentId,
     type ComponentMeta,
@@ -17,30 +13,31 @@ import {
 import { ComponentRegistry } from "./component/component-registry";
 import { Mask } from "./component/mask";
 import type { Entity } from "./entity/entity";
-import {
-    ENTITY_INDEX_MASK,
-    ENTITY_VERSION_BITS,
-    ENTITY_VERSION_MASK,
-} from "./entity/entity-format";
+import { EntityRef } from "./entity/entity-ref";
+import { ENTITY_VERSION_BITS } from "./entity/entity-format";
+import { EntitySlots, NONE_SLOT_VALUE } from "./entity/entity-slots";
 import { Query } from "./query/query";
 import type { QueryType } from "./query/query-type";
+import type { QueryProjection } from "./query/query-data";
 import {
     applyEntityCommand as applyWorldEntityCommand,
     createEntityCommand as createWorldEntityCommand,
     type EntityCommand,
 } from "./command/entity-command";
 
-/** 实体在 Archetype DataSet 中的位置。 */
-export interface EntityLocation { readonly tableId: number; readonly row: number }
+/** 实体在 Archetype Chunk 中的位置。 */
+export interface EntityLocation { readonly chunkIdx: number; readonly row: number }
 
 /** System 与普通运行时代码使用的非结构 World 视图。 */
 export interface WorldView {
+    /** 创建绑定实体的低频只读便利视图；每次调用都会分配一个 EntityRef。 */
+    ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
     get<T extends object, Field extends ComponentFields<T>>(
         entity: Entity,
         type: ComponentType<T>,
         field: Field,
-    ): number | null;
+    ): ComponentFieldValue<T, Field> | null;
     has<T extends object>(entity: Entity, type: ComponentType<T>): boolean;
 }
 
@@ -55,9 +52,6 @@ export interface StructureWriter {
 /** advanced 子路径提供的显式不安全结构能力。 */
 export interface UnsafeStructureWriter extends StructureWriter {}
 
-const NONE = 0xFFFFFFFF;
-const enum EntityColumn { Version, Archetype, Table, Row }
-
 /**
  * 独立的实体数据内核。
  *
@@ -70,21 +64,14 @@ export class World implements WorldView, StructureWriter {
     private readonly _allocator: IAllocator;
     private readonly _components = new ComponentRegistry();
     private readonly _archetypes: ArchetypeStore;
-    private readonly _slots: DataSet;
-    private readonly _slotRows: DataRow[] = [];
-    private readonly _freeIndices: number[] = [];
-    private _counter = 1;
+    private readonly _slots: EntitySlots;
     private _disposed = false;
 
     constructor(allocator: IAllocator) {
         if (!allocator) throw new TypeError("World requires an IAllocator");
         this._allocator = allocator;
         this._archetypes = new ArchetypeStore(this._allocator);
-        this._slots = new DataSet(this._allocator, [Types.U32, Types.U32, Types.U32, Types.U32]);
-        const sentinel = this._slots.insert();
-        this._slotRows.push(sentinel);
-        this.writeSlot(0, EntityColumn.Version, 0);
-        this.clearLocation(0);
+        this._slots = new EntitySlots(this._allocator);
     }
 
     /** 在当前 World 中定义组件；重复定义返回同一个定义。 */
@@ -102,12 +89,11 @@ export class World implements WorldView, StructureWriter {
         return new Query(type, this._components, this._archetypes);
     }
 
+    /** 创建绑定实体的低频只读便利视图；不缓存任何物理存储位置。 */
+    ref(entity: Entity): EntityRef { return new EntityRef(this, entity); }
+
     /** 立即预留一个有效实体句柄，但暂不进入 Archetype。 */
-    reserveEntity(): Entity {
-        const entity = this.allocEntity();
-        this.clearLocation(entity >>> ENTITY_VERSION_BITS);
-        return entity;
-    }
+    reserveEntity(): Entity { return this._slots.reserve(); }
 
     /** 为有效实体创建一个全新的 World-local 局部事务。 */
     createEntityCommand(entity: Entity): EntityCommand {
@@ -123,23 +109,16 @@ export class World implements WorldView, StructureWriter {
     despawn(entity: Entity): boolean {
         if (!this.valid(entity)) return false;
         const index = entity >>> ENTITY_VERSION_BITS;
-        const archetypeId = this.readSlot(index, EntityColumn.Archetype);
-        if (archetypeId === NONE) {
-            this.freeEntity(index, entity & ENTITY_VERSION_MASK);
-            return true;
-        }
+        const archetypeId = this._slots.archetypeIdxAt(index);
+        if (archetypeId === NONE_SLOT_VALUE) return this._slots.release(entity);
         const archetype = this._archetypes.getAtIdx(archetypeId);
         if (!archetype) return false;
         const location = this.readLocation(index, archetype);
-        if (location === null) {
-            this.freeEntity(index, entity & ENTITY_VERSION_MASK);
-            return true;
-        }
-        if (!archetype.data.valid(location)) return false;
+        if (location === null) return this._slots.release(entity);
+        if (!archetype.valid(location)) return false;
         const moved = archetype.remove(location);
         if (moved !== undefined) this.setLocation(moved, archetypeId, location);
-        this.freeEntity(index, entity & ENTITY_VERSION_MASK);
-        return true;
+        return this._slots.release(entity);
     }
 
     /** 读取实体组件的单个字段；实体、组件或字段不存在时返回 null。 */
@@ -147,13 +126,14 @@ export class World implements WorldView, StructureWriter {
         entity: Entity,
         type: ComponentType<T>,
         field: Field,
-    ): number | null {
+    ): ComponentFieldValue<T, Field> | null {
         const component = this._components.getMeta(type);
         if (!component) return null;
         const archetype = this.locateArchetype(entity);
         if (!archetype) return null;
         const location = this.readLocation(entity >>> ENTITY_VERSION_BITS, archetype);
-        return location === null ? null : archetype.getField(location, component.id, field);
+        return (location === null ? null : archetype.getField(location, component.id, field)) as
+            ComponentFieldValue<T, Field> | null;
     }
 
     /** 判断有效实体当前是否包含指定组件。 */
@@ -164,7 +144,7 @@ export class World implements WorldView, StructureWriter {
         return archetype !== undefined && archetype.mask.has(component.mask);
     }
 
-    /** 返回实体所在 Table 的组件列视图；属于可能失效的 advanced 数据视图。 */
+    /** 返回实体所在 Chunk 的组件列视图；属于可能失效的 advanced 数据视图。 */
     view<T extends object>(entity: Entity, type: ComponentType<T>): ComponentColumns<T> | null {
         const component = this._components.getMeta(type);
         if (!component) return null;
@@ -181,20 +161,15 @@ export class World implements WorldView, StructureWriter {
     }
 
     /** 判断实体句柄的索引与版本是否仍然有效。 */
-    valid(entity: Entity): boolean {
-        const index = entity >>> ENTITY_VERSION_BITS;
-        const version = entity & ENTITY_VERSION_MASK;
-        return version !== 0 && index > 0 && index < this._counter &&
-            this.readSlot(index, EntityColumn.Version) === version;
-    }
+    valid(entity: Entity): boolean { return this._slots.valid(entity); }
 
     /** 获取实体存储位置；诊断便利接口会分配结果对象。 */
     getCompLocation(entity: Entity): EntityLocation | null {
         if (!this.valid(entity)) return null;
         const index = entity >>> ENTITY_VERSION_BITS;
-        const tableId = this.readSlot(index, EntityColumn.Table);
-        const row = this.readSlot(index, EntityColumn.Row);
-        return tableId === NONE || row === NONE ? null : { tableId, row };
+        const chunkIdx = this._slots.chunkIdxAt(index);
+        const row = this._slots.rowAt(index);
+        return chunkIdx === NONE_SLOT_VALUE || row === NONE_SLOT_VALUE ? null : { chunkIdx, row };
     }
 
     /** @internal 当前 World 使用的原始分配器。 */
@@ -205,9 +180,6 @@ export class World implements WorldView, StructureWriter {
     get archetypes(): readonly Archetype[] { return this._archetypes.archetypes; }
     /** @internal Archetype 集合版本。 */
     get version(): number { return this._archetypes.version; }
-    /** @internal 实体槽位的底层存储。 */
-    get data(): DataSet { return this._slots; }
-
     /** @internal 定义组件并取得存储元数据。 */
     defineComponentMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
         return this._components.defMeta(type);
@@ -221,6 +193,14 @@ export class World implements WorldView, StructureWriter {
     /** @internal 按组件编号查询存储元数据。 */
     getComponentMetaById(id: ComponentId): ComponentMeta | undefined {
         return this._components.getById(id);
+    }
+
+    /** @internal 为组合层注册只读 Query 投影的隐藏存储组件。 */
+    registerQueryProjection<T extends object>(
+        projection: QueryProjection<T>,
+        storage: ComponentType<T>,
+    ): void {
+        this._components.registerProjection(projection, storage);
     }
 
     /** @internal 按内部索引取得 Archetype。 */
@@ -237,8 +217,8 @@ export class World implements WorldView, StructureWriter {
     /** @internal 获取实体当前 Archetype 索引。 */
     getArchIdx(entity: Entity): number {
         if (!this.valid(entity)) return -1;
-        const archetypeId = this.readSlot(entity >>> ENTITY_VERSION_BITS, EntityColumn.Archetype);
-        return archetypeId === NONE ? -1 : archetypeId;
+        const archetypeId = this._slots.archetypeIdxAt(entity >>> ENTITY_VERSION_BITS);
+        return archetypeId === NONE_SLOT_VALUE ? -1 : archetypeId;
     }
 
     /** @internal 将实体迁移到指定组件集合。 */
@@ -251,15 +231,15 @@ export class World implements WorldView, StructureWriter {
         const index = entity >>> ENTITY_VERSION_BITS;
         if (!this.valid(entity)) return false;
         const newArchetypeIdx = this._archetypes.getIdxOrNewAtMask(mask, types);
-        const oldArchetypeIdx = this.readSlot(index, EntityColumn.Archetype);
-        const oldArchetype = oldArchetypeIdx === NONE
+        const oldArchetypeIdx = this._slots.archetypeIdxAt(index);
+        const oldArchetype = oldArchetypeIdx === NONE_SLOT_VALUE
             ? undefined
             : this._archetypes.getAtIdx(oldArchetypeIdx);
         const oldLocation = oldArchetype ? this.readLocation(index, oldArchetype) : null;
         const newArchetype = this._archetypes.getAtIdx(newArchetypeIdx)!;
         if (oldArchetypeIdx !== newArchetypeIdx) {
             const newLocation = newArchetype.insert(entity);
-            if (oldArchetypeIdx !== NONE && oldArchetype && oldLocation !== null) {
+            if (oldArchetypeIdx !== NONE_SLOT_VALUE && oldArchetype && oldLocation !== null) {
                 oldArchetype.copyCommonTo(oldLocation, newArchetype, newLocation);
                 const moved = oldArchetype.remove(oldLocation);
                 if (moved !== undefined) this.setLocation(moved, oldArchetypeIdx, oldLocation);
@@ -274,8 +254,8 @@ export class World implements WorldView, StructureWriter {
     canSetComponentFieldById(entity: Entity, componentId: ComponentId, field: number): boolean {
         const component = this._components.getById(componentId);
         if (!component || field < 0 || field >= component.layout.length || !this.valid(entity)) return false;
-        const archetypeId = this.readSlot(entity >>> ENTITY_VERSION_BITS, EntityColumn.Archetype);
-        if (archetypeId === NONE) return false;
+        const archetypeId = this._slots.archetypeIdxAt(entity >>> ENTITY_VERSION_BITS);
+        if (archetypeId === NONE_SLOT_VALUE) return false;
         const archetype = this._archetypes.getAtIdx(archetypeId);
         return archetype !== undefined && archetype.mask.has(component.mask);
     }
@@ -285,13 +265,13 @@ export class World implements WorldView, StructureWriter {
         const component = this._components.getById(componentId);
         if (!component || field < 0 || field >= component.layout.length || !this.valid(entity)) return false;
         const index = entity >>> ENTITY_VERSION_BITS;
-        const archetypeId = this.readSlot(index, EntityColumn.Archetype);
-        if (archetypeId === NONE) return false;
+        const archetypeId = this._slots.archetypeIdxAt(index);
+        if (archetypeId === NONE_SLOT_VALUE) return false;
         const archetype = this._archetypes.getAtIdx(archetypeId);
         if (!archetype || !archetype.mask.has(component.mask)) return false;
         return archetype.setFieldAt(
-            this.readSlot(index, EntityColumn.Table),
-            this.readSlot(index, EntityColumn.Row),
+            this._slots.chunkIdxAt(index),
+            this._slots.rowAt(index),
             component.id,
             field,
             value,
@@ -307,76 +287,33 @@ export class World implements WorldView, StructureWriter {
         catch (error) { firstError ??= error; }
         try { this._archetypes.dispose(); }
         catch (error) { firstError ??= error; }
-        this._slotRows.length = 0;
-        this._freeIndices.length = 0;
-        this._counter = 0;
         if (firstError !== undefined) throw firstError;
     }
 
     private locateArchetype(entity: Entity): Archetype | undefined {
         if (!this.valid(entity)) return undefined;
-        const archetypeId = this.readSlot(entity >>> ENTITY_VERSION_BITS, EntityColumn.Archetype);
-        return archetypeId === NONE ? undefined : this._archetypes.getAtIdx(archetypeId);
-    }
-
-    private allocEntity(): Entity {
-        let index: number;
-        if (this._freeIndices.length > 0) index = this._freeIndices.pop()!;
-        else {
-            if (this._counter > ENTITY_INDEX_MASK) {
-                throw new RangeError(`Entity capacity exceeded: ${ENTITY_INDEX_MASK}`);
-            }
-            index = this._counter++;
-            const row = this._slots.insert();
-            this._slotRows.push(row);
-            this.writeSlot(index, EntityColumn.Version, 1);
-        }
-        let version = this.readSlot(index, EntityColumn.Version) & ENTITY_VERSION_MASK;
-        if (version === 0) {
-            version = 1;
-            this.writeSlot(index, EntityColumn.Version, version);
-        }
-        return (((index << ENTITY_VERSION_BITS) | version) >>> 0) as Entity;
-    }
-
-    private freeEntity(index: number, version: number): void {
-        if (index === 0 || this.readSlot(index, EntityColumn.Version) !== version) return;
-        this.clearLocation(index);
-        if (version === ENTITY_VERSION_MASK) {
-            this.writeSlot(index, EntityColumn.Version, 0);
-            return;
-        }
-        this.writeSlot(index, EntityColumn.Version, version + 1);
-        this._freeIndices.push(index);
+        const archetypeId = this._slots.archetypeIdxAt(entity >>> ENTITY_VERSION_BITS);
+        return archetypeId === NONE_SLOT_VALUE ? undefined : this._archetypes.getAtIdx(archetypeId);
     }
 
     private setLocation(entity: Entity, archetypeId: number, location: ArchetypeRow): void {
         const index = entity >>> ENTITY_VERSION_BITS;
         const archetype = this._archetypes.getAtIdx(archetypeId);
         if (!archetype) throw new RangeError(`Invalid Archetype index: ${archetypeId}`);
-        this.writeSlot(index, EntityColumn.Archetype, archetypeId);
-        this.writeSlot(index, EntityColumn.Table, archetype.data.tableIdOf(location));
-        this.writeSlot(index, EntityColumn.Row, archetype.data.rowIndexOf(location));
-    }
-
-    private clearLocation(index: number): void {
-        this.writeSlot(index, EntityColumn.Archetype, NONE);
-        this.writeSlot(index, EntityColumn.Table, NONE);
-        this.writeSlot(index, EntityColumn.Row, NONE);
+        this._slots.setLocationAt(
+            index,
+            archetypeId,
+            archetype.chunkIdxOf(location),
+            archetype.rowIdxOf(location),
+        );
     }
 
     private readLocation(index: number, archetype: Archetype): ArchetypeRow | null {
-        const tableId = this.readSlot(index, EntityColumn.Table);
-        const row = this.readSlot(index, EntityColumn.Row);
-        return tableId === NONE || row === NONE ? null : archetype.data.locationAt(tableId, row);
-    }
-
-    private readSlot(index: number, column: EntityColumn): number {
-        return this._slots.get(this._slotRows[index], column);
-    }
-
-    private writeSlot(index: number, column: EntityColumn, value: number): void {
-        this._slots.set(this._slotRows[index], column, value);
+        const chunkIdx = this._slots.chunkIdxAt(index);
+        const row = this._slots.rowAt(index);
+        return chunkIdx === NONE_SLOT_VALUE || row === NONE_SLOT_VALUE
+            ? null
+            : archetype.locationAt(chunkIdx, row);
     }
 }
 
@@ -391,3 +328,11 @@ export function allocatorOfWorld(world: World): IAllocator { return world.alloca
 
 /** game-bridge 冷路径入口：判断 World 是否已经释放。 */
 export function isWorldDisposed(world: World): boolean { return world.disposed; }
+
+/**
+ * game-bridge 冷路径入口：绕过子类 override，确保 World 内核一定完成终结。
+ * 该入口不属于普通 World 公共 API。
+ */
+export function finalizeWorldKernel(world: World): void {
+    World.prototype.dispose.call(world);
+}

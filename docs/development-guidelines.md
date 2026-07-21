@@ -45,7 +45,7 @@ State 与“将来需要序列化的数据”不是同义词。State 可以保�
 6. 字段应按语义判断，而不是机械迁移：例如 `ErrorHandlerService.handler` 是运行时错误策略，`InjectionService` 保存的注入能力是 Game 构造依赖，它们都不是 World 模拟状态。
 7. 生命周期 Context 是一次性受限视图，hook 返回后立即失效。不得暴露或保存原始 `InjectionContext`；长期依赖仍使用属性注入，init-only 能力可在 activate 中解析并保存窄句柄。
 8. 构造时即可确定的内建 Service 依赖必须通过构造函数传入，并由 GameBuilder 使用 `Container.set()` 注册完整实例；不要为此暴露 `bindXxx()` 二阶段初始化入口。
-9. `Container.set()` 会把实例注册到具体类型及领域基类之前的原型链 token，后注册的子类自然覆盖父类查询；通用容器通过原型链根边界排除 Resource、State、Service 和 Object，不直接依赖这些领域类型。
+9. `Container.set()` 会把实例注册到具体类型及领域基类之前的原型链 token，后注册的子类自然覆盖父类查询；通用容器通过原型链根边界排除 Resource、State、Service 和 Object，不直接依赖这些领域类型。抽象 Service 父类使用 `ServiceToken<T>` 声明依赖，只有交给 `addService()` 实例化的具体类使用 `ServiceType<T>`。
 10. System 参数只声明调度依赖和访问元数据，不触发 Resource、State 或 Service 注册；Module/Builder 必须显式登记系统需要的对象，缺失依赖在 start 的参数 prepare 阶段报错。
 
 ## 4. System 规则
@@ -82,8 +82,28 @@ builder.addSystem(advanceExampleSystem);
    `beforeIfPresent/afterIfPresent`，不得依赖 Module 注册顺序表达语义。
 5. Service API 若间接修改 State，必须在未来的 Service 访问元数据中声明；在该权限展开机制完成前，不得假设使用 Service 的系统是可并行的。
 6. Module 只注册 `DefinedSystem`，不得再次声明 Stage 和参数；普通函数不能直接传给 `addSystem()`。
-7. `SystemAccess` 是供排序、冲突分析和未来并行规划使用的调度元数据，不是安全边界。普通 State 参数的 `Readonly<T>` 只是浅只读类型，数组、Map、TypedArray 和嵌套对象不会被运行时隔离。
-8. `[World]` 的函数参数必须声明为 `WorldView`。它只提供 `valid/get/has`；普通 System 的结构变更优先使用 Command。显式注入完整 World、使用宿主 StructureWriter 或 advanced unsafe 能力属于调用方主动选择低层入口。
+7. 当前构建期只校验重复参数，不保存尚无消费者的 `SystemAccess` 集合。未来开始并行批次规划时，
+   再从同一参数声明生成并持有访问图；它仍只是调度元数据而不是安全边界。普通 State 参数的
+   `Readonly<T>` 只是浅只读类型，数组、Map、TypedArray 和嵌套对象不会被运行时隔离。
+8. `[World]` 的函数参数必须声明为 `WorldView`。它提供 `valid/get/has` 和明确分配的低频 `ref`；普通 System 的结构变更优先使用 Command。显式注入完整 World、使用宿主 StructureWriter 或 advanced unsafe 能力属于调用方主动选择低层入口。
+9. `EntityRef` 只绑定 `WorldView + Entity`，不得缓存 Archetype、Chunk、row 或组件列，也不得提供结构写方法。它属于编辑器、UI、脚本和重要单实体引用等低频场景；Query 逐实体循环继续使用数字 Entity 与批量列。
+10. Query 热循环必须在取得 `iter.current` 后、进入逐行 `for` 前缓存本 Chunk 使用的列引用；循环内只按行索引访问列，不重复执行 `components[Field][row]` 两级查找。即使当前 JIT 可能消除部分重复访问，示例和框架代码也必须保持对 no-JIT 与其他宿主同样清楚的列式写法：
+
+```ts
+while (iter.next()) {
+    const [count, entities, positions, health] = iter.current;
+    const xs = positions[Position.x];
+    const ys = positions[Position.y];
+    const currentHealth = health[Health.current];
+
+    for (let row = 0; row < count; row++) {
+        if (currentHealth[row] <= 0) commands.entity(entities[row]).despawn().submit();
+        else consumePosition(xs[row], ys[row]);
+    }
+}
+```
+
+列引用只在当前 Chunk 的处理范围内使用，不跨 Query 迭代或结构提交保存。
 
 ## 3.1 World 内核例外
 
@@ -93,6 +113,15 @@ World 必须显式接收构造方提供的 IAllocator，并且只借用、不拥
 默认构建路径创建 Allocator 并把所有权交给 Game；`setAllocator()` 和自定义 World 的
 分配器仍由调用方拥有。Game 侧 AllocatorService 只是同一分配器的能力门面，不取得
 所有权。
+
+World 内核的存储所有权必须继续保持以下边界：
+
+1. DataSet 只管理布局相同、ID 连续的 Table 数组；结构修改只有尾部 `push/pop`。
+2. Table 只管理固定容量 TypedArray 列的 `get/set/clear/copy`，不记录逻辑行数、空闲行、版本或删除语义。
+3. Archetype 自己管理组件实体的密集行、Chunk 创建释放、swap-remove 和结构版本；DataSet 不替它推断行状态。
+4. EntitySlots 自己管理 Entity 版本和 `Archetype/chunkIdx/row`，不向 World 或 advanced 入口暴露底层 DataSet。
+5. Archetype 的公开 advanced 缓存固定为 `views[chunkIdx][componentId][fieldId]` 与 `entities[chunkIdx]`；Query 直接借用这些列，不增加 DenseRows、WeakMap 或组件列适配层。
+6. Archetype 外部按 `chunkCount` 和 `chunkRowCount(chunkIdx)` 遍历有效 Chunk；不得依赖或长期保存其私有 DataSet/Table 集合。
 
 ## 5. Resource 规则
 
@@ -132,7 +161,7 @@ Service 可以为了运行时策略、性能、内存布局或宿主集成保存
 - 字段不是 World 的权威模拟状态；
 - 字段不需要进入未来快照，或可在恢复后安全重建；对象池统一属于此类 Service 字段；
 - 字段不需要参与 System 的 State 读写冲突分析；
-- 字段不会让 SystemAccess 遗漏本应显式声明的 State 访问。
+- 字段不会隐藏未来访问图中本应显式声明的 State 访问。
 
 “写起来方便”本身不是例外理由。
 

@@ -15,5 +15,4 @@ export { ResourceContainer } from "./context/resource";
 export { ServiceContainer } from "./context/service";
 export { StateContainer } from "./context/state";
 export type { CommandSubmit, CommandType } from "./command/command";
-export type { SystemAccess } from "./runtime/system";
 export { DevProfiler } from "./dev/profiler";

@@ -1,65 +1,73 @@
-import { type Table } from "../storage/data-set";
-import type { TypedArray } from "../storage/typed-array";
-import { ENTITY_COLUMN, type Archetype } from "../archetype/archetype";
+import { type Archetype } from "../archetype/archetype";
 import {
     type ComponentColumns,
     type ComponentMeta,
-    type ComponentType,
+    type ReadonlyComponentColumns,
 } from "../component/component";
 import { Mask } from "../component/mask";
 import { EntitySet } from "../entity";
 import { QueryNodeKind, type QueryTypeNode } from "./filter";
+import {
+    type ProjectedQueryData,
+    type QueryDataType,
+    queryDataName,
+} from "./query-data";
 import { QueryType } from "./query-type";
 
 /** Query 构造时所需的组件解析接口。 */
-export interface IComponentResolver { defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> }
+export interface IComponentResolver {
+    defQueryMeta<T extends object>(type: QueryDataType<T>): ComponentMeta<T>;
+}
 /** Query 构造时所需的原型数据源接口。 */
 export interface IArchetypeSource { readonly version: number; readonly archetypes: readonly Archetype[] }
 
 /** 从 QueryType 推导对应的运行时 Query 类型。 */
 export type QueryOf<T> = T extends QueryType<infer Components> ? Query<Components> : never;
 export type { ComponentColumns } from "../component/component";
-/** 单个组件在当前 Table 中的列视图；可选组件可能为 `undefined`。 */
-export type QueryComponentView<T> = T extends object ? ComponentColumns<T> : undefined;
-/** `QueryIter.current` 返回的当前 Table 数据。 */
+/** 单个组件在当前 Chunk 中的列视图；可选组件可能为 `undefined`。 */
+export type QueryComponentView<T> =
+    T extends ProjectedQueryData<infer Value extends object> ? ReadonlyComponentColumns<Value> :
+    T extends object ? ComponentColumns<T> :
+    undefined;
+/** `QueryIter.current` 返回的当前 Chunk 数据。 */
 export type QueryCurrent<Components extends readonly (object | undefined)[]> = [
     count: number,
     entities: EntitySet,
     ...components: { [Index in keyof Components]: QueryComponentView<Components[Index]> },
 ];
 
-interface SymbolicClause { required: ComponentType[]; excluded: ComponentType[] }
+interface SymbolicClause { required: QueryDataType[]; excluded: QueryDataType[] }
 interface CompiledClause { requiredMask: Mask; excludedMask: Mask }
-interface Selection { type: ComponentType; meta: ComponentMeta; optional: boolean }
-interface QueryTableEntry<Components extends readonly (object | undefined)[]> {
-    table: Table | undefined;
+interface Selection { type: QueryDataType; meta: ComponentMeta; optional: boolean }
+interface QueryChunkEntry<Components extends readonly (object | undefined)[]> {
+    archetype: Archetype | undefined;
+    chunkIdx: number;
     readonly current: QueryCurrent<Components>;
-    readonly componentViews: TypedArray[][];
 }
 
 const MAX_DNF_CLAUSES = 256;
 
 /**
- * 按 Table 遍历查询结果的低分配迭代器。
+ * 按 Archetype Chunk 遍历查询结果的低分配迭代器。
  *
  * 迭代器及 `current` 元组由 Query 复用；请勿缓存结果，也不要在同一 Query 上嵌套迭代。
  */
 export class QueryIter<Components extends readonly (object | undefined)[]> {
-    private _entries: readonly QueryTableEntry<Components>[] = [];
+    private _entries: readonly QueryChunkEntry<Components>[] = [];
     private _length = 0;
     private _index = 0;
-    /** 当前 Table 的列视图；仅在 {@link next} 返回 `true` 后有效，并会被后续迭代复用。 */
+    /** 当前 Chunk 的列视图；仅在 {@link next} 返回 `true` 后有效，并会被后续迭代复用。 */
     current!: QueryCurrent<Components>;
 
     /** @internal 重置 Query 持有的复用迭代器。 */
-    reset(entries: readonly QueryTableEntry<Components>[], length: number): this {
+    reset(entries: readonly QueryChunkEntry<Components>[], length: number): this {
         this._entries = entries;
         this._length = length;
         this._index = 0;
         return this;
     }
 
-    /** 前进到下一个非空 Table；成功时返回 `true` 并更新 {@link current}。 */
+    /** 前进到下一个非空 Chunk；成功时返回 `true` 并更新 {@link current}。 */
     next(): boolean {
         const entries = this._entries;
         const length = this._length;
@@ -67,7 +75,7 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
 
         while (index < length) {
             const entry = entries[index++];
-            const count = entry.table!.count;
+            const count = entry.archetype!.chunkRowCount(entry.chunkIdx);
             if (count === 0) continue;
 
             const current = entry.current;
@@ -82,14 +90,14 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     }
 }
 
-/** 根据 QueryType 匹配原型并提供 Table 级列视图。 */
+/** 根据 QueryType 匹配 Archetype 并提供 Chunk 级列视图。 */
 export class Query<Components extends readonly (object | undefined)[]> {
     private readonly _clauses: CompiledClause[];
     private readonly _selections: Selection[];
-    private readonly _entries: QueryTableEntry<Components>[] = [];
+    private readonly _entries: QueryChunkEntry<Components>[] = [];
     private readonly _iterator = new QueryIter<Components>();
     private readonly _matched: Archetype[] = [];
-    private readonly _dataVersions: number[] = [];
+    private readonly _chunkVersions: number[] = [];
     private _entryCount = 0;
     private _archetypeVersion = -1;
 
@@ -121,18 +129,21 @@ export class Query<Components extends readonly (object | undefined)[]> {
 
     private collectSelections(ast: QueryTypeNode): Selection[] {
         const selections: Selection[] = [];
-        const selected = new Map<ComponentType, QueryNodeKind.With | QueryNodeKind.Optional>();
-        const optionalTypes = new Set<ComponentType>();
-        const constrainedTypes = new Set<ComponentType>();
+        const selected = new Map<
+            QueryDataType,
+            typeof QueryNodeKind.With | typeof QueryNodeKind.Optional
+        >();
+        const optionalTypes = new Set<QueryDataType>();
+        const constrainedTypes = new Set<QueryDataType>();
         const visit = (node: QueryTypeNode, insideAny: boolean): void => {
             switch (node.kind) {
                 case QueryNodeKind.With:
                     for (const type of node.components) {
                         constrainedTypes.add(type);
                         const previous = selected.get(type);
-                        if (previous !== undefined) throw new Error(`Component ${type.name} is selected more than once`);
+                        if (previous !== undefined) throw new Error(`Component ${queryDataName(type)} is selected more than once`);
                         selected.set(type, QueryNodeKind.With);
-                        selections.push({ type, meta: this._components.defMeta(type), optional: insideAny });
+                        selections.push({ type, meta: this._components.defQueryMeta(type), optional: insideAny });
                     }
                     break;
                 case QueryNodeKind.Optional:
@@ -140,9 +151,9 @@ export class Query<Components extends readonly (object | undefined)[]> {
                     for (const type of node.components) {
                         optionalTypes.add(type);
                         const previous = selected.get(type);
-                        if (previous !== undefined) throw new Error(`Component ${type.name} is selected more than once`);
+                        if (previous !== undefined) throw new Error(`Component ${queryDataName(type)} is selected more than once`);
                         selected.set(type, QueryNodeKind.Optional);
-                        selections.push({ type, meta: this._components.defMeta(type), optional: true });
+                        selections.push({ type, meta: this._components.defQueryMeta(type), optional: true });
                     }
                     break;
                 case QueryNodeKind.Without:
@@ -158,7 +169,9 @@ export class Query<Components extends readonly (object | undefined)[]> {
         };
         visit(ast, false);
         for (const type of optionalTypes) {
-            if (constrainedTypes.has(type)) throw new Error(`Optional component ${type.name} cannot also be used by With or Without`);
+            if (constrainedTypes.has(type)) {
+                throw new Error(`Optional component ${queryDataName(type)} cannot also be used by With or Without`);
+            }
         }
         return selections;
     }
@@ -208,8 +221,8 @@ export class Query<Components extends readonly (object | undefined)[]> {
         return clauses.map(clause => {
             const requiredMask = Mask.empty();
             const excludedMask = Mask.empty();
-            for (const type of clause.required) requiredMask.orInto(this._components.defMeta(type).mask);
-            for (const type of clause.excluded) excludedMask.orInto(this._components.defMeta(type).mask);
+            for (const type of clause.required) requiredMask.orInto(this._components.defQueryMeta(type).mask);
+            for (const type of clause.excluded) excludedMask.orInto(this._components.defQueryMeta(type).mask);
             return { requiredMask, excludedMask };
         });
     }
@@ -228,7 +241,7 @@ export class Query<Components extends readonly (object | undefined)[]> {
         const matched = this._matched;
         for (let i = 0; i < matched.length; i++) {
             const archetype = matched[i];
-            if (this._dataVersions[i] !== archetype.data.version) return true;
+            if (this._chunkVersions[i] !== archetype.version) return true;
         }
         return false;
     }
@@ -241,40 +254,39 @@ export class Query<Components extends readonly (object | undefined)[]> {
             const archetype = archetypes[archetypeIndex];
             if (!this.matches(archetype)) continue;
             this._matched[matchedCount] = archetype;
-            this._dataVersions[matchedCount++] = archetype.data.version;
-            const tables = archetype.tables;
-            for (let tableIndex = 0; tableIndex < tables.length; tableIndex++) {
-                this.writeEntry(entryCount++, archetype, tables[tableIndex]);
+            this._chunkVersions[matchedCount++] = archetype.version;
+            for (let chunkIdx = 0; chunkIdx < archetype.allocatedChunkCount; chunkIdx++) {
+                this.writeEntry(entryCount++, archetype, chunkIdx);
             }
         }
         this._matched.length = matchedCount;
-        this._dataVersions.length = matchedCount;
+        this._chunkVersions.length = matchedCount;
         this.releaseInactiveEntries(entryCount);
         this._entryCount = entryCount;
         this._archetypeVersion = this._archetypes.version;
     }
 
-    private writeEntry(index: number, archetype: Archetype, table: Table): void {
+    private writeEntry(index: number, archetype: Archetype, chunkIdx: number): void {
         let entry = this._entries[index];
         if (!entry) {
             const current: unknown[] = new Array(2 + this._selections.length);
-            const componentViews: TypedArray[][] = new Array(this._selections.length);
-            for (let i = 0; i < componentViews.length; i++) componentViews[i] = [];
             entry = {
-                table,
+                archetype,
+                chunkIdx,
                 current: current as QueryCurrent<Components>,
-                componentViews,
             };
             this._entries.push(entry);
         } else {
-            entry.table = table;
+            entry.archetype = archetype;
+            entry.chunkIdx = chunkIdx;
         }
         const current = entry.current as unknown[];
-        current[0] = table.count;
-        current[1] = table.columns[ENTITY_COLUMN] as Uint32Array;
+        current[0] = archetype.chunkRowCount(chunkIdx);
+        current[1] = archetype.entities[chunkIdx];
+        const views = archetype.views[chunkIdx];
         for (let i = 0; i < this._selections.length; i++) {
             const selection = this._selections[i];
-            const columns = archetype.getTableComponent(table, selection.meta.id, entry.componentViews[i]);
+            const columns = views[selection.meta.id];
             if (!columns && !selection.optional) throw new Error(`Required component ${selection.meta.name} is missing from matched archetype`);
             current[i + 2] = columns;
         }
@@ -283,12 +295,12 @@ export class Query<Components extends readonly (object | undefined)[]> {
     private releaseInactiveEntries(activeCount: number): void {
         for (let i = activeCount; i < this._entries.length; i++) {
             const entry = this._entries[i];
-            entry.table = undefined;
+            entry.archetype = undefined;
+            entry.chunkIdx = -1;
             const current = entry.current as unknown[];
             current[0] = 0;
             current[1] = undefined;
-            for (let viewIndex = 0; viewIndex < entry.componentViews.length; viewIndex++) {
-                entry.componentViews[viewIndex].length = 0;
+            for (let viewIndex = 0; viewIndex < this._selections.length; viewIndex++) {
                 current[viewIndex + 2] = undefined;
             }
         }

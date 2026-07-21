@@ -2,7 +2,7 @@
 export * from "./index";
 export * from "./storage";
 export { Archetype, ENTITY_COLUMN } from "./archetype/archetype";
-export type { ArchetypeRow } from "./archetype/archetype";
+export type { ArchetypeRow, ChunkComponentViews } from "./archetype/archetype";
 export { Mask } from "./component/mask";
 export type { ComponentId, ComponentMeta } from "./component/component";
 export { defineComponentMeta, getComponentMeta } from "./component/advanced";

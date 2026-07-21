@@ -1,4 +1,4 @@
-import { GameViewResource, type TelemetryElements } from "../modules/common/resources";
+import { GameViewResource, type TelemetryElements } from "../modules/host";
 
 export function createGameView(): GameViewResource {
     const telemetry: TelemetryElements = {

@@ -3,8 +3,6 @@ import {
     Allocator,
     Buffer,
     DataSet,
-    INVALID_DATA_ROW,
-    RemoveResult,
     Types,
     createTableLayout,
     defaultAllocatorConfig,
@@ -106,6 +104,19 @@ describe("Allocator", () => {
         replacement.dispose();
     });
 
+    test("resets Block identity after a successful clear", () => {
+        const allocator = new Allocator({ bufferByteLength: 16, blockByteLength: 32 });
+        const buffer = allocator.alloc();
+        buffer.dispose();
+        allocator.clear();
+
+        expect((allocator as unknown as { _nextBlockId: number })._nextBlockId).toBe(0);
+        const replacement = allocator.alloc();
+        expect((allocator as unknown as { _nextBlockId: number })._nextBlockId).toBe(1);
+        replacement.dispose();
+        allocator.clear();
+    });
+
     test("allocates aligned TypedArrays without exposing the raw region", () => {
         const allocator = new Allocator();
         const buffer = allocator.alloc();
@@ -123,11 +134,12 @@ describe("DataSet", () => {
     test("builds aligned typed-array columns inside one Buffer", () => {
         const allocator = new Allocator();
         const data = new DataSet(allocator, [Types.U32, Types.F32, Types.I16] as const);
-        const row = data.insert();
-        const table = data.table(data.tableIdOf(row))!;
+        const table = data.push();
         expect(table.columns[0]).toBeInstanceOf(Uint32Array);
         expect(table.columns[1]).toBeInstanceOf(Float32Array);
         expect(table.columns[2]).toBeInstanceOf(Int16Array);
+        expect(table.id).toBe(0);
+        expect(data.at(0)).toBe(table);
         expect(data.layout.usedBytes).toBeLessThanOrEqual(defaultAllocatorConfig.bufferByteLength);
         data.dispose();
         expect(allocator.stats().allocatedBuffers).toBe(0);
@@ -140,7 +152,8 @@ describe("DataSet", () => {
         });
         const data = new DataSet(allocator, [Types.U32, Types.F32] as const);
         expect(data.layout).toEqual(createTableLayout([Types.U32, Types.F32], 1024));
-        for (let i = 0; i <= data.layout.capacity; i++) data.insert();
+        data.push();
+        data.push();
         expect(data.tables).toHaveLength(2);
         expect(data.tables[0].byteLength).toBe(1024);
         data.dispose();
@@ -148,55 +161,39 @@ describe("DataSet", () => {
         allocator.clear();
     });
 
-    test("encodes every emitted DataRow as an exact U32 value", () => {
-        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
-        const data = new DataSet(allocator, [Types.U8] as const);
-        let location = data.insert();
-        for (let i = 1; i <= data.layout.capacity; i++) location = data.insert();
-
-        expect(data.tableIdOf(location)).toBe(1);
-        expect(data.rowIndexOf(location)).toBe(0);
-        expect(new Uint32Array([location])[0]).toBe(location);
-        expect(INVALID_DATA_ROW).toBe(0xFFFFFFFF);
-        expect(data.valid(INVALID_DATA_ROW)).toBe(false);
-        data.dispose();
-    });
-
-    test("reuses released Table IDs within the U32 address space", () => {
+    test("uses push/pop and reuses the continuous tail Table ID", () => {
         const allocator = new Allocator({ bufferByteLength: 16, blockByteLength: 64 });
-        const data = new DataSet(allocator, [Types.U32] as const, { retainEmptyTables: 0 });
-        const rows = Array.from({ length: data.layout.capacity + 1 }, () => data.insert());
-        const releasedLocation = rows[rows.length - 1];
-
-        expect(data.tableIdOf(releasedLocation)).toBe(1);
-        expect(data.remove(releasedLocation)).toBe(RemoveResult.Removed);
-        expect(data.tables).toHaveLength(1);
-
-        const reusedLocation = data.insert();
-        expect(data.tableIdOf(reusedLocation)).toBe(1);
-        expect(data.rowIndexOf(reusedLocation)).toBe(0);
-        expect(reusedLocation).toBe(releasedLocation);
-        expect(new Uint32Array([reusedLocation])[0]).toBe(reusedLocation);
+        const data = new DataSet(allocator, [Types.U32] as const);
+        expect(data.push().id).toBe(0);
+        expect(data.push().id).toBe(1);
+        expect(data.length).toBe(2);
+        expect(data.pop()).toBe(true);
+        expect(data.length).toBe(1);
+        expect(data.push().id).toBe(1);
+        expect(data.pop()).toBe(true);
+        expect(data.pop()).toBe(true);
+        expect(data.pop()).toBe(false);
         data.dispose();
     });
 
-    test("uses dense tables and reports swap-remove relocation", () => {
+    test("keeps row state out of Table while providing data operations", () => {
         const allocator = new Allocator();
-        const capacity = createTableLayout(
-            [Types.U32],
-            allocator.config.bufferByteLength,
-        ).capacity;
-        const data = new DataSet(allocator, [Types.U32] as const);
-        const rows = Array.from({ length: capacity + 1 }, (_, value) => {
-            const row = data.insert(); data.set(row, 0, value + 1); return row;
-        });
-        expect(data.tables).toHaveLength(2);
-        expect(data.remove(rows[rows.length - 1])).toBe(RemoveResult.Removed);
-        expect(data.tables).toHaveLength(2);
-        expect(data.tables[1].empty).toBe(true);
-        const result = data.remove(rows[0]);
-        expect(result).toBe(RemoveResult.Moved);
-        expect(data.get(rows[0], 0)).toBe(rows.length - 1);
-        expect(data.count).toBe(rows.length - 2);
+        const data = new DataSet(allocator, [Types.U32, Types.F32] as const);
+        const source = data.push();
+        const target = data.push();
+
+        source.set(0, 0, 42);
+        source.set(0, 1, 2.5);
+        source.copyRowTo(0, target, 1);
+        expect(target.get(1, 0)).toBe(42);
+        expect(target.get(1, 1)).toBe(2.5);
+
+        target.clearRow(1);
+        expect(target.get(1, 0)).toBe(0);
+        expect(target.get(1, 1)).toBe(0);
+        expect("count" in target).toBe(false);
+        expect("allocRow" in target).toBe(false);
+        expect("popRow" in target).toBe(false);
+        data.dispose();
     });
 });

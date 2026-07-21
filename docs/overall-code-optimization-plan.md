@@ -1,0 +1,179 @@
+# 整体代码优化实施方案
+
+## 1. 目标与约束
+
+本方案用于收口当前 `@zero-ecs/world`、`@zero-ecs/scheduler`、`@zero-ecs/game`
+三库架构，并作为本轮实施的唯一进度记录。
+
+固定原则：
+
+1. 正确性是底线；执行性能第一，GC 稳定性第二。
+2. 能由 TypeScript 和包边界表达的协议不重复增加热路径运行时检查。
+3. World 保持实体数据内核，不重新 Service 化；Scheduler 不依赖 Game；Game 只做组合、
+   生命周期、依赖注入和标准功能模块。
+4. Builder 是一次性冷路径对象。Builder 期间任意错误都使实例进入终态，不设计注册快照、
+   部分回滚或失败后复用；只释放 Builder 自己取得所有权的 World/Allocator。
+5. 不把存储策略、facade 和调度改造混进同一个性能 candidate。
+6. 每个阶段完成后在本文记录实际改动、验证命令与剩余问题。
+
+## 2. 阶段总览
+
+| 阶段 | 状态 | 目标 |
+| --- | --- | --- |
+| 0. 恢复工程基线 | 已完成 | 清除冲突标记，恢复 build/typecheck/test/example 验证 |
+| 1. 正确性收口 | 已完成 | 修复终结、注入、延迟队列、Timer、Pool 的失败与重入语义 |
+| 2. API 与配置收口 | 已完成 | 公共 enum、Timer Resource、SystemAccess 和下游类型兼容 |
+| 3. 性能基础与低风险优化 | 已完成 | 建立可执行 benchmark，移除源码可见热路径浪费 |
+| 4. 发布验证 | 已完成 | 全量构建、测试、no-JIT、包边界和示例验收 |
+
+状态只使用：`待开始`、`进行中`、`已完成`、`阻塞`。
+
+## 3. 阶段 0：恢复工程基线
+
+### 实施项
+
+- [x] 清理根 `package.json`、Game lifecycle 和 shooter-zombie 示例中的合并标记。
+- [x] 根脚本只保留一份 `build/typecheck/test/verify:release`，示例脚本纳入统一验证。
+- [x] `GamePhase` 是正式枚举；`EcsPhase` 只保留 deprecated alias。
+- [x] shooter-zombie 使用当前 `@zero-ecs/game` 与新 `modules/app` 入口，不回退旧单包 API。
+- [x] 运行三包 typecheck、单元测试、生产构建和两个示例 typecheck。
+
+### 阶段记录
+
+- 2026-07-21：基线审查确认 World、Scheduler 可独立 typecheck；Game 被 lifecycle 合并标记
+  阻塞，根 build/test 被无效 `package.json` 阻塞。开始阶段 0。
+- 2026-07-21：完成阶段 0。删除全部冲突标记，统一根脚本和 `GamePhase`，恢复 shooter-zombie
+  的 `app/modules` 入口；旧示例源树保留在仓库中，但从当前示例 `tsconfig` 的编译入口排除。
+  `npm run typecheck`、`npm test`（16 文件、98 测试）、`npm run build`、breakout typecheck
+  与 shooter-zombie 当前入口 typecheck 均通过。开始阶段 1。
+
+## 4. 阶段 1：正确性收口
+
+### 4.1 World 与 Game 生命周期
+
+- [x] 增加不可由 World 子类覆盖的内核终结入口；Game 即使遇到自定义 `dispose()` 抛错或
+  不调用 `super`，仍必须释放 EntitySlots 与 Archetype Buffer。
+- [x] Builder 的 Module/build 任意失败后进入终态；不实现精细事务回滚。
+- [x] Builder 默认创建的 World/Allocator 在失败时清理；外部 Allocator 不由 Builder 清理。
+
+### 4.2 Injection
+
+- [x] `InjectionService` 只在全部注入成功后写入归属标记；失败不得留下半成功标记。
+
+### 4.3 Command、Event、Timer
+
+- [x] Listener 明确定义并实现重入 on/one/off/clear；派发中新增监听从下一次派发生效。
+- [x] Listener 与 Event 队列在 callback/ErrorHandler 抛错时仍完成内部收尾。
+- [x] Event 派发移除逐事件临时 closure。
+- [x] Commands 达到重入批次上限时不再静默丢弃剩余命令。
+- [x] Timer 使用权威 TimeState Tick 计算最少一 Tick 延迟，校验有限安全目标 Tick，并直接
+  创建到能覆盖目标的层级。
+- [x] Timer/Event 的 fatal error 路径释放或断开全部内部待处理引用。
+
+### 4.4 通用对象池与内存
+
+- [x] ObjectPool trim/dispose 在单个 dispose callback 抛错后继续清理剩余对象，并进入确定状态。
+- [x] Allocator 成功 `clear()` 后重置 Block ID；不改变 `trim()` 的活动 Block 语义。
+
+### 验收
+
+- 为以上每个失败、重入和生命周期分支增加回归测试。
+- 不向 Scheduler、Query、组件字段访问或逐结构提交增加新运行时权限分支。
+
+### 阶段记录
+
+- 2026-07-21：完成阶段 1。Game 通过 game-bridge 的非虚内核入口最终释放 World；Builder
+  注册或 build 失败后不可复用，且未增加部分注册回滚。修正注入标记提交时点、Listener
+  派发期增删、Event/Timer fatal 收尾、Commands 安全上限保留策略、Timer 大跨度层级选择、
+  ObjectPool 异常清理和 Allocator Block ID 重置。`npm run typecheck` 与 `npm test` 通过，
+  当前为 16 个测试文件、109 个测试。开始阶段 2。
+
+## 5. 阶段 2：API 与配置收口
+
+### 实施项
+
+- [x] 将公共 `Types`、`QueryNodeKind` 从 `const enum` 改为运行时常量对象加同名联合类型。
+- [x] 用只读 `TimerConfigResource` 代替公共固定 `TimerConfig const enum`；TimerModule 提供默认值。
+- [x] `tests/types` 启用 `isolatedModules`，验证真实发布声明可被常见下游配置消费。
+- [x] 当前没有并行消费者时，将丢弃的 `SystemAccess` 结果收敛为参数验证；不创建无消费者的
+  Set。未来开始冲突批次设计时再正式保存访问元数据。
+- [x] 保持 `[World] -> WorldView`、`Write(State) -> Mut<State>`、Game/StructureWriter 不作为
+  SystemParam 的现有类型边界。
+
+### 验收
+
+- 公共类型测试、package-boundary 和独立安装 smoke 全部通过。
+- Timer 包不依赖 Command/World，配置仍由 Game Resource 层提供。
+
+### 阶段记录
+
+- 2026-07-21：完成阶段 2。`Types` 与 `QueryNodeKind` 改为冻结的运行时常量对象和同名
+  数字联合类型；Timer 的槽位数、对象池上限与 debug 开关改由 `TimerConfigResource` 构建期
+  提供，默认模块仍零配置可用。删除未消费的 `SystemAccess` 结果，仅保留重复参数校验；
+  `tests/types` 开启 `isolatedModules`。`npm run typecheck`、110 个单元测试、`test:types`、
+  `test:package` 和 isolated-package smoke 均通过。开始阶段 3。
+
+## 6. 阶段 3：性能基础与低风险优化
+
+### Benchmark 基础设施
+
+- [x] 新增可执行 Node benchmark 入口和版本化场景配置。
+- [x] 至少覆盖 Scheduler 0/1/4 System、World valid/get/has、Command、Event、Timer 和
+  A→B→A 两次 flush churn。
+- [x] 正式计时与 correctness preflight 分开；输出机器可读 JSON。
+- [x] 本阶段先提供单构建 smoke/采样能力；baseline/candidate 独立进程配对控制器按
+  `docs/performance.md` 协议实现，不用单进程数字批准存储策略。
+
+### 低风险候选
+
+- [x] EntityCommand 只有目标 Mask 真实变化时才标记 Structural。
+- [x] 重复 Set 指令是否合并由 Command 场景结果决定；没有数据不增加索引结构。
+- [x] 记录默认 Allocator 每 World 的保留成本，并提供多 World 使用共享/小 Block 配置的文档。
+- [x] Table high-water retain、Query 空 Chunk 策略继续作为独立实验，不在本轮无数据改写。
+
+### 阶段记录
+
+- 2026-07-21：完成阶段 3。新增 `config.v1.json`、Node 单构建 runner、场景 worker 和独立
+  进程 paired controller；覆盖 Scheduler 0/1/4、World valid/get/has、Command、Event、
+  Timer 与执行两次 flush 的 A→B→A churn。生产场景在 warmup 前验证 churn 中间态和最终态，
+  输出原始 round JSON；单构建结果明确不可用于批准。`npm run bench`、独立进程 A/A smoke
+  与 `node --jitless` smoke 均可执行。EntityCommand 的幂等 Add/Remove 不再设置 Structural；
+  重复 Set 已在现有写集合中合并最终应用值，未为指令日志另加热路径索引。API 文档记录默认
+  Allocator 首次增长的 2 MiB 保留成本以及共享/小 Block 方案。Table 策略未改动。开始阶段 4。
+
+## 7. 阶段 4：发布验证
+
+必须通过：
+
+```text
+npm run typecheck
+npm run test
+npm run build
+npm run test:types
+npm run test:package
+npm run test:no-jit
+npm run example:breakout:typecheck
+npm run example:shooter-zombie:typecheck
+```
+
+如脚本内部已经包含前置 build，不重复执行不改变结论。最终在本文记录命令、结果、未实施的
+benchmark-gated 候选及原因。
+
+### 阶段记录
+
+- 2026-07-21：完成阶段 4。`npm run verify:release` 通过：三包 typecheck、16 个测试文件中的
+  111 个测试、三包生产构建、no-JIT smoke、`isolatedModules` 公共类型测试、package-boundary、
+  breakout 与 shooter-zombie 当前入口 typecheck 全部成功。另行执行最后四项并取得退出码 0；
+  `git diff --check` 与全仓库冲突标记扫描无错误。
+- 本机是 Node v26.0.0，因此阶段 3 的数字只作为 runner smoke，不冒充 `performance.md`
+  规定的 Node 22 正式基线。Table high-water retain、自动回收追踪候选、Chromium/rAF 代表性
+  门槛和重复 Set 指令日志索引均没有凭单构建数字批准；它们需要冻结 baseline、目标 Node/
+  Chromium 环境和独立 candidate 后使用 paired controller 单独决策。
+
+## 8. 明确不做
+
+- 不重新引入 EntityService、ArchetypeService、DenseRows 或 World facade backend。
+- 不给 World/StructureWriter 增加逐调用 executing guard。
+- 不在 Builder 失败时实现精细注册回滚或部分对象生命周期事务。
+- 不在没有独立 baseline/candidate 数据时改变 Table 保留策略。
+- 不为冷路径临时对象建立对象池。

@@ -137,6 +137,7 @@ export class Allocator implements IAllocator {
         }
         this._blocks.clear();
         this._freeList.length = 0;
+        this._nextBlockId = 0;
     }
 
     private grow(): void {

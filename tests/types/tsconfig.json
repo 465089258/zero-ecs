@@ -5,7 +5,8 @@
     "noEmit": true,
     "skipLibCheck": false,
     "module": "ESNext",
-    "moduleResolution": "Bundler"
+    "moduleResolution": "Bundler",
+    "isolatedModules": true
   },
   "include": ["./public-api.ts"]
 }

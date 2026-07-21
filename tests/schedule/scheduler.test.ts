@@ -8,6 +8,7 @@ import {
     type Component,
     GameBuilder,
     GamePhase,
+    ManualStage,
     Write,
     type Mut,
     Query,
@@ -40,6 +41,24 @@ class PositionType implements Component<Position> {
 }
 
 describe("system registration and scheduling", () => {
+    test("manual stages run only when explicitly requested", () => {
+        const Render = new ManualStage("render", 10);
+        const order: string[] = [];
+        const builder = new GameBuilder();
+        builder.addSystem(defSystem(Render, () => order.push("render"), []));
+        builder.addSystem(defSystem(Update.fixed, () => order.push("fixed"), []));
+        const game = builder.build();
+
+        expect(() => game.runStage(Render)).toThrow(/invalid during phase Built/);
+        game.init();
+        game.start();
+        game.update();
+        expect(order).toEqual(["fixed"]);
+        game.runStage(Render);
+        expect(order).toEqual(["fixed", "render"]);
+        game.dispose();
+    });
+
     test("runs first/fixed/last/post and orders Post systems by dependencies", () => {
         const order: string[] = [];
         const builder = new GameBuilder();

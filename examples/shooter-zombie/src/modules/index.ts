@@ -1,16 +1,15 @@
 export { ShooterZombieModule } from "./shooter-zombie-module";
 export {
-    CommonModule,
+    SharedKernelModule,
     GameConfigResource,
     GameMode,
-    GameState,
-    GameViewResource,
-    InputService,
-    MetricsService,
-    Position,
+    GameSessionState,
+    Float2,
     PositionType,
-    UpgradeType,
-    Velocity,
     VelocityType,
 } from "./common";
-export type { TelemetryElements } from "./common";
+export { GameViewResource, HostModule, InputService, MetricsService } from "./host";
+export type { TelemetryElements } from "./host";
+export { ProgressionState, UpgradeType } from "./progression";
+export { GameplayStatisticsState, WaveState } from "./integration";
+export { Render, RenderFrameService, RenderService } from "./presentation";

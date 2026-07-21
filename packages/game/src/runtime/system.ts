@@ -5,8 +5,8 @@ import {
     World,
     type WorldView,
 } from "@zero-ecs/world";
-import { Resource, type ResourceType } from "../context/resource";
-import type { ServiceType } from "../context/service";
+import type { ResourceType } from "../context/resource";
+import type { ServiceToken } from "../context/service";
 import { State, type StateType } from "../context/state";
 import type { Stage } from "@zero-ecs/scheduler";
 
@@ -23,7 +23,7 @@ export type BareSystemParam =
     | typeof World
     | ResourceType
     | StateType
-    | ServiceType
+    | ServiceToken
     | QueryType<QueryComponentTuple>;
 
 export type MutableSystemParam = StateType;
@@ -48,7 +48,7 @@ type InstanceOfParam<T> =
     T extends QueryType<infer Components> ? Query<Components> :
     T extends ResourceType<infer Value> ? Value :
     T extends StateType<infer Value> ? Value :
-    T extends ServiceType<infer Value> ? Value :
+    T extends ServiceToken<infer Value> ? Value :
     never;
 
 export type SystemParamValue<T> =
@@ -101,25 +101,15 @@ export function systemMetadata<const Params extends readonly SystemParam[]>(
     return system[SYSTEM_METADATA];
 }
 
-/** Game 领域的调度访问元数据，不构成运行时权限隔离。 */
-export interface SystemAccess {
-    readonly reads: ReadonlySet<ResourceType | StateType>;
-    readonly writes: ReadonlySet<StateType>;
-    readonly world: boolean;
-}
-
-export function createSystemAccess(params: readonly SystemParam[]): SystemAccess {
-    const reads = new Set<ResourceType | StateType>();
-    const writes = new Set<StateType>();
+/** 构建冷路径校验参数声明；当前不为尚无消费者的访问图分配 Set。 */
+export function validateSystemParams(params: readonly SystemParam[]): void {
     const declared = new Set<unknown>();
-    let world = false;
     for (const param of params) {
         if (isMutParam(param)) {
             if (declared.has(param.target)) {
                 throw new Error(`System parameter ${param.target.name} is declared more than once`);
             }
             declared.add(param.target);
-            writes.add(param.target);
             continue;
         }
         if (declared.has(param)) {
@@ -127,14 +117,7 @@ export function createSystemAccess(params: readonly SystemParam[]): SystemAccess
             throw new Error(`System parameter ${name} is declared more than once`);
         }
         declared.add(param);
-        if (param === World) world = true;
-        else if (typeof param === "function" && (
-            param.prototype instanceof Resource || param.prototype instanceof State
-        )) {
-            reads.add(param as ResourceType | StateType);
-        }
     }
-    return Object.freeze({ reads, writes, world });
 }
 
 export function isMutParam(value: SystemParam): value is MutParam {

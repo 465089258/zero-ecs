@@ -117,11 +117,15 @@ export class RendererService extends Service {
         const iter = query.iter();
         while (iter.next()) {
             const [count, , positions, paddles] = iter.current;
+            const xs = positions[Position.x];
+            const ys = positions[Position.y];
+            const halfWidths = paddles[Paddle.halfWidth];
+            const halfHeights = paddles[Paddle.halfHeight];
             for (let i = 0; i < count; i++) {
-                const halfWidth = paddles[Paddle.halfWidth][i];
-                const halfHeight = paddles[Paddle.halfHeight][i];
-                const x = positions[Position.x][i] - halfWidth;
-                const y = positions[Position.y][i] - halfHeight;
+                const halfWidth = halfWidths[i];
+                const halfHeight = halfHeights[i];
+                const x = xs[i] - halfWidth;
+                const y = ys[i] - halfHeight;
                 ctx.fillStyle = "rgba(94, 231, 247, 0.16)";
                 ctx.fillRect(x - 4, y - 4, halfWidth * 2 + 8, halfHeight * 2 + 8);
                 ctx.fillStyle = "#5ee7f7";
@@ -181,12 +185,14 @@ export class RendererService extends Service {
         const iter = query.iter();
         while (iter.next()) {
             const [count, , positions, , powers] = iter.current;
+            const xs = positions[Position.x];
+            const ys = positions[Position.y];
             const active = powers[PowerUp.active];
             const radii = powers[PowerUp.radius];
             for (let i = 0; i < count; i++) {
                 if (active[i] === 0) continue;
-                const x = positions[Position.x][i];
-                const y = positions[Position.y][i];
+                const x = xs[i];
+                const y = ys[i];
                 const radius = radii[i] * pulse;
                 ctx.fillStyle = "rgba(94,231,247,.16)";
                 ctx.beginPath();

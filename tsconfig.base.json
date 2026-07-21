@@ -21,6 +21,7 @@
       "@zero-ecs/game/time": ["./packages/game/src/time.ts"],
       "@zero-ecs/game/timer": ["./packages/game/src/timer.ts"],
       "@zero-ecs/game/random": ["./packages/game/src/random.ts"],
+      "@zero-ecs/game/hierarchy": ["./packages/game/src/hierarchy.ts"],
       "@zero-ecs/game/pool": ["./packages/game/src/pool.ts"]
     }
   }

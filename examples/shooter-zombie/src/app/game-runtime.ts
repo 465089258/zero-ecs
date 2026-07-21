@@ -3,9 +3,8 @@ import {
     ErrorHandlerService,
     RandomService,
 } from "@zero-ecs/game";
-import { GameViewResource } from "../modules/common/resources";
-import { MetricsService } from "../modules/common/services/metrics-service";
-import { RendererService } from "../modules/presentation/renderer-service";
+import { GameViewResource, MetricsService } from "../modules/host";
+import { Render, RenderFrameService } from "../modules/presentation";
 
 const MAX_FRAME_DELTA = 0.1;
 const MAX_CATCH_UP_STEPS = 12;
@@ -18,7 +17,7 @@ export function runGame(ecs: Game, view: GameViewResource, fixedStep: number): v
     });
     ecs.start();
 
-    const renderer = ecs.service(RendererService);
+    const renderFrame = ecs.service(RenderFrameService);
     const metrics = ecs.service(MetricsService);
     let previous = performance.now();
     let accumulator = fixedStep;
@@ -41,9 +40,14 @@ export function runGame(ecs: Game, view: GameViewResource, fixedStep: number): v
             }
             if (steps === MAX_CATCH_UP_STEPS) accumulator = 0;
             metrics.recordSimulation(performance.now() - simulationStarted, steps);
-            renderer.render(now);
+            renderFrame.begin(now, elapsed, accumulator / fixedStep);
+            ecs.runStage(Render);
             animationFrame = requestAnimationFrame(frame);
         } catch (error) {
+            disposed = true;
+            cancelAnimationFrame(animationFrame);
+            try { ecs.dispose(); }
+            catch (disposeError) { console.error("Failed to dispose shooter simulation", disposeError); }
             console.error("Shooter simulation stopped", error);
             view.telemetry.message.hidden = false;
             view.telemetry.messageTitle.textContent = "RUNTIME ERROR";

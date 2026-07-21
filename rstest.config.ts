@@ -15,6 +15,7 @@ export default defineConfig({
       "@zero-ecs/game/time": resolve("packages/game/src/time.ts"),
       "@zero-ecs/game/timer": resolve("packages/game/src/timer.ts"),
       "@zero-ecs/game/random": resolve("packages/game/src/random.ts"),
+      "@zero-ecs/game/hierarchy": resolve("packages/game/src/hierarchy.ts"),
       "@zero-ecs/game/pool": resolve("packages/game/src/pool.ts"),
       "@zero-ecs/game": resolve("packages/game/src/index.ts"),
     },

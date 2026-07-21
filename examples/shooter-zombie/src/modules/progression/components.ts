@@ -1,4 +1,4 @@
-import { Types, type Component } from "@zero-ecs/game";
+import { Types, type Component, type ComponentTag } from "@zero-ecs/game";
 
 export const enum ExpOrb { value, radius, active }
 
@@ -8,10 +8,5 @@ export class ExpOrbType implements Component<ExpOrb> {
     readonly [ExpOrb.active] = Types.U8;
 }
 
-export const enum DamageText { value, lifetime, floatY }
-
-export class DamageTextType implements Component<DamageText> {
-    readonly [DamageText.value] = Types.F32;
-    readonly [DamageText.lifetime] = Types.F32;
-    readonly [DamageText.floatY] = Types.F32;
-}
+/** Progression 自己定义的收集者角色；不依赖 ShooterType。 */
+export class ExperienceCollectorType implements ComponentTag {}

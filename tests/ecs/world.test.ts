@@ -167,6 +167,28 @@ test("Services dispose before the World kernel", () => {
     expect(service.sawLiveWorld).toBe(true);
 });
 
+class ThrowingDisposeWorld extends World {
+    hookCalls = 0;
+
+    override dispose(): void {
+        this.hookCalls++;
+        throw new Error("custom World dispose failed");
+    }
+}
+
+test("Game finalizes the World kernel even when an override throws without calling super", () => {
+    const allocator = new Allocator();
+    const world = new ThrowingDisposeWorld(allocator);
+    const game = new GameBuilder().setWorld(world).build();
+
+    expect(allocator.stats().allocatedBuffers).toBeGreaterThan(0);
+    expect(() => game.dispose()).toThrow(/custom World dispose failed/);
+    expect(world.hookCalls).toBe(1);
+    expect(allocator.stats().allocatedBuffers).toBe(0);
+    expect(() => new GameBuilder().setWorld(world).build()).toThrow(/disposed/);
+    allocator.clear();
+});
+
 test("prepare failure enters StartFailed without Startup, Shutdown or stop rollback", () => {
     const calls: string[] = [];
     const query = QueryType.from(With(PositionType));

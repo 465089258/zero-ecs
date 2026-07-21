@@ -1,5 +1,5 @@
 export { Types } from "./storage/typed-array";
-export type { TypedArray, TypedArrayFor } from "./storage/typed-array";
+export type { EntityArray, StoredValueFor, TypedArray, TypedArrayFor } from "./storage/typed-array";
 export { Allocator, Buffer, defaultAllocatorConfig } from "./storage/memory";
 export type {
     AllocatorConfig,
@@ -14,14 +14,27 @@ export type {
     StructureWriter,
     WorldView,
 } from "./world";
+export { INVALID_ENTITY } from "./entity/entity";
 export type { Entity } from "./entity/entity";
+export { EntityRef } from "./entity/entity-ref";
 export type {
     Component,
+    ComponentTag,
     ComponentColumns,
     ComponentDefinition,
+    ComponentFieldValue,
     ComponentFields,
     ComponentType,
+    ReadonlyColumn,
+    ReadonlyComponentColumns,
 } from "./component/component";
+export { defineQueryProjection } from "./query/query-data";
+export type {
+    ProjectedQueryData,
+    QueryDataType,
+    QueryDataValue,
+    QueryProjection,
+} from "./query/query-data";
 export {
     All,
     Any,

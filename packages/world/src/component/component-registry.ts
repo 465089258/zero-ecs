@@ -6,11 +6,33 @@ import {
     type ComponentType,
 } from "./component";
 import { Mask } from "./mask";
+import type { QueryDataType, QueryProjection } from "../query/query-data";
 
 /** @internal World 内核持有的组件注册表。 */
 export class ComponentRegistry {
     private readonly _metas: ComponentMeta[] = [];
     private readonly _byType = new WeakMap<ComponentType, ComponentMeta>();
+    private readonly _projectionTypes = new WeakMap<QueryProjection, ComponentType>();
+
+    /** @internal 将只读 Query 投影绑定到当前 World 的隐藏存储组件。 */
+    registerProjection<T extends object>(projection: QueryProjection<T>, storage: ComponentType<T>): void {
+        const existing = this._projectionTypes.get(projection);
+        if (existing && existing !== storage) {
+            throw new Error(`Query projection ${projection.name} is already registered`);
+        }
+        this._projectionTypes.set(projection, storage);
+        this.defMeta(storage);
+    }
+
+    /** @internal 定义 Query 数据并返回实际存储组件元数据。 */
+    defQueryMeta<T extends object>(type: QueryDataType<T>): ComponentMeta<T> {
+        if (typeof type === "function") return this.defMeta(type);
+        const storage = this._projectionTypes.get(type);
+        if (!storage) {
+            throw new Error(`Query projection ${type.name} is not registered in this World`);
+        }
+        return this.defMeta(storage as ComponentType<T>);
+    }
 
     /**
      * 在当前 World 中定义组件；已定义时直接返回原定义。
@@ -40,7 +62,7 @@ export class ComponentRegistry {
         const fields: Types[] = new Array(keys.length);
         for (let i = 0; i < keys.length; i++) {
             const value = (schema as Record<number, unknown>)[keys[i]];
-            if (!Number.isInteger(value) || (value as number) < Types.I8 || (value as number) > Types.F32) {
+            if (!Number.isInteger(value) || (value as number) < Types.I8 || (value as number) > Types.Entity) {
                 throw new TypeError(`Component ${type.name} field ${keys[i]} has invalid type ${String(value)}`);
             }
             fields[i] = value as Types;

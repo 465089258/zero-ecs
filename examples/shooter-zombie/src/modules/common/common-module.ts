@@ -1,22 +1,14 @@
 import type { GameBuilder, Module } from "@zero-ecs/game";
-import { GameState } from "./game-state";
-import { GameConfigResource, GameViewResource } from "./resources";
-import { InputService } from "./services/input-service";
-import { MetricsService } from "./services/metrics-service";
+import { GameSessionState } from "./game-state";
+import { GameConfigResource } from "./resources";
 
-/** 向所有功能模块提供共享资源、状态和基础服务。 */
-export class CommonModule implements Module {
-    constructor(
-        readonly view: GameViewResource,
-        readonly config = new GameConfigResource(),
-    ) {}
+/** 只安装叶子领域模块共同依赖的稳定共享内核。 */
+export class SharedKernelModule implements Module {
+    constructor(readonly config = new GameConfigResource()) {}
 
     build(builder: GameBuilder): void {
         builder
-            .addResource(GameViewResource, this.view)
             .addResource(GameConfigResource, this.config)
-            .addState(GameState)
-            .addService(InputService)
-            .addService(MetricsService);
+            .addState(GameSessionState);
     }
 }

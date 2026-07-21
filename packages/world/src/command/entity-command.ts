@@ -1,5 +1,6 @@
 import type { Archetype, ArchetypeRow } from "../archetype/archetype";
 import {
+    type ComponentFieldValue,
     type ComponentFields,
     type ComponentId,
     type ComponentMeta,
@@ -33,13 +34,13 @@ export interface EntityMutator {
     get<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-    ): number | null;
+    ): ComponentFieldValue<T, Field> | null;
     add<T extends object>(type: ComponentType<T>): this;
     remove<T extends object>(type: ComponentType<T>): this;
     set<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-        value: number,
+        value: ComponentFieldValue<T, Field>,
     ): this;
 }
 
@@ -57,6 +58,7 @@ export interface EntityCommand extends EntityMutator {
 export interface InternalEntityCommand extends EntityCommand {
     _reset(entity: Entity): void;
     _seal(): void;
+    _willDespawn(): boolean;
     _merge(source: InternalEntityCommand): void;
     _release(): void;
 }
@@ -116,7 +118,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     get<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-    ): number | null {
+    ): ComponentFieldValue<T, Field> | null {
         this.assertMutable();
         const component = this._world.getComponentMeta(type);
         if (!component || !this._targetMask.has(component.mask)) return null;
@@ -125,10 +127,12 @@ class EntityCommandImplementation implements InternalEntityCommand {
             if (this._instructions[i + 1] !== component.id) continue;
             const operation = this._instructions[i];
             if (operation === EntityInstruction.Set && this._instructions[i + 2] === field) {
-                return this._instructions[i + 3];
+                return this._instructions[i + 3] as ComponentFieldValue<T, Field>;
             }
             if (operation === EntityInstruction.Add) {
-                if ((this._instructions[i + 2] & AddInstructionFlags.CreatedLocalInstance) !== 0) return 0;
+                if ((this._instructions[i + 2] & AddInstructionFlags.CreatedLocalInstance) !== 0) {
+                    return 0 as ComponentFieldValue<T, Field>;
+                }
                 continue;
             }
             if (operation === EntityInstruction.Remove) return null;
@@ -152,7 +156,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     set<T extends object, Field extends ComponentFields<T>>(
         type: ComponentType<T>,
         field: Field,
-        value: number,
+        value: ComponentFieldValue<T, Field>,
     ): this {
         this.assertMutable();
         const component = this._world.defineComponentMeta(type);
@@ -193,6 +197,11 @@ class EntityCommandImplementation implements InternalEntityCommand {
         this._phase = EntityCommandPhase.Sealed;
     }
 
+    /** @internal 只供 Game 提交扩展在合并前观察终止事务。 */
+    _willDespawn(): boolean {
+        return (this._flags & EntityCommandFlags.Despawn) !== 0;
+    }
+
     _merge(source: InternalEntityCommand): void {
         if (!(source instanceof EntityCommandImplementation) || source._world !== this._world) {
             throw new Error("Cannot merge EntityCommands from different Worlds");
@@ -205,7 +214,8 @@ class EntityCommandImplementation implements InternalEntityCommand {
             throw new Error("Cannot merge EntityCommands for different entities");
         }
         if ((this._flags & EntityCommandFlags.Despawn) !== 0) {
-            throw new Error(`Entity ${this._entity} already has a terminal despawn transaction`);
+            // 批次中的 despawn 是该实体的最终结果；后续独立事务不再改变它。
+            return;
         }
         if ((source._flags & EntityCommandFlags.Despawn) !== 0) {
             this.recordDespawn();
@@ -273,8 +283,8 @@ class EntityCommandImplementation implements InternalEntityCommand {
             this._types.push(component);
             this.removeWrites(component.id);
             this.addReset(component.id);
+            this._flags |= EntityCommandFlags.Structural;
         }
-        this._flags |= EntityCommandFlags.Structural;
         this.writeInstruction(
             EntityInstruction.Add,
             component.id,
@@ -294,8 +304,8 @@ class EntityCommandImplementation implements InternalEntityCommand {
             }
             this.removeReset(component.id);
             this.removeWrites(component.id);
+            this._flags |= EntityCommandFlags.Structural;
         }
-        this._flags |= EntityCommandFlags.Structural;
         this.writeInstruction(EntityInstruction.Remove, component.id, 0, 0);
     }
 

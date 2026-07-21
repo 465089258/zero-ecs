@@ -1,4 +1,4 @@
-import type { TypedArrayFor, Types } from "../storage/typed-array";
+import type { StoredValueFor, TypedArrayFor, Types } from "../storage/typed-array";
 import type { Mask } from "./mask";
 
 declare const ComponentIdBrand: unique symbol;
@@ -11,17 +11,37 @@ declare const ComponentMetaBrand: unique symbol;
  */
 export type Component<K extends number> = Readonly<Record<K, Types>>;
 
+/** 标记组件 */
+export type ComponentTag = Component<never>;
+
 /** 组件定义类；类本身作为组件在不同 World 间共享的稳定标识。 */
 export type ComponentType<T extends object = object> = new () => T;
 
 /** 组件定义中的数字字段键。 */
 export type ComponentFields<T extends object> = Extract<keyof T, number>;
 
-/** 组件在一个 Archetype Table 中对应的 TypedArray 列集合。 */
+/** 组件在一个 Archetype Chunk 中对应的 TypedArray 列集合。 */
 export type ComponentColumns<T extends object> = {
     readonly [Field in ComponentFields<T>]:
-        T[Field] extends Types ? TypedArrayFor<T[Field]> : never;
+    T[Field] extends Types ? TypedArrayFor<T[Field]> : never;
 };
+
+/** 不暴露 TypedArray 写方法、运行时仍直接使用原列视图的只读列。 */
+export interface ReadonlyColumn<T> extends ArrayLike<T> {
+    readonly [index: number]: T;
+}
+
+/** QueryProjection 对外呈现的只读组件列集合。 */
+export type ReadonlyComponentColumns<T extends object> = {
+    readonly [Field in ComponentFields<T>]:
+    T[Field] extends Types ? ReadonlyColumn<StoredValueFor<T[Field]>> : never;
+};
+
+/** 组件指定字段在读写 API 中呈现的值类型。 */
+export type ComponentFieldValue<
+    T extends object,
+    Field extends ComponentFields<T>,
+> = T[Field] extends Types ? StoredValueFor<T[Field]> : never;
 
 /** 组件在当前 World 内的紧凑编号。 */
 export type ComponentId = number & { readonly [ComponentIdBrand]: "ComponentId" };

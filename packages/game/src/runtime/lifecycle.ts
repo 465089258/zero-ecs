@@ -1,10 +1,5 @@
-<<<<<<< HEAD:packages/game/src/runtime/lifecycle.ts
 /** Game 运行时实例的生命周期阶段。 */
 export enum GamePhase {
-=======
-/** ECS 实例的生命周期阶段。 */
-export const enum EcsPhase {
->>>>>>> eaf72ceda28153b79b4d08389972371de2242457:src/runtime/lifecycle.ts
     /** 已构建，尚未初始化。 */
     Built,
     /** 已初始化，尚未启动。 */

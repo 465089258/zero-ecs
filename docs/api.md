@@ -9,7 +9,7 @@ import { GameBuilder, defSystem, Update } from "@zero-ecs/game";
 ```
 
 底层诊断能力位于 `@zero-ecs/world/advanced` 和 `@zero-ecs/game/advanced`。Event、Time、
-Timer、Random、Pool 也分别具有 Game 子路径入口。
+Timer、Random、Pool、Hierarchy 也分别具有 Game 子路径入口。
 
 ## @zero-ecs/world
 
@@ -32,6 +32,10 @@ allocator.clear();
 
 `createTableLayout(types, bufferByteLength)` 位于 advanced，buffer 大小没有隐式默认值。
 
+默认 Allocator 第一次增长会保留一个 2 MiB Block。大量小型 World 不应各自无条件使用默认
+配置：可以让多个 World 借用同一个外部 Allocator，或为小 World 使用较小的
+`blockByteLength`。共享分配器仍由构造方统一清理，任一 World 都只归还自己的 Buffer。
+
 ### Component 与 Query
 
 ```ts
@@ -41,23 +45,67 @@ class PositionType implements Component<Position> {
     readonly [Position.y] = Types.F32;
 }
 
+const enum Target { entity }
+class TargetType implements Component<Target> {
+    readonly [Target.entity] = Types.Entity;
+}
+
 const queryType = QueryType.from(With(PositionType));
 const query = world.query(queryType);
 const iter = query.iter();
 while (iter.next()) {
     const [count, entities, positions] = iter.current;
+    const xs = positions[Position.x];
+    const ys = positions[Position.y];
+    for (let row = 0; row < count; row++) {
+        xs[row] += 1;
+        consume(entities[row], xs[row], ys[row]);
+    }
 }
 ```
 
-Query 按 Table 返回列视图并复用 `QueryIter/current`。不要跨结构变化保存迭代器结果或在
-同一 Query 上嵌套迭代。
+Query 按 Archetype Chunk 返回列视图并复用 `QueryIter/current`。不要跨结构变化保存迭代器结果或在
+同一 Query 上嵌套迭代。逐行循环前应把需要的字段列缓存为局部变量，不在循环中重复写
+`positions[Position.x][row]` 这样的两级访问。
+
+只读 `QueryProjection<T>` 也可以参与 `With/Without/Optional`。它由组合层映射到隐藏
+ComponentType，只在 Query 创建冷路径解析，运行时不创建视图包装；投影本身不是
+ComponentType，不能传给 EntityCommand 的 `add/remove/set`。
+
+实体引用字段使用 `Types.Entity`，不要使用 `Types.U32` 后再由业务层断言：
+
+```ts
+const target: Entity = targets[Target.entity][row];
+commands.entity(target);
+```
+
+它的物理存储仍是 `Uint32Array`，不会产生包装或运行时转换；区别只存在于 TypeScript
+类型层。`World.get()`、`EntityRef.get()`、Query 组件列以及 EntityCommand 的 `get/set`
+都会把该字段推导为 `Entity`。`Types.U32` 继续表示普通无符号整数。需要表达“无实体”时使用
+`INVALID_ENTITY`，不要在业务代码中写 `0 as Entity`。
+
+advanced 代码需要直接遍历 Archetype 时，使用连续 `chunkIdx`，而不是保存 Table 或
+DataSet：
+
+```ts
+for (let chunkIdx = 0; chunkIdx < archetype.chunkCount; chunkIdx++) {
+    const count = archetype.chunkRowCount(chunkIdx);
+    const entities = archetype.entities[chunkIdx];
+    const positions = archetype.views[chunkIdx][positionId];
+}
+```
+
+`views` 的形状固定为 `[chunkIdx][componentId][fieldId]`；ComponentId 这一层是稀疏索引。
+这些列属于 Archetype/Chunk 生命周期，结构变化后不得长期保留。底层 `DataSet` 只管理
+Table 的 `push/pop`，Table 本身不提供行分配、删除、计数或版本 API。
 
 ### WorldView 与 StructureWriter
 
 ```ts
 interface WorldView {
+    ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
-    get(entity, component, field): number | null;
+    get(entity, component, field): ComponentFieldValue<Component, Field> | null;
     has(entity, component): boolean;
 }
 
@@ -69,7 +117,26 @@ interface StructureWriter {
 }
 ```
 
-`getTypes()` 和 `getCompLocation()` 是会分配的诊断 API，不属于 `WorldView`。
+`getTypes()` 和 `getCompLocation()` 是会分配的诊断 API，不属于 `WorldView`；后者返回
+`{ chunkIdx, row }`。
+
+### EntityRef
+
+`world.ref(entity)` 每次创建一个低频只读便利对象：
+
+```ts
+const player = world.ref(playerEntity);
+if (player.valid && player.has(HealthType)) {
+    const health = player.get(HealthType, Health.value);
+}
+```
+
+EntityRef 只保存 `WorldView + Entity`，不缓存 Archetype、Chunk、row 或组件列，也不会
+钉住实体。实体销毁后既有引用的 `valid` 变为 `false`，`has()` 返回 `false`，`get()`
+返回 `null`。`equals()` 同时比较 World 身份与带版本 Entity 句柄。
+
+EntityRef 是明确允许分配的低频 API，不应在 Query 的逐实体循环中创建；它不提供
+`set/add/remove/despawn`。结构修改继续使用 EntityCommand 或 StructureWriter。
 
 ### EntityCommand
 
@@ -103,11 +170,46 @@ scheduler.dispose();
 
 ## @zero-ecs/game
 
+### 可选 Hierarchy
+
+Hierarchy 不属于默认基础设施，使用时显式安装，并同时安装 Commands：
+
+```ts
+const game = new GameBuilder()
+    .addModule(new CommandModule())
+    .addModule(new HierarchyModule())
+    .build();
+
+const hierarchy = game.service(HierarchyService);
+hierarchy.setParent(child, parent); // 在 Commands 提交边界生效
+```
+
+`ChildOf` 和 `ParentOf` 是只读 QueryProjection：
+
+```ts
+const children = QueryType.from(With(ChildOf));
+const parents = QueryType.from(With(ParentOf));
+```
+
+它们只表示“有父节点”和“有至少一个子节点”。具体边由
+`parentOf/firstChildOf/lastChildOf/previousSiblingOf/nextSiblingOf` 读取；没有关系时返回
+`INVALID_ENTITY`。内部 marker 类型不导出，因此外部不能通过 `command.add/remove` 绕过
+HierarchyService。
+
+父节点通过 Game Commands despawn 时，Hierarchy 默认递归 despawn 全部后代。如果希望
+某个子树保留，必须先调用 `removeParent(root)` 或 `setParent(root, anotherParent)`；同一
+Commands flush 中关系变更先于递归展开。直接使用低层 World/StructureWriter 属于显式
+逃生口，不承诺触发 Game 层级语义。
+
 ### Resource、State、Service
 
 - Resource：构建期提供、运行期间不替换的只读依赖或能力，可持有 DOM/Canvas/句柄；
 - State：Game 持有的可变业务状态，未来只序列化显式标注字段；
 - Service：方法、缓存、池、句柄和运行时协作对象，允许按实际需要持有字段。
+
+Service 的 `ServiceToken<T>` 可以是抽象父类，供 System 参数、注入和查询使用；
+`ServiceType<T>` 表示 Builder 能直接实例化的具体实现。注册子类会自动建立父类 token
+别名。
 
 ```ts
 const builder = new GameBuilder()
@@ -220,9 +322,10 @@ State 序列化。
 | --- | --- |
 | `@zero-ecs/game/event` | EventModule、EventService、EventArgs、Listener |
 | `@zero-ecs/game/time` | TimeModule、FixedTimeResource、TimeState |
-| `@zero-ecs/game/timer` | TimerModule、TimerService、TimerConfig |
+| `@zero-ecs/game/timer` | TimerModule、TimerService、TimerConfigResource |
 | `@zero-ecs/game/random` | RandomModule、RandomService |
 | `@zero-ecs/game/pool` | ObjectPoolService、ObjectPool、definePool |
+| `@zero-ecs/game/hierarchy` | HierarchyModule、HierarchyService、ChildOf、ParentOf |
 
 Module 可以只导出面向上层的 Service 与 Module 类，把具体 State、System 和池实现留在
 包内部，以保持开放封闭边界。

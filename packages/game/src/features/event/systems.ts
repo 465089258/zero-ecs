@@ -15,18 +15,46 @@ function flushEvents(events: Mut<EventState>, pool: EventPoolService, errors: Er
     const queue = events.backQueue;
     events.backQueue = events.frontQueue;
     events.frontQueue = queue;
+    let firstError: unknown;
     for (let i = 0; i < queue.length; i++) {
         const args = queue[i];
         try {
             events.events.get(args.constructor as new () => EventArgs)?.call(
                 args,
-                error => errors.report(error, "event"),
+                reportListenerError,
+                errors,
             );
+        } catch (error) {
+            firstError ??= error;
         } finally {
             try { args._recycle(); }
-            catch (error) { errors.report(error, "event", args); }
-            finally { pool.recycle(args); }
+            catch (error) {
+                const handlerError = reportEventError(errors, error, args);
+                firstError ??= handlerError;
+            }
+            finally {
+                try { pool.recycle(args); }
+                catch (error) { firstError ??= error; }
+            }
         }
     }
     queue.length = 0;
+    if (firstError !== undefined) throw firstError;
+}
+
+function reportListenerError(this: ErrorHandlerService, error: unknown): void {
+    this.report(error, "event");
+}
+
+function reportEventError(
+    errors: ErrorHandlerService,
+    error: unknown,
+    target: object,
+): unknown {
+    try {
+        errors.report(error, "event", target);
+        return undefined;
+    } catch (handlerError) {
+        return handlerError;
+    }
 }

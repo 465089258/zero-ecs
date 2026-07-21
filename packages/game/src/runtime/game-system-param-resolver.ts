@@ -1,6 +1,6 @@
 import type { InjectionContext } from "../context/injection/injection";
 import { Resource, type ResourceType } from "../context/resource";
-import { Service, type ServiceType } from "../context/service";
+import { Service, type ServiceToken } from "../context/service";
 import { State, type StateType } from "../context/state";
 import { QueryType, World } from "@zero-ecs/world";
 import type { SystemParamProvider } from "@zero-ecs/scheduler";
@@ -22,7 +22,7 @@ export class GameSystemParamResolver implements SystemParamProvider<SystemParam>
         else if (param instanceof QueryType) value = world.query(param);
         else if (param.prototype instanceof Resource) value = this._context.resources.get(param as ResourceType);
         else if (param.prototype instanceof State) value = this._context.states.get(param as StateType);
-        else if (param.prototype instanceof Service) value = this._context.services.get(param as ServiceType);
+        else if (param.prototype instanceof Service) value = this._context.services.get(param as ServiceToken);
         else throw new TypeError(`Unsupported system parameter type: ${param.name}`);
         return value as SystemParamValue<P>;
     }

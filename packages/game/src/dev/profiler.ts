@@ -37,8 +37,7 @@ export class DevProfiler {
         const archetypes = archetypesOfWorld(this.game.structureWriter() as World);
         for (let i = 0; i < archetypes.length; i++) {
             const archetype = archetypes[i];
-            let memory = 0;
-            for (const table of archetype.tables) memory += table.byteLength;
+            const memory = archetype.allocatedBytes;
             const components = archetype.types.map(type => type.name).join(", ");
             lines.push(
                 padRight(`[${i}]`, 6) +

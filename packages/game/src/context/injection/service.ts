@@ -24,8 +24,8 @@ export class InjectionService extends Service {
             throw new Error(`${instance.constructor.name} was injected by another Game`);
         }
         if (flagValue === this) return instance;
-        (instance as any)[flag] = this;
         apply(instance);
+        (instance as any)[flag] = this;
         return instance;
     }
 

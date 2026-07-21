@@ -12,6 +12,6 @@ export class HealthType implements Component<Health> {
 export const enum AttributeChangeRequest { target, amount }
 
 export class AttributeChangeRequestType implements Component<AttributeChangeRequest> {
-    readonly [AttributeChangeRequest.target] = Types.U32;
+    readonly [AttributeChangeRequest.target] = Types.Entity;
     readonly [AttributeChangeRequest.amount] = Types.F32;
 }

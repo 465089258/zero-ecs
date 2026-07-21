@@ -1,8 +1,8 @@
 # Game / World 内核架构
 
-> 状态：已于 2026-07-20 实施。World 已从 Service/State facade 迁移为独立实体内核；
-> 组件、Archetype、实体槽位和 Query 数据源由 World 物理持有。Table 回收策略仍是
-> 独立性能议题，按 [performance.md](./performance.md) 的实验协议决策。
+> 状态：已实施。World 已从 Service/State facade 迁移为独立实体内核；组件、Archetype、
+> EntitySlots 和 Query 数据源由 World 物理持有。存储又进一步完成行所有权收敛：
+> DataSet 只管理连续 Table，逻辑行属于 Archetype/EntitySlots。
 >
 > 当前代码已进一步拆为相互独立的 World、Scheduler、Game 三个库，完整边界与
 > 实施结果见 [three-library-architecture.md](./three-library-architecture.md)。本文保留
@@ -18,7 +18,9 @@ Game
 ├─ World                         实体内核
 │  ├─ ComponentRegistry         普通对象，World-local ID
 │  ├─ ArchetypeStore            普通对象，Mask 索引与版本
-│  ├─ Entity slots DataSet      句柄版本和存储位置
+│  ├─ EntitySlots               句柄版本和 Archetype/chunkIdx/row
+│  ├─ Archetype Chunks          密集行、结构版本和组件列缓存
+│  ├─ DataSet / Table           连续表生命周期与固定列数据操作
 │  └─ Query data source         Query 直接绑定上述对象
 ├─ ResourceContainer
 ├─ StateContainer
@@ -183,6 +185,7 @@ const entity = world.reserveEntity();
 world.valid(entity);
 world.has(entity, Position);
 world.get(entity, Position, PositionField.x);
+world.ref(entity); // 低频只读便利对象；每次调用都会分配
 world.despawn(entity);
 ```
 
@@ -190,11 +193,14 @@ world.despawn(entity);
 `Update.post` 中通过 MigrationPlan 物化或迁移。`view()`、`getTypes()` 与
 `getCompLocation()` 是完整 World 的 advanced/诊断便利能力，不进入 WorldView；后
 两者成功时会分配结果对象或数组。
+`WorldView.ref()` 同样属于明确分配的低频边界；返回的 EntityRef 不缓存
+Archetype/chunkIdx/row，也不提供结构写能力。
 
-`World.query(type)` 直接构造现有 Query，并把 World 私有 ComponentRegistry 与
-ArchetypeStore 作为现有的 `IComponentResolver` / `IArchetypeSource`。Query、
-QueryIter、Table entry、current tuple、版本刷新和 TypedArray 布局均未改变，也没有
-引入 QueryHandle 或 QueryPlan。
+`World.query(type)` 直接构造 Query，并把 World 私有 ComponentRegistry 与
+ArchetypeStore 作为 `IComponentResolver` / `IArchetypeSource`。QueryIter/current tuple
+继续复用；Query entry 现在只记录 `Archetype + chunkIdx`，并直接引用
+`archetype.entities[chunkIdx]` 与 `archetype.views[chunkIdx][componentId]`。Chunk 集合变化由
+Archetype 版本触发 rebuild，没有 QueryHandle、QueryPlan、DenseRows 或 Query 私有组件列适配层。
 
 ## 7. Command 与迁移
 
@@ -303,5 +309,6 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 - 旧核心 Service 不出现在 root 或 advanced 包入口。
 - 正常 JIT、`--jitless`、声明类型与示例构建全部通过。
 
-Table 的 auto-release、tracked auto-release 与 high-water retain 选择不混入本次
-World 所有权迁移；它们必须使用冻结后的 World 基线独立实验和批准。
+当前 Archetype 保留一个额外空 Chunk，并只从连续尾部释放更多空 Chunk；DataSet 不参与
+行数、版本或回收策略。若未来要切换为完全 high-water retain 或增加显式 trim，应作为独立
+存储性能变更评审，不能与 World facade 或 Scheduler candidate 混测。

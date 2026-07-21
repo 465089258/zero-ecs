@@ -1,5 +1,5 @@
 import { QueryType, With } from "@zero-ecs/game";
-import { PositionType, VelocityType } from "../common/components";
+import { PositionType, VelocityType } from "../common";
 import { WallType, ZombieType } from "./components";
 
 export const ZombieQuery = QueryType.from(With(PositionType, VelocityType, ZombieType));

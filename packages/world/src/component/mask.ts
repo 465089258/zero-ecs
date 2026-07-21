@@ -47,22 +47,6 @@ export class Mask {
         }
         return new Mask(bits, length);
     }
-    /** 返回低 32 位，不产生数组副本。 */
-    v0() {
-        return this._bits[0] ?? 0;
-    }
-    /** 返回第 32 至 63 位，不产生数组副本。 */
-    v1() {
-        return this._bits[1] ?? 0;
-    }
-    /** 返回第 64 至 95 位，不产生数组副本。 */
-    v2() {
-        return this._bits[2] ?? 0;
-    }
-    /** 返回第 96 至 127 位，不产生数组副本。 */
-    v3() {
-        return this._bits[3] ?? 0;
-    }
 
     /** 创建当前掩码的独立副本。 */
     clone(): Mask {

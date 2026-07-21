@@ -4,14 +4,38 @@ import { FixedTimeResource } from "../time/fixed-time-resource";
 import { TimeState } from "../time/time-state";
 import type { Mut } from "../../runtime/system";
 
-/** 分层时间轮的容量与调试配置。 */
-export const enum TimerConfig {
-    /** 每层时间轮的槽位数，必须为 2 的幂。 */
-    SLOT_COUNT = 64,           // 每层槽位数（2 的幂，便于位运算）
-    /** 最多保留的空闲任务包装对象数量。 */
-    MAX_TASK_POOL_SIZE = 4096,
-    /** 是否输出时间轮调试日志。 */
-    DEBUG = 0,
+/** 分层时间轮的构建期配置。 */
+export interface TimerConfigOptions {
+    readonly slotCount?: number;
+    readonly maxTaskPoolSize?: number;
+    readonly debug?: boolean;
+}
+
+/** 构建期提供、运行期间不替换的 Timer 配置。 */
+export class TimerConfigResource extends Resource {
+    readonly slotCount: number;
+    readonly slotMask: number;
+    readonly maxTaskPoolSize: number;
+    readonly debug: boolean;
+
+    constructor(options: Readonly<TimerConfigOptions> = {}) {
+        super();
+        const slotCount = options.slotCount ?? 64;
+        const maxTaskPoolSize = options.maxTaskPoolSize ?? 4096;
+        if (!Number.isSafeInteger(slotCount) || slotCount < 2 || (slotCount & (slotCount - 1)) !== 0) {
+            throw new RangeError("Timer slotCount must be a power-of-two safe integer greater than one");
+        }
+        if (slotCount > 0x40000000) {
+            throw new RangeError("Timer slotCount exceeds the supported bitwise range");
+        }
+        if (!Number.isSafeInteger(maxTaskPoolSize) || maxTaskPoolSize < 0) {
+            throw new RangeError("Timer maxTaskPoolSize must be a non-negative safe integer");
+        }
+        this.slotCount = slotCount;
+        this.slotMask = slotCount - 1;
+        this.maxTaskPoolSize = maxTaskPoolSize;
+        this.debug = options.debug ?? false;
+    }
 }
 
 /** 可由 TimerService 延迟提交的任务。 */
@@ -52,6 +76,7 @@ export class TimerState extends State {
 
 /** @internal 当前 World 的定时任务包装对象池；不属于可恢复模拟状态。 */
 export class TimerPoolService extends Service {
+    @Resource.inject(TimerConfigResource) private readonly _config!: TimerConfigResource;
     private readonly _tasks: InnerTask[] = [];
 
     acquire(): InnerTask {
@@ -74,7 +99,7 @@ export class TimerPoolService extends Service {
         task.targetTick = 0;
         task.createTime = 0;
         task.expectedTime = 0;
-        if (this._tasks.length < TimerConfig.MAX_TASK_POOL_SIZE) this._tasks.push(task);
+        if (this._tasks.length < this._config.maxTaskPoolSize) this._tasks.push(task);
     }
 
     trim(retain: number): void {
@@ -89,6 +114,7 @@ export class TimerService extends Service implements ITimer {
     @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Service.inject(TimerPoolService) private readonly _pool!: TimerPoolService;
     @Resource.inject(FixedTimeResource) private readonly _fixed!: FixedTimeResource;
+    @Resource.inject(TimerConfigResource) private readonly _config!: TimerConfigResource;
     @State.inject(TimeState) private readonly _time!: TimeState;
     @State.inject(TimerState) private readonly _state!: Mut<TimerState>;
 
@@ -96,8 +122,8 @@ export class TimerService extends Service implements ITimer {
     init() {
         this._state.globalTick = this._time.tick;
         this.createNewLevel(); // 创建第 0 层
-        if (TimerConfig.DEBUG) {
-            console.log(`[Timer] 初始化，TICK_SEC=${this._fixed.deltaSeconds}, SLOT_COUNT=${TimerConfig.SLOT_COUNT}`);
+        if (this._config.debug) {
+            console.log(`[Timer] 初始化，TICK_SEC=${this._fixed.deltaSeconds}, SLOT_COUNT=${this._config.slotCount}`);
         }
     }
 
@@ -107,23 +133,39 @@ export class TimerService extends Service implements ITimer {
      * 延迟时间向上取整到固定 Tick，且最少等待一个 Tick；当前不提供取消接口。
      */
     once(delaySec: number, task: ITimerTask): void {
+        if (!Number.isFinite(delaySec) || delaySec < 0) {
+            throw new RangeError("delaySec must be a non-negative finite number");
+        }
+        if (!task || typeof task.submit !== "function") {
+            throw new TypeError("Timer task must provide submit()");
+        }
         let ticks = Math.ceil(delaySec / this._fixed.deltaSeconds);
         if (ticks < 1) ticks = 1;
-
-        const wrapper = this._pool.acquire();
-        wrapper.taskObject = task;
-        wrapper.targetTick = this._state.globalTick + ticks;
-        wrapper.createTime = this._time.elapsed;
-        wrapper.expectedTime = this._time.elapsed + ticks * this._fixed.deltaSeconds;
-
-        if (TimerConfig.DEBUG) {
-            console.log(
-                `[Timer] 添加任务: 延迟=${delaySec}s -> 折算ticks=${ticks}, ` +
-                `目标绝对tick=${wrapper.targetTick}, 预期触发时间=${wrapper.expectedTime.toFixed(3)}s`
-            );
+        if (!Number.isSafeInteger(ticks)) throw new RangeError("Timer delay exceeds safe Tick range");
+        const baseTick = Math.max(this._time.tick, this._state.globalTick);
+        if (!Number.isSafeInteger(baseTick) || baseTick < 0 || baseTick + ticks > Number.MAX_SAFE_INTEGER) {
+            throw new RangeError("Timer target Tick exceeds the safe integer range");
         }
 
-        this.addTaskByTargetTick(wrapper);
+        const wrapper = this._pool.acquire();
+        try {
+            wrapper.taskObject = task;
+            wrapper.targetTick = baseTick + ticks;
+            wrapper.createTime = this._time.elapsed;
+            wrapper.expectedTime = this._time.elapsed + ticks * this._fixed.deltaSeconds;
+
+            if (this._config.debug) {
+                console.log(
+                    `[Timer] 添加任务: 延迟=${delaySec}s -> 折算ticks=${ticks}, ` +
+                    `目标绝对tick=${wrapper.targetTick}, 预期触发时间=${wrapper.expectedTime.toFixed(3)}s`
+                );
+            }
+
+            this.addTaskByTargetTick(wrapper);
+        } catch (error) {
+            this._pool.recycle(wrapper);
+            throw error;
+        }
     }
 
     /**
@@ -137,7 +179,7 @@ export class TimerService extends Service implements ITimer {
             // 已经过期（防御性直接触发）
             try {
                 task.taskObject.submit();
-                if (TimerConfig.DEBUG) {
+                if (this._config.debug) {
                     const actualTime = this._time.elapsed;
                     console.warn(
                         `[Timer] 任务过期强制触发: 实际=${actualTime.toFixed(3)}s, ` +
@@ -151,40 +193,35 @@ export class TimerService extends Service implements ITimer {
             return;
         }
 
-        // 找到满足 remaining < totalTicksPerRound 的最底层
         let levelIndex = 0;
-        while (levelIndex < this._state.levels.length) {
+        for (;;) {
+            if (levelIndex >= this._state.levels.length) this.createNewLevel();
             const level = this._state.levels[levelIndex];
             if (remaining < level.totalTicksPerRound) break;
             levelIndex++;
         }
 
-        // 必要时动态创建更高层级
-        while (levelIndex >= this._state.levels.length) {
-            this.createNewLevel();
-        }
-
         const level = this._state.levels[levelIndex];
         // ✅ 修正点：槽位 = (当前指针 + 偏移) 再取模
         const delta = Math.floor(remaining / level.tickPerSlot);
-        const slot = (level.currentSlot + delta) & (TimerConfig.SLOT_COUNT - 1);
+        const slot = (level.currentSlot + delta) & this._config.slotMask;
         level.slots[slot].push(task);
     }
 
     private createNewLevel(): void {
         const newLevelIndex = this._state.levels.length;
-        const tickPerSlot = Math.pow(TimerConfig.SLOT_COUNT, newLevelIndex);
-        const totalTicksPerRound = tickPerSlot * TimerConfig.SLOT_COUNT;
+        const tickPerSlot = Math.pow(this._config.slotCount, newLevelIndex);
+        const totalTicksPerRound = tickPerSlot * this._config.slotCount;
 
         const level: TimerLevel = {
-            slots: Array.from({ length: TimerConfig.SLOT_COUNT }, () => []),
+            slots: Array.from({ length: this._config.slotCount }, () => []),
             currentSlot: 0,
             tickPerSlot,
             totalTicksPerRound,
         };
         this._state.levels.push(level);
 
-        if (TimerConfig.DEBUG) {
+        if (this._config.debug) {
             console.log(
                 `[Timer] 创建新层级: index=${newLevelIndex}, ` +
                 `tickPerSlot=${tickPerSlot}, totalTicksPerRound=${totalTicksPerRound}`
@@ -207,7 +244,15 @@ export class TimerService extends Service implements ITimer {
     dispose(): void {
         for (let levelIndex = 0; levelIndex < this._state.levels.length; levelIndex++) {
             const slots = this._state.levels[levelIndex].slots;
-            for (let slot = 0; slot < slots.length; slot++) slots[slot].length = 0;
+            for (let slot = 0; slot < slots.length; slot++) {
+                const bucket = slots[slot];
+                for (let i = 0; i < bucket.length; i++) this._pool.recycle(bucket[i]);
+                bucket.length = 0;
+            }
+        }
+        for (let i = 0; i < this._state.readyUsed; i++) {
+            this._pool.recycle(this._state.ready[i]);
+            this._state.ready[i] = undefined!;
         }
         this._state.levels.length = 0;
         this._state.ready.length = 0;

@@ -1,12 +1,11 @@
 import { Commands, RandomService, Resource, Service, State } from "@zero-ecs/game";
-import { Health, HealthType } from "../attribute/components";
-import { GameEntityType, Position, PositionType, Velocity, VelocityType } from "../common/components";
-import { GameState } from "../common/game-state";
-import { GameConfigResource } from "../common/resources";
-import { Bullet, BulletType } from "../projectile/components";
-import { DamageText, DamageTextType, ExpOrb, ExpOrbType } from "../progression/components";
-import { Shooter, ShooterType } from "../shooter/components";
-import { WallType, Zombie, ZombieType } from "../zombie/components";
+import { Health, HealthType } from "../attribute";
+import { Float2, GameConfigResource, GameEntityType, PositionType, VelocityType } from "../common";
+import { DamageText, DamageTextType } from "../feedback";
+import { Bullet, BulletType } from "../projectile";
+import { ExperienceCollectorType, ExpOrb, ExpOrbType, ProgressionState } from "../progression";
+import { Shooter, ShooterType } from "../shooter";
+import { WallType, Zombie, ZombieType } from "../zombie";
 import { ProjectileDamagePayload, ProjectileDamagePayloadType } from "./components";
 
 /**
@@ -17,7 +16,7 @@ export class GameContentService extends Service {
     @Service.inject(Commands) private readonly commands!: Commands;
     @Service.inject(RandomService) private readonly random!: RandomService;
     @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
-    @State.inject(GameState) private readonly game!: GameState;
+    @State.inject(ProgressionState) private readonly progression!: ProgressionState;
 
     spawnGame(): void {
         this.spawnShooter();
@@ -26,7 +25,7 @@ export class GameContentService extends Service {
 
     spawnShooter(): void {
         const c = this.config;
-        const g = this.game;
+        const g = this.progression;
         const fireInterval = c.shooterFireInterval / (1 + (g.attackSpeedLevel - 1) * c.upgradeAttackSpeed);
         const baseDamage = c.bulletBaseDamage * (1 + (g.damageLevel - 1) * c.upgradeDamageGrowth);
         const damage = (baseDamage + (g.flatDamageLevel - 1) * c.upgradeFlatDamage)
@@ -39,8 +38,9 @@ export class GameContentService extends Service {
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, c.shooterX)
-            .set(PositionType, Position.y, c.shooterY)
+            .set(PositionType, Float2.x, c.shooterX)
+            .set(PositionType, Float2.y, c.shooterY)
+            .add(ExperienceCollectorType)
             .add(ShooterType)
             .set(ShooterType, Shooter.fireTimer, 0)
             .set(ShooterType, Shooter.fireInterval, Math.max(c.shooterMinFireInterval, fireInterval))
@@ -60,8 +60,8 @@ export class GameContentService extends Service {
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, c.wallX)
-            .set(PositionType, Position.y, c.wallY)
+            .set(PositionType, Float2.x, c.wallX)
+            .set(PositionType, Float2.y, c.wallY)
             .add(WallType)
             .add(HealthType)
             .set(HealthType, Health.current, c.wallInitialHp)
@@ -79,11 +79,11 @@ export class GameContentService extends Service {
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, x)
-            .set(PositionType, Position.y, y)
+            .set(PositionType, Float2.x, x)
+            .set(PositionType, Float2.y, y)
             .add(VelocityType)
-            .set(VelocityType, Velocity.x, Math.cos(angle) * this.config.bulletSpeed)
-            .set(VelocityType, Velocity.y, Math.sin(angle) * this.config.bulletSpeed)
+            .set(VelocityType, Float2.x, Math.cos(angle) * this.config.bulletSpeed)
+            .set(VelocityType, Float2.y, Math.sin(angle) * this.config.bulletSpeed)
             .add(BulletType)
             .set(BulletType, Bullet.radius, this.config.bulletRadius)
             .set(BulletType, Bullet.speed, this.config.bulletSpeed)
@@ -109,15 +109,15 @@ export class GameContentService extends Service {
         const hp = c.zombieBaseHp + wave * wave * 2;
         const speed = c.zombieBaseSpeed + wave * 3 + wave * wave * 0.5;
         const xp = c.zombieBaseXp + wave * wave * 1.5;
-        const damage = c.zombieDamage + wave * 0.3;
+        const damage = c.zombieDamageBase + wave * 0.3;
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, x)
-            .set(PositionType, Position.y, y)
+            .set(PositionType, Float2.x, x)
+            .set(PositionType, Float2.y, y)
             .add(VelocityType)
-            .set(VelocityType, Velocity.x, -speed)
-            .set(VelocityType, Velocity.y, 0)
+            .set(VelocityType, Float2.x, -speed)
+            .set(VelocityType, Float2.y, 0)
             .add(ZombieType)
             .set(ZombieType, Zombie.speed, speed)
             .set(ZombieType, Zombie.xp, xp)
@@ -132,11 +132,11 @@ export class GameContentService extends Service {
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, x)
-            .set(PositionType, Position.y, y)
+            .set(PositionType, Float2.x, x)
+            .set(PositionType, Float2.y, y)
             .add(VelocityType)
-            .set(VelocityType, Velocity.x, -this.config.expOrbSpeed)
-            .set(VelocityType, Velocity.y, 0)
+            .set(VelocityType, Float2.x, -this.config.expOrbSpeed)
+            .set(VelocityType, Float2.y, 0)
             .add(ExpOrbType)
             .set(ExpOrbType, ExpOrb.value, value)
             .set(ExpOrbType, ExpOrb.radius, 6)
@@ -147,8 +147,8 @@ export class GameContentService extends Service {
         this.commands.spawn()
             .add(GameEntityType)
             .add(PositionType)
-            .set(PositionType, Position.x, x)
-            .set(PositionType, Position.y, y)
+            .set(PositionType, Float2.x, x)
+            .set(PositionType, Float2.y, y)
             .add(DamageTextType)
             .set(DamageTextType, DamageText.value, value)
             .set(DamageTextType, DamageText.lifetime, 0.7)

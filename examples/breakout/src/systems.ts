@@ -323,11 +323,13 @@ function collectPower(
     const iter = powers.iter();
     while (iter.next()) {
         const [count, entities, positions, , powerData] = iter.current;
+        const xs = positions[Position.x];
+        const ys = positions[Position.y];
         const active = powerData[PowerUp.active];
         const radii = powerData[PowerUp.radius];
         for (let i = 0; i < count; i++) {
             if (active[i] === 0 || !intersectsBox(
-                positions[Position.x][i], positions[Position.y][i], radii[i],
+                xs[i], ys[i], radii[i],
                 PADDLE_SNAPSHOT.x, PADDLE_SNAPSHOT.y, PADDLE_SNAPSHOT.halfWidth, PADDLE_SNAPSHOT.halfHeight,
             )) continue;
             active[i] = 0;
@@ -402,19 +404,23 @@ function splitBalls(
     const iter = balls.iter();
     while (created < available && iter.next()) {
         const [count, , positions, velocities, ballData] = iter.current;
+        const xs = positions[Position.x];
+        const ys = positions[Position.y];
+        const vxs = velocities[Velocity.x];
+        const vys = velocities[Velocity.y];
         const active = ballData[Ball.active];
         for (let i = 0; i < count && created < available; i++) {
             if (active[i] === 0) continue;
-            const vx = velocities[Velocity.x][i];
-            const vy = velocities[Velocity.y][i];
+            const vx = vxs[i];
+            const vy = vys[i];
             const speed = Math.hypot(vx, vy);
             const angle = Math.atan2(vy, vx);
             const spread = 0.13 + (created & 3) * 0.018;
-            velocities[Velocity.x][i] = Math.cos(angle - spread) * speed;
-            velocities[Velocity.y][i] = Math.sin(angle - spread) * speed;
+            vxs[i] = Math.cos(angle - spread) * speed;
+            vys[i] = Math.sin(angle - spread) * speed;
             spawn.spawnBall(
-                positions[Position.x][i],
-                positions[Position.y][i],
+                xs[i],
+                ys[i],
                 Math.cos(angle + spread) * speed,
                 Math.sin(angle + spread) * speed,
             );
@@ -429,10 +435,14 @@ function readPaddle(query: Paddles, target: PaddleSnapshot): boolean {
     if (!iter.next()) return false;
     const [count, , positions, paddles] = iter.current;
     if (count === 0) return false;
-    target.x = positions[Position.x][0];
-    target.y = positions[Position.y][0];
-    target.halfWidth = paddles[Paddle.halfWidth][0];
-    target.halfHeight = paddles[Paddle.halfHeight][0];
+    const xs = positions[Position.x];
+    const ys = positions[Position.y];
+    const halfWidths = paddles[Paddle.halfWidth];
+    const halfHeights = paddles[Paddle.halfHeight];
+    target.x = xs[0];
+    target.y = ys[0];
+    target.halfWidth = halfWidths[0];
+    target.halfHeight = halfHeights[0];
     return true;
 }
 

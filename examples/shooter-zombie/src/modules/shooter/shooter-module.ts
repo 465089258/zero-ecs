@@ -1,5 +1,5 @@
 import { type GameBuilder, type Module } from "@zero-ecs/game";
-import { GameplaySet } from "../common/gameplay-schedule";
+import { GameplaySet } from "../common";
 import { shooterFireSystem } from "./systems";
 
 export class ShooterModule implements Module {

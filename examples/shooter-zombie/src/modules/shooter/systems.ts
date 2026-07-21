@@ -1,30 +1,37 @@
 import { Commands, defSystem, TimeState, Update, type Entity, type QueryOf } from "@zero-ecs/game";
-import { Position } from "../common/components";
-import { GameMode, GameState } from "../common/game-state";
+import { Float2, GameMode, GameSessionState } from "../common";
 import { Shooter, ShotRequest, ShotRequestType } from "./components";
 import { ShooterQuery } from "./queries";
 
 type Shooters = QueryOf<typeof ShooterQuery>;
 
 export const shooterFireSystem = defSystem(Update.fixed, fireShooter, [
-    TimeState, GameState, Commands, ShooterQuery,
+    TimeState, GameSessionState, Commands, ShooterQuery,
 ]);
 
 function fireShooter(
     time: Readonly<TimeState>,
-    game: Readonly<GameState>,
+    session: Readonly<GameSessionState>,
     commands: Commands,
     shooter: Shooters,
 ): void {
-    if (game.skipTick || game.mode !== GameMode.Playing) return;
+    if (session.skipTick || session.mode !== GameMode.Playing) return;
     const iter = shooter.iter();
     while (iter.next()) {
         const [count, entities, positions, shooters] = iter.current;
         const fireTimers = shooters[Shooter.fireTimer];
         const fireIntervals = shooters[Shooter.fireInterval];
+        const damages = shooters[Shooter.damage];
+        const critChances = shooters[Shooter.critChance];
+        const critMultipliers = shooters[Shooter.critMult];
+        const scatters = shooters[Shooter.scatter];
+        const splits = shooters[Shooter.split];
+        const ricochets = shooters[Shooter.ricochet];
         const bursts = shooters[Shooter.burst];
         const burstCooldowns = shooters[Shooter.burstCooldown];
         const burstLefts = shooters[Shooter.burstLeft];
+        const xs = positions[Float2.x];
+        const ys = positions[Float2.y];
 
         for (let i = 0; i < count; i++) {
             if (burstLefts[i] > 0) {
@@ -32,15 +39,15 @@ function fireShooter(
                 if (burstCooldowns[i] <= 0) {
                     submitShot(
                         commands,
-                        entities[i] as Entity,
-                        positions[Position.x][i],
-                        positions[Position.y][i],
-                        shooters[Shooter.damage][i],
-                        shooters[Shooter.critChance][i],
-                        shooters[Shooter.critMult][i],
-                        shooters[Shooter.scatter][i],
-                        shooters[Shooter.split][i],
-                        shooters[Shooter.ricochet][i],
+                        entities[i],
+                        xs[i],
+                        ys[i],
+                        damages[i],
+                        critChances[i],
+                        critMultipliers[i],
+                        scatters[i],
+                        splits[i],
+                        ricochets[i],
                     );
                     burstLefts[i]--;
                     if (burstLefts[i] > 0) burstCooldowns[i] = fireIntervals[i] / 3 / bursts[i];
@@ -53,15 +60,15 @@ function fireShooter(
             fireTimers[i] = fireIntervals[i];
             submitShot(
                 commands,
-                entities[i] as Entity,
-                positions[Position.x][i],
-                positions[Position.y][i],
-                shooters[Shooter.damage][i],
-                shooters[Shooter.critChance][i],
-                shooters[Shooter.critMult][i],
-                shooters[Shooter.scatter][i],
-                shooters[Shooter.split][i],
-                shooters[Shooter.ricochet][i],
+                entities[i],
+                xs[i],
+                ys[i],
+                damages[i],
+                critChances[i],
+                critMultipliers[i],
+                scatters[i],
+                splits[i],
+                ricochets[i],
             );
             if (bursts[i] > 1) {
                 burstLefts[i] = bursts[i] - 1;
@@ -83,7 +90,8 @@ function submitShot(
     split: number,
     ricochet: number,
 ): void {
-    commands.spawn()
+    commands
+        .spawn()
         .add(ShotRequestType)
         .set(ShotRequestType, ShotRequest.source, source)
         .set(ShotRequestType, ShotRequest.x, x)
@@ -93,5 +101,6 @@ function submitShot(
         .set(ShotRequestType, ShotRequest.critMultiplier, critMultiplier)
         .set(ShotRequestType, ShotRequest.scatter, scatter)
         .set(ShotRequestType, ShotRequest.split, split)
-        .set(ShotRequestType, ShotRequest.ricochet, ricochet).submit();
+        .set(ShotRequestType, ShotRequest.ricochet, ricochet)
+        .submit();
 }

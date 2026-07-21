@@ -10,8 +10,11 @@ export const GameplaySet = Object.freeze({
     projectile: new SystemSet(Update.fixed, "shooter:projectile"),
     collision: new SystemSet(Update.fixed, "shooter:collision"),
     damage: new SystemSet(Update.fixed, "shooter:damage"),
+    attributeRequest: new SystemSet(Update.fixed, "shooter:attribute-request"),
     attribute: new SystemSet(Update.fixed, "shooter:attribute"),
     reaction: new SystemSet(Update.fixed, "shooter:reaction"),
+    feedback: new SystemSet(Update.fixed, "shooter:feedback"),
     progression: new SystemSet(Update.fixed, "shooter:progression"),
+    progressionInput: new SystemSet(Update.fixed, "shooter:progression-input"),
     statistics: new SystemSet(Update.fixed, "shooter:statistics"),
 });

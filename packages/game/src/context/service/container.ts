@@ -7,7 +7,7 @@ import type {
     Service,
     ServiceActivateContext,
     ServiceInitContext,
-    ServiceType,
+    ServiceToken,
 } from "./types";
 
 
@@ -110,7 +110,7 @@ export class ServiceContainer extends Container<Service> {
         try { super.dispose(); }
         finally { this.servicesInitialized = false; }
     }
-    static inject<T extends Service>(type: ServiceType<T>) {
+    static inject<T extends Service>(type: ServiceToken<T>) {
         return createInjectDecorator(ServiceSymob, type);
     }
 }
@@ -144,7 +144,7 @@ class ActivateContext extends InitContext implements ServiceActivateContext {
         private readonly dependencies: Map<Service, Set<Service>>,
     ) { super(context); }
 
-    service<T extends Service>(type: ServiceType<T>): T {
+    service<T extends Service>(type: ServiceToken<T>): T {
         this.assertActive();
         const dependency = this.context.services.get(type);
         this.recordDependency(dependency);

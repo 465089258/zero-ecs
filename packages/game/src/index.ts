@@ -14,6 +14,7 @@ export { Service } from "./context/service";
 export type {
     ServiceActivateContext,
     ServiceInitContext,
+    ServiceToken,
     ServiceType,
 } from "./context/service";
 export { State } from "./context/state";
@@ -32,7 +33,7 @@ export { Commands, CommandService } from "./command/command-service";
 export type { EntityCommand, ICommands, ICommandService } from "./command/command-service";
 export { CommandModule } from "./command/module";
 
-export { GameSystemSet, Shutdown, Startup, Update } from "./runtime/stage";
+export { GameSystemSet, ManualStage, Shutdown, Startup, Update } from "./runtime/stage";
 export { defSystem, Write } from "./runtime/system";
 export type {
     BareSystemParam,
@@ -59,3 +60,4 @@ export * from "./features/event/index";
 export * from "./features/time/index";
 export * from "./features/timer/index";
 export * from "./features/random/index";
+export * from "./features/hierarchy/index";

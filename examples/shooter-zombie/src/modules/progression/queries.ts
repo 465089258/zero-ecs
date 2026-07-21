@@ -1,6 +1,6 @@
 import { QueryType, With } from "@zero-ecs/game";
-import { PositionType, VelocityType } from "../common/components";
-import { DamageTextType, ExpOrbType } from "./components";
+import { PositionType, VelocityType } from "../common";
+import { ExperienceCollectorType, ExpOrbType } from "./components";
 
 export const ExpOrbQuery = QueryType.from(With(PositionType, VelocityType, ExpOrbType));
-export const DamageTextQuery = QueryType.from(With(PositionType, DamageTextType));
+export const ExperienceCollectorQuery = QueryType.from(With(PositionType, ExperienceCollectorType));

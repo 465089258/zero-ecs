@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "smoke": {
+      "warmupRounds": 2,
+      "measurementRounds": 5,
+      "runtimePairs": 1,
+      "schedulerUpdates": 10000,
+      "readEntityCount": 4096,
+      "readPasses": 2,
+      "queuedOperations": 2048,
+      "churnEntityCount": 256
+    },
+    "core": {
+      "warmupRounds": 10,
+      "measurementRounds": 50,
+      "runtimePairs": 5,
+      "schedulerUpdates": 1000000,
+      "readEntityCount": 65536,
+      "readPasses": 16,
+      "queuedOperations": 16384,
+      "churnEntityCount": 16384
+    }
+  }
+}

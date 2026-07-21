@@ -4,7 +4,7 @@ import {
     type ResourceType,
     type Service,
     ServiceContainer,
-    type ServiceType,
+    type ServiceToken,
     type State,
     StateContainer,
     type StateType,
@@ -14,7 +14,7 @@ import { Scheduler, type SystemParamProvider } from "@zero-ecs/scheduler";
 import { GAME_CONSTRUCTION_TOKEN } from "./construction-token";
 import { GamePhase } from "./lifecycle";
 import type { Module } from "./module";
-import { Shutdown, Startup, Update } from "./stage";
+import { type ManualStage, Shutdown, Startup, Update } from "./stage";
 import type { SystemParam } from "./system";
 import { finalizeWorld, structureWriterOf } from "./world-ownership";
 
@@ -92,7 +92,7 @@ export class Game {
         this._states.get(type);
 
     /** 按类型取得 Service。 */
-    readonly service = <T extends Service>(type: ServiceType<T>): T =>
+    readonly service = <T extends Service>(type: ServiceToken<T>): T =>
         this._services.get(type);
 
     /**
@@ -159,6 +159,17 @@ export class Game {
             for (let i = 0; i < stages.length; i++) this._scheduler.run(stages[i]);
         } catch (error) {
             try { this.stop(); } catch { /* preserve update error */ }
+            throw error;
+        }
+    }
+
+    /** 执行一次由宿主显式驱动的扩展阶段。 */
+    runStage(stage: ManualStage): void {
+        this.assertPhase(GamePhase.Running, "runStage");
+        try {
+            this._scheduler.run(stage);
+        } catch (error) {
+            try { this.stop(); } catch { /* preserve stage error */ }
             throw error;
         }
     }

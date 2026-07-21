@@ -1,30 +1,42 @@
 import {
     AllocatorService,
     Buffer,
+    ChildOf,
     Commands,
     defaultAllocatorConfig,
     DefaultCoreModule,
     defSystem,
     Ecs,
     EcsBuilder,
+    EntityRef,
     ErrorHandlerService,
     Game,
     GameBuilder,
+    HierarchyModule,
+    HierarchyService,
     Inject,
+    ManualStage,
     Resource,
     Service,
     State,
     TimerService,
+    TimerConfigResource,
     Types,
+    INVALID_ENTITY,
     Update,
     Write,
     World,
+    With,
+    QueryType,
     type Component,
+    type ComponentColumns,
     type ComponentDefinition,
+    type Entity,
     type EntityCommand,
     type IAllocator,
     type AllocatorOptions,
     type Mut,
+    type QueryProjection,
     type RuntimeErrorHandler,
     type RuntimeErrorSource,
     type StructureWriter,
@@ -32,6 +44,8 @@ import {
     type WorldView,
     type ServiceActivateContext,
     type ServiceInitContext,
+    type ServiceToken,
+    type ServiceType,
 } from "@zero-ecs/game";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
@@ -50,6 +64,12 @@ const enum Position { x, y }
 class PositionType implements Component<Position> {
     readonly [Position.x] = Types.F32;
     readonly [Position.y] = Types.F32;
+}
+
+const enum Link { target }
+
+class LinkType implements Component<Link> {
+    readonly [Link.target] = Types.Entity;
 }
 
 // @ts-expect-error Every enum field must have a component column definition.
@@ -73,12 +93,25 @@ class ConfigResource extends Resource { value = 1; }
 class CounterState extends State { count = 0; }
 class ToolService extends Service { increment(value: number): number { return value + 1; } }
 class CustomToolService extends ToolService { override increment(value: number): number { return value + 2; } }
+abstract class AbstractToolService extends Service {
+    abstract increment(value: number): number;
+}
+class ConcreteToolService extends AbstractToolService {
+    increment(value: number): number { return value + 3; }
+}
 
 type Equal<A, B> =
     (<T>() => T extends A ? 1 : 2) extends
     (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
+const abstractServiceToken: ServiceToken<AbstractToolService> = AbstractToolService;
+const concreteServiceType: ServiceType<ConcreteToolService> = ConcreteToolService;
+// @ts-expect-error Abstract Service tokens cannot be registered as constructible implementations.
+const invalidConcreteServiceType: ServiceType<AbstractToolService> = AbstractToolService;
 type WorldParamIsView = Assert<Equal<SystemParamValue<typeof World>, WorldView>>;
+const childProjection: QueryProjection = ChildOf;
+componentWorld.query(QueryType.from(With(ChildOf)));
+new GameBuilder().addModule(new HierarchyModule());
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {
@@ -111,14 +144,36 @@ function writeSystem(state: Mut<CounterState>): void {
 
 function plainSystem(): void {}
 
-declare const entity: import("@zero-ecs/world").Entity;
+declare const entity: Entity;
+declare const rawNumber: number;
+declare const linkColumns: ComponentColumns<LinkType>;
+const linkedEntity: Entity = linkColumns[Link.target][0];
+linkColumns[Link.target][0] = entity;
+// @ts-expect-error Entity reference columns reject unbranded numbers.
+linkColumns[Link.target][0] = rawNumber;
+const worldLinkedEntity = componentWorld.get(entity, LinkType, Link.target);
+type WorldEntityFieldIsBranded = Assert<Equal<typeof worldLinkedEntity, Entity | null>>;
+componentWorld.createEntityCommand(entity).set(LinkType, Link.target, entity);
+// @ts-expect-error Entity reference fields reject unbranded numbers in command writes.
+componentWorld.createEntityCommand(entity).set(LinkType, Link.target, rawNumber);
+const invalidEntity: Entity = INVALID_ENTITY;
 function worldSystem(world: WorldView): void {
     world.valid(entity);
+    const ref: EntityRef = world.ref(entity);
+    ref.valid;
+    ref.has(PositionType);
+    ref.get(PositionType, Position.x);
+    // @ts-expect-error EntityRef intentionally excludes immediate structure changes.
+    ref.despawn();
+    // @ts-expect-error EntityRef intentionally excludes component writes.
+    ref.set(PositionType, Position.x, 1);
     // @ts-expect-error WorldView intentionally excludes immediate structure changes.
     world.despawn(entity);
     // @ts-expect-error World no longer exposes Game dependency injection.
     world.service(ToolService);
 }
+
+new EntityRef(componentWorld, entity);
 
 class WorldHelper {
     @Inject.world() readonly world!: WorldView;
@@ -134,16 +189,32 @@ const builder = new EcsBuilder()
     .addState(CounterState)
     .addService(ToolService);
 new GameBuilder().addModule(new DefaultCoreModule());
+new GameBuilder().addModule(new DefaultCoreModule(
+    undefined,
+    new TimerConfigResource({ slotCount: 32, maxTaskPoolSize: 128 }),
+));
 new GameBuilder().addService(CustomToolService);
+new GameBuilder().addService(ConcreteToolService);
+new GameBuilder().setService(AbstractToolService, new ConcreteToolService());
+new GameBuilder().setServiceFactory(AbstractToolService, () => new ConcreteToolService());
+// @ts-expect-error addService requires a constructible implementation.
+new GameBuilder().addService(AbstractToolService);
 // @ts-expect-error Service overrides are expressed by subclass registration, not token/implementation pairs.
 new GameBuilder().addService(ToolService, CustomToolService);
 builder.addSystem(defSystem(Update.fixed, readSystem, [ConfigResource, CounterState, ToolService]));
+builder.addSystem(defSystem(
+    Update.fixed,
+    (tool: AbstractToolService): void => { tool.increment(1); },
+    [AbstractToolService],
+));
 builder.addSystem(defSystem(Update.fixed, writeSystem, [Write(CounterState)]));
 builder.addSystem(defSystem(Update.fixed, worldSystem, [World]));
 const optionalDependencySystem = defSystem(Update.post, () => {}, []);
 const optionalPostSystem = defSystem(Update.post, () => {}, []);
 builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem });
 builder.addSystem(optionalDependencySystem);
+const ManualRender = new ManualStage("render", 10);
+builder.addSystem(defSystem(ManualRender, () => {}, []));
 // @ts-expect-error [World] supplies WorldView, not the nominal full World type.
 builder.addSystem(defSystem(Update.fixed, (_world: World) => {}, [World]));
 // @ts-expect-error Only functions returned by defSystem can be registered.
@@ -164,12 +235,16 @@ ecs.scheduler;
 new Ecs();
 
 const game = new GameBuilder().build();
+game.runStage(ManualRender);
+// @ts-expect-error Standard lifecycle stages cannot be invoked through the manual-stage API.
+game.runStage(Update.fixed);
 const writer: StructureWriter = game.structureWriter();
 writer.reserveEntity();
 writer.createEntityCommand(entity);
 // @ts-expect-error Game exposes only the non-structural WorldView by default.
 game.world.query;
 game.service(AllocatorService).alloc;
+game.service(AbstractToolService).increment(1);
 const allocatorContract: IAllocator = game.service(AllocatorService);
 const allocatorOptions: AllocatorOptions = defaultAllocatorConfig;
 const allocated: Buffer = allocatorContract.alloc();
@@ -192,8 +267,16 @@ defSystem(Update.fixed, (_game: Game) => {}, [Game]);
 new Game();
 
 void RootScheduler;
+void abstractServiceToken;
+void concreteServiceType;
+void invalidConcreteServiceType;
 void rootUnsafeStructureWriter;
 const entityCommand: EntityCommand = game.service(Commands).spawn();
+entityCommand.set(LinkType, Link.target, entity);
+// @ts-expect-error Hierarchy relations are readonly Query projections, not mutable ComponentType values.
+entityCommand.add(ChildOf);
+// @ts-expect-error Game EntityCommand also rejects unbranded entity reference values.
+entityCommand.set(LinkType, Link.target, rawNumber);
 game.service(TimerService).once(1, entityCommand);
 entityCommand.submit();
 declare const rawEntityCommand: RawEntityCommand;
@@ -202,6 +285,8 @@ game.service(TimerService).once(1, rawEntityCommand);
 // @ts-expect-error World EntityCommand has no Game submit callback.
 rawEntityCommand.submit();
 void Scheduler;
+void linkedEntity;
+void invalidEntity;
 void defineComponentMeta;
 void getComponentMeta;
 void IncompletePositionType;
@@ -218,3 +303,5 @@ void optionalDependencySystem;
 void optionalPostSystem;
 void entityCommand;
 void rawEntityCommand;
+void childProjection;
+void HierarchyService;

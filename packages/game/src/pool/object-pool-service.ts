@@ -67,21 +67,34 @@ export class ObjectPool<T> {
     trim(retain = 0): void {
         this.assertAlive();
         requireRetainCount(retain);
+        let firstError: unknown;
         if (this.options.dispose) {
-            while (this._values.length > retain) this.options.dispose(this._values.pop()!);
+            while (this._values.length > retain) {
+                const value = this._values.pop()!;
+                try { this.options.dispose(value); }
+                catch (error) { firstError ??= error; }
+            }
         } else if (this._values.length > retain) {
             this._values.length = retain;
         }
+        if (firstError !== undefined) throw firstError;
     }
 
     /** 释放全部空闲对象并终结池。 */
     dispose(): void {
         if (this._disposed) return;
-        if (this.options.dispose) {
-            for (let i = this._values.length - 1; i >= 0; i--) this.options.dispose(this._values[i]);
-        }
-        this._values.length = 0;
         this._disposed = true;
+        let firstError: unknown;
+        if (this.options.dispose) {
+            while (this._values.length > 0) {
+                const value = this._values.pop()!;
+                try { this.options.dispose(value); }
+                catch (error) { firstError ??= error; }
+            }
+        } else {
+            this._values.length = 0;
+        }
+        if (firstError !== undefined) throw firstError;
     }
 
     private assertAlive(): void {

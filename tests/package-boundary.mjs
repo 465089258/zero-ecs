@@ -11,9 +11,11 @@ const event = await import("@zero-ecs/game/event");
 const time = await import("@zero-ecs/game/time");
 const timer = await import("@zero-ecs/game/timer");
 const random = await import("@zero-ecs/game/random");
+const hierarchy = await import("@zero-ecs/game/hierarchy");
 const pool = await import("@zero-ecs/game/pool");
 
 assert.equal(typeof world.World, "function");
+assert.equal(typeof world.EntityRef, "function");
 assert.equal(typeof world.Allocator, "function");
 assert.equal(typeof world.QueryType, "function");
 assert.equal("Service" in world, false);
@@ -34,6 +36,7 @@ assert.equal("Service" in scheduler, false);
 assert.equal("Update" in scheduler, false);
 
 assert.equal(game.World, world.World);
+assert.equal(game.EntityRef, world.EntityRef);
 assert.equal(game.Stage, scheduler.Stage);
 assert.equal(typeof game.Game, "function");
 assert.equal(typeof game.GameBuilder, "function");
@@ -53,7 +56,14 @@ assert.equal(typeof gameAdvanced.DataSet, "function");
 assert.equal(typeof event.EventModule, "function");
 assert.equal(typeof time.TimeModule, "function");
 assert.equal(typeof timer.TimerModule, "function");
+assert.equal(typeof timer.TimerConfigResource, "function");
 assert.equal(typeof random.RandomModule, "function");
+assert.equal(typeof hierarchy.HierarchyModule, "function");
+assert.equal(typeof hierarchy.HierarchyService, "function");
+assert.equal(typeof hierarchy.ChildOf, "object");
+assert.equal(typeof hierarchy.ParentOf, "object");
+assert.equal("ChildOfStorage" in hierarchy, false);
+assert.equal("ParentOfStorage" in hierarchy, false);
 assert.equal(typeof pool.ObjectPoolService, "function");
 
 assert.equal(game.Ecs, game.Game);
@@ -64,8 +74,12 @@ assert.throws(() => new game.Game(), /Game must be created by GameBuilder/);
 const allocator = new world.Allocator();
 const standalone = new world.World(allocator);
 const entityId = standalone.reserveEntity();
+const entityRef = standalone.ref(entityId);
+assert.equal(entityRef instanceof world.EntityRef, true);
 assert.equal(standalone.valid(entityId), true);
+assert.equal(entityRef.valid, true);
 standalone.dispose();
+assert.equal(entityRef.valid, false);
 allocator.clear();
 
 await assert.rejects(

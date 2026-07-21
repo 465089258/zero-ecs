@@ -1,4 +1,11 @@
-import { Allocator, type IAllocator, World } from "@zero-ecs/world";
+import {
+    Allocator,
+    type ComponentType,
+    type IAllocator,
+    type QueryProjection,
+    World,
+} from "@zero-ecs/world";
+import { registerQueryProjection } from "@zero-ecs/world/game-bridge";
 import { ErrorHandlerService } from "../context/error-handler-service";
 import { injectAll, type InjectionContext } from "../context/injection/injection";
 import { InjectionService } from "../context/injection/service";
@@ -8,6 +15,7 @@ import {
     type ResourceType,
     Service,
     ServiceContainer,
+    type ServiceToken,
     type ServiceType,
     State,
     StateContainer,
@@ -28,10 +36,10 @@ import { GameSystemParamResolver } from "./game-system-param-resolver";
 import type { Module } from "./module";
 import { allocatorOf, claimWorld, finalizeWorld } from "./world-ownership";
 import {
-    createSystemAccess,
     systemMetadata,
     type DefinedSystem,
     type SystemParam,
+    validateSystemParams,
 } from "./system";
 
 /**
@@ -41,45 +49,66 @@ import {
 export class GameBuilder {
     private readonly _resources = new Map<ResourceType, Resource>();
     private readonly _states = new Set<StateType>();
-    private readonly _services = new Map<ServiceType, ServiceRegistration>();
+    private readonly _services = new Map<ServiceToken, ServiceRegistration>();
+    private readonly _queryProjections = new Map<QueryProjection, ComponentType>();
     private readonly _schedule = new ScheduleBuilder<SystemParam>();
     private readonly _modules: Module[] = [];
     private _world: World | undefined;
     private _allocator: IAllocator | undefined;
     private _built = false;
+    private _failed = false;
 
     /** 使用自定义 World 替换默认实例。 */
     setWorld(world: World): this {
-        this.assertMutable();
-        if (this._allocator) throw new Error("Cannot set World after configuring an allocator");
-        this._world = world;
-        return this;
+        return this.modify(() => {
+            if (this._allocator) throw new Error("Cannot set World after configuring an allocator");
+            this._world = world;
+            return this;
+        });
     }
 
     /** 为 Builder 创建的默认 World 指定外部 IAllocator。 */
     setAllocator(allocator: IAllocator): this {
-        this.assertMutable();
-        if (this._world) throw new Error("Cannot configure an allocator after setting a World");
-        this._allocator = allocator;
-        return this;
+        return this.modify(() => {
+            if (this._world) throw new Error("Cannot configure an allocator after setting a World");
+            this._allocator = allocator;
+            return this;
+        });
+    }
+
+    /** 将只读 Query 投影绑定到只在组合层可见的实际存储组件。 */
+    addQueryProjection<T extends object>(
+        projection: QueryProjection<T>,
+        storage: ComponentType<T>,
+    ): this {
+        return this.modify(() => {
+            const existing = this._queryProjections.get(projection);
+            if (existing && existing !== storage) {
+                throw new Error(`Query projection already registered: ${projection.name}`);
+            }
+            this._queryProjections.set(projection, storage);
+            return this;
+        });
     }
 
     /** 注册一个构建前已经实例化的只读 Resource。 */
     addResource<T extends Resource>(type: ResourceType<T>, instance: T): this {
-        this.assertMutable();
-        const existing = this._resources.get(type);
-        if (existing && existing !== instance) {
-            throw new Error(`Resource already registered: ${type.name}`);
-        }
-        this._resources.set(type, instance);
-        return this;
+        return this.modify(() => {
+            const existing = this._resources.get(type);
+            if (existing && existing !== instance) {
+                throw new Error(`Resource already registered: ${type.name}`);
+            }
+            this._resources.set(type, instance);
+            return this;
+        });
     }
 
     /** 注册由 Game 实例化和管理生命周期的 State。 */
     addState<T extends State>(type: StateType<T>): this {
-        this.assertMutable();
-        this._states.add(type);
-        return this;
+        return this.modify(() => {
+            this._states.add(type);
+            return this;
+        });
     }
 
     /**
@@ -87,26 +116,29 @@ export class GameBuilder {
      * 子类会沿原型链覆盖已经注册的父类 Service token。
      */
     addService<T extends Service>(type: ServiceType<T>): this {
-        this.assertMutable();
-        this._services.set(type, { kind: "type", type });
-        return this;
+        return this.modify(() => {
+            this._services.set(type, { kind: "type", type });
+            return this;
+        });
     }
 
     /** 使用已有实例覆盖或注册一个 Service token。 */
-    setService<T extends Service>(type: ServiceType<T>, instance: T): this {
-        this.assertMutable();
-        this._services.set(type, { kind: "instance", type, instance });
-        return this;
+    setService<T extends Service>(type: ServiceToken<T>, instance: T): this {
+        return this.modify(() => {
+            this._services.set(type, { kind: "instance", type, instance });
+            return this;
+        });
     }
 
     /** 使用只在 build 冷路径调用一次的工厂覆盖或注册 Service token。 */
     setServiceFactory<T extends Service>(
-        type: ServiceType<T>,
+        type: ServiceToken<T>,
         factory: (context: Readonly<ServiceBuildContext>) => T,
     ): this {
-        this.assertMutable();
-        this._services.set(type, { kind: "factory", type, factory });
-        return this;
+        return this.modify(() => {
+            this._services.set(type, { kind: "factory", type, factory });
+            return this;
+        });
     }
 
     /** 注册由 `defSystem()` 定义的系统函数。 */
@@ -114,61 +146,63 @@ export class GameBuilder {
         system: DefinedSystem<Params>,
         options: SystemOptions = {},
     ): SystemHandle {
-        this.assertMutable();
-        const { stage, params } = systemMetadata(system);
-        createSystemAccess(params);
-        return this._schedule.addSystem(stage, system, params, options);
+        return this.modify(() => {
+            const { stage, params } = systemMetadata(system);
+            validateSystemParams(params);
+            return this._schedule.addSystem(stage, system, params, options);
+        });
     }
 
     /** 声明 `system` 在 `target` 之前执行。 */
     before(system: SystemHandle, target: SystemDependencyTarget): this {
-        this.assertMutable();
-        this._schedule.before(system, target);
-        return this;
+        return this.modify(() => {
+            this._schedule.before(system, target);
+            return this;
+        });
     }
 
     /** 声明 `system` 在 `target` 之后执行。 */
     after(system: SystemHandle, target: SystemDependencyTarget): this {
-        this.assertMutable();
-        this._schedule.after(system, target);
-        return this;
+        return this.modify(() => {
+            this._schedule.after(system, target);
+            return this;
+        });
     }
 
     /** 目标系统已注册时，声明 `system` 在其之前执行。 */
     beforeIfPresent(system: SystemHandle, target: SystemDependencyTarget): this {
-        this.assertMutable();
-        this._schedule.beforeIfPresent(system, target);
-        return this;
+        return this.modify(() => {
+            this._schedule.beforeIfPresent(system, target);
+            return this;
+        });
     }
 
     /** 目标系统已注册时，声明 `system` 在其之后执行。 */
     afterIfPresent(system: SystemHandle, target: SystemDependencyTarget): this {
-        this.assertMutable();
-        this._schedule.afterIfPresent(system, target);
-        return this;
+        return this.modify(() => {
+            this._schedule.afterIfPresent(system, target);
+            return this;
+        });
     }
 
     /** 按传入顺序串联同阶段系统。 */
     chain(...systems: readonly SystemHandle[]): this {
-        this.assertMutable();
-        this._schedule.chain(...systems);
-        return this;
+        return this.modify(() => {
+            this._schedule.chain(...systems);
+            return this;
+        });
     }
 
     /** 注册并立即执行 Module 的 `build()`。 */
     addModule(module: Module): this {
-        this.assertMutable();
-        if (this._modules.indexOf(module) !== -1) {
-            throw new Error(`Module instance already registered: ${module.constructor.name}`);
-        }
-        this._modules.push(module);
-        try {
+        return this.modify(() => {
+            if (this._modules.indexOf(module) !== -1) {
+                throw new Error(`Module instance already registered: ${module.constructor.name}`);
+            }
+            this._modules.push(module);
             module.build(this);
-        } catch (error) {
-            this._modules.pop();
-            throw error;
-        }
-        return this;
+            return this;
+        });
     }
 
     /** 完成容器、注入上下文和 Schedule 的构建。 */
@@ -183,6 +217,9 @@ export class GameBuilder {
         const owner = Symbol("GameWorldOwner");
         claimWorld(world, owner);
         try {
+            for (const [projection, storage] of this._queryProjections) {
+                registerQueryProjection(world, projection, storage);
+            }
             const resources = new ResourceContainer();
             const states = new StateContainer();
             const services = new ServiceContainer();
@@ -247,7 +284,17 @@ export class GameBuilder {
     }
 
     private assertMutable(): void {
+        if (this._failed) throw new Error("GameBuilder cannot be reused after a build error");
         if (this._built) throw new Error("GameBuilder has already been built");
+    }
+
+    private modify<T>(operation: () => T): T {
+        this.assertMutable();
+        try { return operation(); }
+        catch (error) {
+            this._failed = true;
+            throw error;
+        }
     }
 }
 
@@ -259,9 +306,9 @@ export interface ServiceBuildContext {
 
 type ServiceRegistration =
     | { readonly kind: "type"; readonly type: ServiceType }
-    | { readonly kind: "instance"; readonly type: ServiceType; readonly instance: Service }
+    | { readonly kind: "instance"; readonly type: ServiceToken; readonly instance: Service }
     | {
         readonly kind: "factory";
-        readonly type: ServiceType;
+        readonly type: ServiceToken;
         readonly factory: (context: Readonly<ServiceBuildContext>) => Service;
     };

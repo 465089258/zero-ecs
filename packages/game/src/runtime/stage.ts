@@ -1,5 +1,13 @@
 import { Stage, SystemSet } from "@zero-ecs/scheduler";
 
+/**
+ * 由宿主显式驱动的扩展阶段；不会被 Game.update() 自动执行。
+ * 私有类型品牌防止把标准 Update/Startup/Shutdown 阶段传给 runStage()。
+ */
+export class ManualStage extends Stage {
+    private declare readonly manualStageBrand: void;
+}
+
 /** Game 启动时执行一次。 */
 export const Startup = new Stage("startup", -100);
 

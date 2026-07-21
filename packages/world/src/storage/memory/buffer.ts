@@ -1,4 +1,4 @@
-import { byteSizeOf, createTypedArray, type TypedArrayFor, Types } from "../typed-array";
+import { byteSizeOf, createTypedArray, type EntityArray, type TypedArrayFor, Types } from "../typed-array";
 
 function alignUp(value: number, alignment: number): number {
     return Math.ceil(value / alignment) * alignment;
@@ -76,7 +76,6 @@ export class Buffer {
         this._offset = end;
         return view;
     }
-
     /** 分配 Int8Array。 */
     i8(length: number): Int8Array { return this.alloc(Types.I8, length); }
     /** 分配 Uint8Array。 */
@@ -93,6 +92,8 @@ export class Buffer {
     u32(length: number): Uint32Array { return this.alloc(Types.U32, length); }
     /** 分配 Float32Array。 */
     f32(length: number): Float32Array { return this.alloc(Types.F32, length); }
+    /** 分配以 Uint32Array 为物理存储的实体引用列。 */
+    entity(length: number): EntityArray { return this.alloc(Types.Entity, length); }
 
     /** 将整个包装区域清零，不改变当前分配位置。 */
     zero(): void {

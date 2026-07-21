@@ -2,4 +2,5 @@
 export type { InternalEntityCommand } from "./command/entity-command";
 export { ownsEntityCommand } from "./command/entity-command";
 export { entityIndexOf } from "./entity/entity-format";
-export { allocatorOfWorld, isWorldDisposed } from "./world";
+export { allocatorOfWorld, finalizeWorldKernel, isWorldDisposed } from "./world";
+export { registerQueryProjection } from "./world-query-projection";

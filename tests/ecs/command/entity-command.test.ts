@@ -250,6 +250,34 @@ describe("unified Commands", () => {
         expect(entities.get(entity, PositionType, Position.y)).toBe(8);
     });
 
+    test("does not enter the structural path for idempotent Add/Remove", () => {
+        const ecs = setup();
+        const entities = ecs.structureWriter() as World;
+        const commands = ecs.service(Commands);
+        const create = commands.spawn().set(PositionType, Position.x, 1);
+        const entity = create.entity;
+        create.submit();
+        ecs.update();
+        entities.defineComponent(PlayerTagType);
+
+        let migrations = 0;
+        const migrate = entities.migrate.bind(entities);
+        entities.migrate = ((...args: Parameters<World["migrate"]>) => {
+            migrations++;
+            return migrate(...args);
+        }) as World["migrate"];
+        commands.entity(entity)
+            .add(PositionType)
+            .remove(PlayerTagType)
+            .set(PositionType, Position.y, 2)
+            .submit();
+        ecs.update();
+
+        expect(migrations).toBe(0);
+        expect(entities.get(entity, PositionType, Position.y)).toBe(2);
+        ecs.dispose();
+    });
+
     test("treats Remove then Add or Set as a fresh zeroed component", () => {
         const ecs = setup();
         const entities = ecs.structureWriter() as World;

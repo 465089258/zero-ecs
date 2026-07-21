@@ -19,13 +19,13 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 固定工作集且相关池、数组、缓存和 Table 容量不发生收缩与再次增长时，不创建源码可见的 object、array、closure、iterator、tuple/result wrapper、Error、TypedArray 或 Buffer。
 - 不依赖 JIT 内联、逃逸分析或临时对象消除来宣称零分配。
 - 执行性能优先于 GC 数字；只有经过基准证明，才允许用对象池、高水位缓存和更复杂的复用结构换取收益。
-- 达到新的 Entity、Command、MigrationPlan、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Table 是当前实现中的例外：DataSet 会自动释放超过保留数的空 Table，再增长时会重新创建租约、Table 和 TypedArray view，因此不能只凭历史实体峰值声明迁移零分配。该例外尚未被批准为 Framework v1 的永久策略，必须经过下述独立 Table 策略实验。
+- 达到新的 Entity、Command、MigrationPlan、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Archetype 当前保留一个额外空 Chunk，并释放更远的连续空尾 Chunk；再次增长超过保留容量时会重新创建 Buffer 租约、Table 和 TypedArray views，因此不能只凭历史实体峰值声明结构迁移零分配。
 - 热路径中的复用对象必须具有稳定 shape，并避免 Proxy、临时闭包、逐项 capability/context 和不必要的多态转发。
 - 不为已经由 SystemParam 类型映射或接口能力分层排除的操作增加第二套运行时权限判断。
 
 这里的“零显式分配”描述库源码可控制的行为，不承诺 JavaScript 引擎内部的 Map 节点、调用栈、JIT 或内联缓存实现绝对不分配。
 
-固定实体总数下的结构 churn 允许当前实现持续分配，是待测事实，不是预先接受的“热路径绝对 GC”例外。冻结阶段 C facade 性能基线前，必须先独立比较当前自动释放、保持同等回收语义的优化实现和 Table 高水位保留；所选策略单独批准、落地并重新建立基线。high-water 候选必须真正复用已保留的空 Table，auto-release 候选还必须通过 Table ID 生命周期正确性门槛，不能只比较 CPU、GC 和内存。最终仍按执行性能第一、GC 稳定性第二判断。如果数据选择自动释放，文档必须记录它是有量化证据的有意例外及其适用场景，而不能仅因为现状如此就默认接受。
+固定实体总数下的 A↔B 结构 churn 仍可能超过每个 Archetype 保留的一个空 Chunk并持续分配。这是当前明确的存储策略边界；性能测试必须把创建、释放和 GC 计入真实工作量。未来若评审 high-water retain 或显式 `trim()`，必须作为独立存储 candidate 落地并重新建立基线，不能与 World facade、Query 或 Scheduler 改造混合归因。
 
 ### 冷路径原则
 
@@ -35,6 +35,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 不得仅为减少少量低频分配而引入对象池、高水位缓存、复杂 reset 协议、全局 registry、额外 owner token 状态机或跨 Game 强引用缓存。
 - 不池化错误、诊断结果、拓扑排序临时数组、一次性 prepare context 或 Builder 中间对象，除非独立数据证明它们已经成为实际瓶颈。
 - `World.getTypes()` 和 `getCompLocation()` 是诊断/便利接口：前者成功时创建类型数组，后者成功时创建位置对象；它们不属于稳定 Tick 零显式分配 API。
+- `WorldView.ref()` 每次创建一个 EntityRef；它是编辑器、UI、脚本和零散单实体访问使用的低频便利 API，不进入 Query 或逐实体热循环。
 - 非热路径 GC 优化只接受实现同样简单的改写，或者有明确 CPU、内存、暂停时间数据支持的方案。
 - “尽量减少分配”也包括及时释放长期引用；为避免年轻代短命对象而制造更多 old-generation 常驻对象不是有效优化。
 
@@ -72,10 +73,10 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - **固定起始状态的真实批量结构场景**每 round 处理 16,384 个实体，materialize、migrate 和 despawn 分开报告；只允许把一次性构造初始 World 排除在计时外。每个场景必须在 baseline 前定义逻辑起始状态 `S0`、目标子段 `T: S0 → S1` 和恢复子段 `R: S1 → S0`，一个完整 round 严格执行 `t0 → T → t1 → R → t2`。materialize 的恢复包括 despawn 并重新 reserve 下一轮句柄，migrate 的恢复是反向迁移和独立 flush，despawn 的恢复包括 reserve/materialize 替代实体；若实体身份不能保持，恢复必须在预分配输入缓冲中更新下一轮句柄，并把该工作计入 R。不得在计时外恢复 World、Table、池或输入数组。
 - 真实批量结构场景同时报告目标子段 `(t1 - t0) / targetOperationCount`、恢复子段 `(t2 - t1) / entityCount`（命名为 `ns/entity-recovery`）和完整 cycle `(t2 - t0) / entityCount`。完整 cycle 是正式防隐藏成本指标；目标子段只用于定位操作差异，不能单独作为策略通过依据。T/R 引起的 Table 创建、释放、分配和 GC 都属于工作量；中间时钟读取是所有候选相同的固定成本，并纳入 A/A 校准。
 - **已有容量内的内核场景**预先建立足够的源/目标 Table 容量，每 round 同样处理 16,384 个实体；目标与恢复组成完整 A→B→A cycle，被测过程不得创建、释放或改变 Table 身份/容量，用于单独观察结构迁移内核成本。preflight 和 round 后检查必须验证 Table 计数、身份、容量与版本符合该前提。
-- 另设循环 churn 场景：固定 16,384 个实体和历史峰值，每个被测循环必须严格执行 `record A→B → flush → record B→A → flush`。两段操作不能在同一次 `Update.post` 提交前记录，否则同一 Entity 的 MigrationPlan 可能合并回 A 而不发生真实迁移。两次 record/flush 以及候选策略引起的 Table 创建、释放或保留全部属于真实工作量，不能排除在计时、分配记录或 GC 诊断之外。
-- churn 在正式计时前执行带完整 instrumentation 的正确性/诊断 preflight：每个 cycle 的 delta 必须满足 `appliedMigrationCount === entityCount * 2`、`flushCount === 2`，且全部实体最终位于 A。不能只检查最终 mask；必须使用 Table/version 和诊断计数证明两次 flush 都真实执行。current/tracked auto-release 还必须满足 `releasedTableCount > 0`、返回方向 `createdTableCount > 0`，并保持相同的空 Table 保留/释放语义；high-water retain 则必须在 warmup 后满足 `releasedTableCount === 0`、`createdTableCount === 0`，且 Table 身份、数量和容量稳定。
+- 另设循环 churn 场景：固定 16,384 个实体和历史峰值，每个被测循环必须严格执行 `record A→B → flush → record B→A → flush`。两段操作不能在同一次 `Update.post` 提交前记录，否则同一 Entity 的 MigrationPlan 可能合并回 A 而不发生真实迁移。两次 record/flush 以及当前 Chunk 尾部释放、保留和再次创建都属于真实工作量，不能排除在计时、分配记录或 GC 诊断之外。
+- churn 在正式计时前执行带完整 instrumentation 的正确性/诊断 preflight：每个 cycle 的 delta 必须满足 `appliedMigrationCount === entityCount * 2`、`flushCount === 2`，且全部实体最终位于 A。不能只检查最终 mask；必须使用 Archetype 版本、Chunk 数和诊断计数证明两次 flush 都真实执行。当前策略还必须验证每个 Archetype 最多保留一个额外空 Chunk，释放只发生在连续尾部，随后 `push` 复用相同的连续 `chunkIdx`。
 - churn 正式计时主要报告 `ns/entity-cycle`，一个 op 表示单个实体完整经历 A→B→A，分母为 `entityCount`；同时报告 `ns/applied-migration`，分母固定为 `entityCount * 2`。两项都包含 record 和 flush 的全部成本；配套诊断结果保存实际 `appliedMigrationCount` 并证明该固定分母成立，不得让候选自行选择更有利的分母。
-- 正确性/诊断运行与正式计时运行必须使用独立构建。诊断运行允许在被测逻辑中更新 `tableScanCount`、`releaseCheckCount`、迁移和 Table 生命周期计数，但只比较每轮 delta，并在计时段外重置；这些运行不产生正式 ns/op。正式计时构建必须从产物中完全移除非生产计数器的字段、分支和写入，并通过产物审计确认，只保留所有候选完全相同的时钟调用、操作序列和计时外 O(1) 状态校验。除 instrumentation 外，两种构建使用同一提交、生产优化配置和实验参数；完整状态、两次 flush、Table 身份和 ID 行为先由诊断构建证明，正式构建在 round 后使用公开状态做一致的最终状态校验。
+- 正确性/诊断运行与正式计时运行必须使用独立构建。诊断运行允许在被测逻辑中更新迁移和 Chunk/Table 生命周期计数，但只比较每轮 delta，并在计时段外重置；这些运行不产生正式 ns/op。正式计时构建必须从产物中完全移除非生产计数器的字段、分支和写入，并通过产物审计确认，只保留 baseline/candidate 完全相同的时钟调用、操作序列和计时外 O(1) 状态校验。除 instrumentation 外，两种构建使用同一提交、生产优化配置和实验参数；完整状态、两次 flush 和 Chunk 身份先由诊断构建证明，正式构建在 round 后使用公开状态做一致的最终状态校验。
 - 每个正式生产计时产物还必须在 warmup 前独立执行一次不计时的完整功能 preflight，不能只依赖 instrumentation 构建：record A→B 并第一次 flush 后，通过 Query 数量、`has`/等价公开状态和有语义的调用返回值验证全部 `entityCount` 个实体确实位于 B、A 中为零；再 record B→A 并第二次 flush，验证全部返回 A、B 中为零。materialize/despawn 场景同样在目标子段后验证 S1、恢复后验证 S0。任一正式产物 preflight 失败就中止该 runtime，不得产生 warmup 或 measurement 样本；preflight 结束在下一步 warmup 所需的逻辑 S0。
 - materialize/despawn 的恢复只保证逻辑 S0，不保证 Entity 版本完全相同。实验清单必须计算正式 preflight、全部 warmup 和 measurement cycle 给每个槽位带来的 despawn 次数，并满足 `startVersion + plannedVersionIncrementsPerSlot <= ENTITY_VERSION_MASK`。诊断运行必须验证 `retiredSlotCount === 0`、首次准备后的 Entity slot counter 不再增长，并记录起止版本最小值/最大值；正式产物在计时外保存初始 slot index 集合，结束后验证当前句柄仍使用同一 index 集合并记录版本范围。调整 preflight、warmup、round 数或每 cycle 操作数时必须重新证明不会进入 12 位版本耗尽与槽位退休分支。
 - Chromium 微基准使用与 Node 相同的实体数量、调用次数、warmup 和 measurement round；浏览器计时 API 的固定成本由 A/A 校准吸收，baseline/candidate 仍使用独立浏览器 heap。
@@ -87,7 +88,6 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 对每个 measurement pair 计算回退比例 `r = candidateNsPerOp / baselineNsPerOp - 1`。五个 runtime pair 的 round 按相同环境合并为至少 250 个 `r` 样本用于总体 median/p95，同时保留并报告每个 runtime pair 自己的 median，避免聚合隐藏单对异常。
 - 在比较 candidate 前，先用同一 baseline 构建执行完整 A/A paired 校准；A/A 的两侧也必须使用独立 isolate/heap。对每一对计算 `n = secondNsPerOp / firstNsPerOp - 1`。噪声带定义为 `max(1%, p95(abs(n)))`，并使用与 A/B 完全相同的 runtime-pair 数、round 数、进程/浏览器隔离和交替顺序。
 - 默认规则适用于 Stage C facade 和未定义专用决策协议的普通实现变更：Candidate 的 paired `r` 总体 median 或 p95 任一大于噪声带，即视为该微基准门槛未通过；任一独立实例的 median 超过噪声带也必须调查，不能仅用池化结果掩盖。噪声带以内的差异允许视为无显著变化，但仍需报告原始数值。
-- Table 策略实验不使用“任一定位微基准超噪声即自动否决”的默认聚合规则，而采用本节后文的专用硬门槛与代表性完整 cycle 决策。它仍使用相同的隔离 heap、paired ratio、A/A 噪声和原始数据报告方式；专用协议只改变如何作出策略决策，不允许省略或美化发生回退的微基准。
 - round ns/op p95 只表示长聚合 round 的慢侧波动，不能称为 Tick p95，也不能用于判断单次 GC 卡顿。
 - 异常路径不参与微基准统计，但必须单独验证状态恢复和后续调用行为。
 
@@ -97,7 +97,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 
 - 每个完整 Tick 单独计时，不把多个 Tick 聚合后再反推尾延迟。
 - 使用版本化的代表性工作量配置，明确记录 Entity、Query、Command、Migration、Event 和 Timer 的数量与每 Tick 变化率；这些数值必须在 baseline 前固定，candidate 后不得调整。
-- 至少包含一个结构 churn 配置：固定实体总数，Tick N 记录 A→B 并由该 Tick 的 `Update.post` migration system flush，Tick N+1 记录 B→A 并再次 flush；两个 Tick 构成一个完整 churn cycle。每个 cycle 都必须满足两次真实迁移、两次 flush 和最终回到 A 的公共不变量，并按候选策略分别验证 auto-release 的释放/重建或 high-water retain 在 warmup 后的零释放、零创建与 Table 身份/容量稳定；不得在同一 flush 前合并记录，也不得用 Tick 外恢复隐藏成本。
+- 至少包含一个结构 churn 配置：固定实体总数，Tick N 记录 A→B 并由该 Tick 的 `Update.post` migration system flush，Tick N+1 记录 B→A 并再次 flush；两个 Tick 构成一个完整 churn cycle。每个 cycle 都必须满足两次真实迁移、两次 flush和最终回到 A，并验证当前连续尾 Chunk 的保留、释放和再次创建语义；不得在同一 flush 前合并记录，也不得用 Tick 外恢复隐藏成本。
 - **连续计算模式**：Node、Chromium 主线程以及声明支持时的 Worker 都在同步紧循环中预热后连续测量至少 100,000 个 Tick，并在至少 5 个独立进程/浏览器实例中重复。它用于观察 ECS 计算成本、紧循环 GC 和 Tick 执行尾延迟，不包含真实帧调度。
 - **主线程帧调度模式**：固定前台 Chromium 使用一个复用的 `requestAnimationFrame` callback，每个 callback 默认执行一个完整 Tick，预热后至少记录 20,000 帧并在至少 5 个独立浏览器实例中重复。分别保存 Tick 执行时长与相邻 rAF callback 间隔；后者才包含 vsync、idle GC、渲染器竞争和宿主调度影响。每帧 Tick 数如需改变，必须在 baseline 前固定。
 - Baseline/candidate 在两种模式中都使用独立进程/浏览器 heap、相同计时方式和 `A/B → B/A` 运行顺序；一侧产生的垃圾不得由另一侧承担 GC。连续计算结果只能称为 ECS 连续计算结果；只有 rAF 模式的 callback 间隔可以作为浏览器主线程帧调度尾延迟证据，但它仍不代表未纳入工作量的完整渲染应用。
@@ -107,7 +107,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 原始逐 Tick、Tick 执行时长和 rAF callback 间隔样本必须按场景和 runtime-pair side 分开保留，不能与微基准 round ns/op 混合，也不能把多个实例的原始样本直接池化后计算一个总 quantile。
 - 每个隔离实例先独立计算 median/p95/p99/p99.9/max。对每个匹配 runtime pair 和每个 quantile `q`，计算 `r[q,i] = candidateQ[q,i] / baselineQ[q,i] - 1`；报告每一对的 baseline/candidate quantile、比例以及跨 runtime pair 的比例 median，不能只报告池化结果。
 - A/A 使用完全相同的隔离实例和工作量，并为每个 quantile 单独计算 `n[q,i]`。默认只有 5 个 runtime pair 时，噪声带使用保守的 `band[q] = max(1%, max(abs(n[q,i])))`；只有在 baseline 前固定并采集至少 20 个独立 runtime pair 后，才可改用 `max(1%, p95(abs(n[q,i])))`。median、p95、p99 不共享一个总噪声带。
-- 对 Stage C facade 和普通变更，median/p95/p99 是默认零显著回退硬门槛：某个 quantile 的匹配比例 median 大于其 `band[q]`，或至少两个 runtime pair 的该比例大于 `band[q]`，即判定回退。只有一个 runtime pair 超带时必须使用新的隔离 pair 重复该场景；若同类超带可复现则判定回退，否则保留为已调查异常并保存原始样本。Table 策略仍使用同一 quantile 与 A/A 计算，但按预登记的 Tick 上限执行专用硬门槛，不被本默认零回退规则重复否决。
+- 对 Stage C facade 和普通变更，median/p95/p99 是默认零显著回退硬门槛：某个 quantile 的匹配比例 median 大于其 `band[q]`，或至少两个 runtime pair 的该比例大于 `band[q]`，即判定回退。只有一个 runtime pair 超带时必须使用新的隔离 pair 重复该场景；若同类超带可复现则判定回退，否则保留为已调查异常并保存原始样本。
 - 在每实例 20,000 帧的 rAF 协议下，p99.9 只有约 20 个尾部样本，因此 p99.9 与 max 默认只是调查指标，不作为硬门槛。若要把 rAF p99.9 升为硬门槛，必须在采集 baseline 前把每个实例提高到至少 100,000 帧或批准等价的独立重复方案；仍不得跨实例池化原始帧。
 - 连续计算模式报告 Tick median/p95/p99/p99.9/max；rAF 模式分别报告 Tick 执行时长和 callback 间隔的相同指标。核心门槛至少在 Node 正常 JIT 运行；发布前代表性门槛同时通过固定 Chromium 主线程连续计算与 rAF，声明支持 Worker 时增加 Worker 连续计算。
 - 延迟运行不启用 GC/DevTools trace。GC 次数、总暂停、最长暂停、分配速率和 heap 变化使用同一工作量另开诊断运行；测量工具产生的固定成本可以接受，但 baseline/candidate 必须完全一致。
@@ -138,8 +138,8 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 | QueryIter.next/current | 无显式分配 | 复用 QueryIter、entry 和 current tuple，只更新 count/current 引用 |
 | flushCommandsSystem | 无显式分配 | Commands Service 的双高水位队列、used 游标与按类型对象池复用；新峰值才扩容 |
 | EntityCommand 记录 | 无显式分配 | 固定四槽数字指令覆盖历史数组；新峰值才 `push` |
-| 批量实体事务提交 | 条件式无显式分配 | Commands accumulator/分页索引稳定且源/目标 Table 容量不收缩再增长时成立；A→B→A churn 不属于该保证 |
-| 纯 Set | 无显式对象分配 | 两遍验证后使用 tableId/row 数字定位直接写列，不创建 location 或 Component view |
+| 批量实体事务提交 | 条件式无显式分配 | Commands accumulator/分页索引稳定且源/目标 Chunk 容量不收缩再增长时成立；A→B→A churn 不属于该保证 |
+| 纯 Set | 无显式对象分配 | 两遍验证后使用 chunkIdx/row 数字定位缓存列，不创建 location 或 Component view |
 | 固定时间 | 无显式分配 | FixedTimeResource 输入，TimeState 原地更新 |
 | 空 Timer/Event Tick | 无显式分配 | 索引循环；队列和池保持稳定 |
 
@@ -151,88 +151,67 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 |---|---|---|
 | 首次 Command 类型/并发峰值 | Command 实例、池数组、队列扩容 | 达到高水位后复用 |
 | Commands 收集 EntityCommand | 首次触达 Entity 索引页及 accumulator 高水位 | 分页 TypedArray 保存 entity→accumulator，触达列表和命令数组复用 |
-| 新 Archetype/Table | Archetype、DataSet Table、配置大小的 Buffer、TypedArray views | 结构变化时创建；默认 Buffer 为 16 KiB，每个 Archetype 默认只保留一个空 Table，多余空表自动释放 |
-| Entity/Archetype insert/remove | 新 Table/Buffer，或空 Table 自动释放后的再次增长 | DataRow 和 remove 结果自身不分配对象，但 Table churn 仍会重新创建 Buffer 租约、Table 和 TypedArray views |
-| Query 结构刷新 | 首次达到更多匹配 Table 时扩展高水位缓存 | matched/version 数组、entry、current 和 component-column view 跨 rebuild 复用 |
+| 新 Archetype/Chunk | Archetype、DataSet Table、配置大小的 Buffer、TypedArray views | Chunk 首次创建；每个 Archetype 最多保留一个额外空 Chunk，更多空尾 Chunk 自动释放 |
+| Entity/Archetype insert/remove | 新 Chunk/Buffer，或空尾 Chunk 释放后的再次增长 | ArchetypeRow 与 remove 返回值不分配对象；超过保留容量的 churn 会重建 Buffer、Table 和 TypedArray views |
+| Query 结构刷新 | 首次达到更多匹配 Chunk 时扩展高水位缓存 | matched/version、entry 和 current 跨 rebuild 复用；组件列直接借用 Archetype.views |
 | Timer.once | InnerTask 首次对象及 bucket 扩容 | 槽直接保存池化 InnerTask，不再创建 LevelTask 包装对象 |
 | EventService.event/post | EventArgs 首次实例及队列扩容 | EventArgs 按类型回池，双队列复用 |
 
-当前 DataSet 自动释放策略是对照基线，不是 Framework v1 已确定的最终选择。Table 策略实验必须比较三个候选：
+### Chunk 与行所有权
 
-1. **current auto-release**：保持当前每个 Archetype 默认保留一个空 Table，并在每次 remove 后扫描全部 Table、释放多余空表；
-2. **tracked auto-release**：保持与 current auto-release 相同的保留数、释放时点和可观察回收语义，使用与 high-water retain 共享的空 Table 追踪/复用内核降低逐 remove 的扫描与定位成本；
-3. **high-water retain**：warmup 后保留达到的 Table 高水位，热路径不执行自动释放扫描，场景切换时使用 benchmark-only 的显式 trim。
-
-当前 `DataSet.insert()` 只尝试 `_tables` 的最后一项；在保留多张空 Table 后，末表填满就会继续创建新表，而不会复用位于它之前的空表。因此 high-water retain 不能只关闭 `releaseExcessEmptyTables()`。候选 2 与 3 必须共享同一套 writable Table 追踪/复用内核，例如维护 occupied/empty frontier：`tables[0..activeTableCount)` 为紧凑占用区，除最后一张外均已满；`tables[activeTableCount..length)` 为保留空表。insert 优先使用占用区最后一张的剩余容量，再激活 frontier 处的既有空表，仅在 frontier 已到末尾时创建；remove 继续从最后占用表搬移/弹出，表变空时回退 frontier。允许使用等价的可写 Table 游标或索引，但必须满足相同不变量和复杂度目标。
-
-复用内核不得为了整理 frontier 重排 `_tables`、改写仍存活 Table 的 ID、重新创建 Table 或替换 Table 对象；只有 Table 真正释放后，其 ID 才能进入 free list 供未来的新 Table 使用。空/占用转换不改变 DataSet version；只有 Table 视图实际创建或释放时才按现有语义递增 version，使 Query 缓存仍以 Table 集合变化为失效边界。tracked auto-release 在共享内核上释放 frontier 之后超过保留数的空尾表；high-water retain 使用完全相同的 insert/remove/frontier 代码，只把释放策略配置为保留，显式 trim 才释放空尾表。这样候选 3 对 2 只比较“释放或保留”，不同时比较空表复用算法。
-
-实验必须先证明候选 1 与 2 的回收结果一致，再用 2 对 1 隔离“当前扫描实现与共享追踪/复用内核的效率”，用 3 对 2 评估“自动回收与高水位保留的策略差异”。不能只比较 3 与 1，然后把跳过全表扫描或修复空表复用的收益全部归因于高水位保留。benchmark 变体可以通过内部配置和诊断构建中的计数器实现，不要求提前增加稳定公共 API。
-
-工作量至少覆盖：
-
-- 两个 Archetype 的高频 A↔B 往返；
-- 多个 Archetype 依次达到峰值、之后很少复用；
-- 场景峰值后长期低负载；
-- 场景切换后显式 trim，并分别记录 trim 前、trim 本身和 trim 后的状态；
-- 保留不同数量空 Table 时的 Query 遍历和缓存局部性。
-
-除结构 `ns/entity-cycle`、`ns/applied-migration`、连续/rAF Tick 尾延迟、分配率和 GC 暂停外，每个候选必须报告：
-
-- `releaseCheckCount`、`tableScanCount`、`reusedEmptyTableCount`、`createdTableCount`、`releasedTableCount` 和 `appliedMigrationCount`，用于诊断解释 CPU 差异；这些计数只来自非正式计时的 instrumentation 构建；
-- 每个 DataSet 的活跃 Table 数、Table ID 高水位、free Table ID 数、累计 Table 创建数，以及每 Tick、场景切换和显式 trim cycle 的创建数；
-- Allocator `reservedBytes`、`allocatedBytes`、`allocatedBuffers`/active Buffer 数，不能只报告 RSS 或 ArrayBuffer reserved memory；
-- live/empty/retained Table 数，以及 active 与累计创建的 TypedArray view 数；
-- JS heap used；RSS 只作为补充宿主指标，不能代替逻辑存储和 heap 指标；
-- benchmark-only 显式 trim 前后释放的 Table、Buffer、Block、`allocatedBytes` 和 `reservedBytes`，并记录 trim 后仍保留的容量。
-
-正式采集 candidate 前，必须在版本化实验清单中固定每个工作量、主代表性完整 cycle、执行性能上限、Query 回退上限、Tick median/p95/p99 上限、稳态与峰值内存预算、允许保留的空 Table/Buffer 数，以及 trim 后残留预算。代表性 cycle 必须直接按目标项目中的 Query、结构迁移、场景切换和 trim 频率组成真实操作序列，不能在看到单项微基准后临时加权；存在多个明确目标宿主/负载档时，预先指定主场景和各场景独立上限，不能事后挑选获胜场景。看到结果后不得修改门槛；若实验发现原预算不合理，应废弃该轮 candidate 数据、修订清单并重新采集 baseline 和全部候选。
-
-Table 策略使用以下专用决策顺序：
-
-1. **正确性硬门槛**：空 Table 复用、两次真实 flush、正式产物 preflight、Entity 不退休、Table ID 生命周期和 stale handle/DataRow 语义全部通过；
-2. **资源与局部回退硬门槛**：每个预登记场景的内存、Query、trim 残留和 Tick median/p95/p99 都不得超过各自预算；Query 微基准在预设上限内的回退必须完整报告，但不被上面的默认零回退规则再次否决；
-3. **执行性能第一**：通过前两项后，以主代表性完整 cycle 的 paired `ns/entity-cycle`/完整 Tick 执行比例作为首要选择指标，并要求通过预设执行性能上限。定位型 materialize/migrate/despawn、扫描和 Query 微基准用于解释差异，不自动覆盖这个专用决策；
-4. **GC 稳定性第二**：只有执行性能门槛已经通过后才比较分配率、GC 次数和暂停；当候选的主执行指标处于同一 A/A 噪声带内时，可用更稳定的 GC 作为选择依据。GC 改善不能单独覆盖可复现的完整 cycle 执行回退；如果 GC 改善体现为更好的完整 Tick p95/p99，它已经作为 Tick 指标进入前述硬门槛和执行证据，而不是额外豁免。
-
-DataRow 是 U32 物理位置，`0xFFFFFFFF` 保留为无效值；每个 DataSet 使用自己的 `layout.capacity` 作为编码步长。Table ID 表示活跃槽位，Table 释放后进入 free list，因此累计创建次数不再消耗不可恢复的 ID。正确性容量按每个 DataSet 的最大同时活跃 Table 数计算：
+当前存储策略已经收敛，不再由 DataSet 推断行状态：
 
 ```text
-maxDataRow = 0xFFFFFFFE
-rowStride = layout.capacity
-maxActiveTables = floor((maxDataRow + 1) / rowStride)
-requiredActiveTables = peakLiveTables + preRegisteredSafetyMargin
-pass = maxActiveTables >= requiredActiveTables
+DataSet       只持有连续 Table 数组，push/pop 只作用于尾部
+Table         只持有固定容量 TypedArray 列，负责 get/set/clear/copy
+Archetype     拥有密集逻辑行、Chunk 数量、swap-remove 和结构版本
+EntitySlots   拥有 Entity 版本与 Archetype/chunkIdx/row 映射
 ```
 
-各事件类别仍必须互斥并在 baseline 前固定；累计创建数、`createsPerSecond` 和 trim 后再增长保留为 CPU、GC 与分配率指标，不再用于推算永久 ID 耗尽。容量测试通过内部 test seam 缩小 U32 地址空间，验证同时活跃 Table 达到上限时确定性失败、释放后 ID 可以再次分配、编码从不产生 `0xFFFFFFFF`，并且写入 Uint32Array 后无损。
+Archetype 的行位置 `ArchetypeRow` 是按自身 `chunkCapacity` 编码的 U32 临时位置；它不是
+带版本的稳定句柄，swap-remove 后可能指向被搬入的其他实体。需要长期身份时必须保存
+Entity。Table ID 与数组下标相同，因 DataSet 只允许尾部 `push/pop`，所以活动 ID 始终连续；
+尾表释放后下一次 `push` 自然复用同一个 `chunkIdx`，不需要 free list、generation 或 ID
+registry。
 
-DataRow 是临时物理位置，不是带版本的稳定句柄；它在 swap-remove 后已经可能指向被搬入的其他行。释放并复用 Table ID 延续这一语义：跨 remove/migrate/Table 释放/trim 保存旧 DataRow 属于调用方违反协议，框架不增加 generation、逐访问结构版本检查或热路径守卫。需要长期身份时必须保存 Entity。候选仍须报告活跃 ID 高水位和复用率，用于验证容量与解释性能差异。
+Archetype 在创建 Chunk 时一次建立：
 
-- 如果 high-water retain 通过执行性能、正确性、内存、Query、Tick 尾延迟、trim 和 Table ID 全部硬门槛，并按上述优先级胜出，则另行评审并落地高水位保留与冷路径 `trim()` 的正式实现。
-- 如果 tracked/current auto-release 通过相同硬门槛并按上述优先级胜出，可以保留相应自动释放策略；此时必须把持续 churn 分配记录为经过数据批准的热路径例外。
-- 如果结果随宿主或工作量显著变化，应另行评审构建期静态策略；在决定前不得让同一发布因隐式环境变量改变语义。
+```text
+views[chunkIdx][componentId][fieldId]
+entities[chunkIdx]
+```
 
-如果 high-water retain 胜出，正式 `trim()` 定位为宿主在没有 System 或 Query 迭代活动的空闲边界显式调用的 unchecked 冷路径操作。它会释放空 Table、递增相应 DataSet version，并使调用前取得的 QueryIter、Table view、组件列引用和其他直接借用失效；调用方必须在 trim 后重新取得这些值。框架遵守君子协议，不增加 active-iterator 计数、逐借用检查或 Scheduler 热路径守卫；基础的 disposed/owner 数据有效性检查不等于迭代安全保证。
+ComponentId 层使用稀疏数组，字段层直接保存 Table 中的 TypedArray。Query entry 只记录
+`Archetype + chunkIdx`，刷新时直接借用这些稳定列；没有 WeakMap、`_componentColumns`、
+DenseRows 或 Query 自己的组件列数组。Chunk 创建/释放递增 Archetype version，单纯的行数
+变化不触发 Query 结构 rebuild；`QueryIter.next()` 每次从 Archetype 读取当前 Chunk 行数。
 
-Table 策略选择是独立存储性能决策：所选策略必须单独批准和落地，随后重跑正确性/性能协议并冻结新的存储基线；阶段 C facade candidate 只能在该基线上测量，不能同时包含 Table 回收算法或 `trim()` 变化。无论最终选择哪一种，零显式分配保证都必须按实际策略准确书写；完成该实验前，只能描述当前 auto-release 行为，不能宣称 Framework v1 已批准它。
+当前回收策略由 Archetype 明确执行：逻辑行始终密集，除最后一个活动 Chunk 外都满；删除
+使用全局末行填补。Archetype 最多保留一个额外空 Chunk，更多空 Chunk 只从尾部 `pop`。
+这使常见的小幅回落可直接复用已有 Chunk，同时避免扫描 Table 或在 DataSet 中维护
+occupied/empty frontier。超过该保留容量的 A↔B churn 仍会重新创建 Buffer、Table 和
+TypedArray views，必须在 benchmark 中如实计入。
+
+若未来要改变空 Chunk 保留数、采用完全 high-water retain 或增加显式 `trim()`，它是独立
+存储策略变更：必须同时测量结构 cycle、Query、内存与 Tick 尾延迟，先落地并冻结存储基线，
+再评估其他 facade 或调度改造。不能把存储策略收益归因给上层 API 变化。
 
 ## 已完成的无 JIT 调整
 
 - Scheduler 每 Tick 不再使用 `find` 回调、数组 `filter/map` 或参数 spread。
 - Game、QueryIter、Command、EntityCommand 合并、Timer 和 Event 的稳定遍历使用索引循环。
 - 纯 Set 不再创建 Entity location 对象或组件列数组。
-- DataRow 使用所属 DataSet 的 Table 容量动态编码为 U32，能够无损保存到 Uint32Array；释放的 Table ID 可复用，`0xFFFFFFFF` 保留为无效位置。DataSet/Entity/Archetype 内部位置传递不创建对象，公开诊断边界按需物化位置。
-- DataSet.remove 返回数字状态，迁移过程不再创建 RemoveResult/from/to 对象。
+- ArchetypeRow 使用所属 Archetype 的 Chunk 容量动态编码为 U32；内部位置传递不创建对象，公开 `getCompLocation()` 诊断边界才物化 `{ chunkIdx, row }`。
+- DataSet 和 Table 已移除行状态、insert/remove、DataRow、RemoveResult 与结构版本；Archetype 直接执行密集行插入和 swap-remove。
 - Archetype.copyCommonTo 使用索引循环，无 JIT 时不依赖数组迭代器消除。
 - Timer 槽直接保存 InnerTask，调度和层级降级不再创建 LevelTask 或临时 pending/deferred 数组。
-- Query rebuild 使用高水位 entry/current/component-column 缓存，并用并行版本数组替代 Map；失活 Entry 会清除 Table/TypedArray 引用。
+- Query rebuild 使用高水位 entry/current 缓存和并行 Archetype 版本数组；entry 只保存 Archetype/chunkIdx，组件列直接引用公开缓存 views。
 - Commands、ObjectPoolService、EventService 和 Timer 提供显式 trim API；只在场景切换等空闲边界释放历史峰值，不在 Tick 中自动裁剪。
 - Listener.clear 主动断开 callback/context，包括重入派发期间已经写入 snapshot 的引用。
 - Commands 使用 1024 Entity/页的稀疏 TypedArray 索引合并同批次事务，Structure System 应用后按高水位触达列表清零。
-- World.view 返回的组件列数组按 Archetype/Table 生命周期缓存；重复 view 不再执行 map 或创建数组。
+- World.view 返回的组件列数组由 `Archetype.views[chunkIdx][componentId]` 缓存；重复 view 不再执行 map 或创建数组。
 - Allocator free-list 使用数字位置栈；每次 alloc 创建独立 Buffer 租约对象，release 后立即断开底层内存引用。
-- Query rebuild 不再创建临时 Archetype view/closure；Table 组件列直接构建到持久 entry。
+- Query rebuild 不再创建临时 Archetype view/closure，也不再为 entry 构建组件列数组。
 - EntityCommand 默认不采集 Error stack，也不生成逐指令调试字符串。
 - RandomService.seed 和 weight 的默认权重计算不创建闭包、tuple 结果或 reduce 回调。
 
@@ -241,7 +220,7 @@ Table 策略选择是独立存储性能决策：所选策略必须单独批准�
 以下项目需要独立数据和设计评审，不在当前实现中用复杂度换取未经证明的收益：
 
 - Query Filter AST/DNF、System 依赖图和 Component 注册仍在构建阶段创建对象与集合；它们不进入 Tick。
-- Table、Buffer 租约与 TypedArray view 是存储生命周期对象；当前既会在新容量时创建，也会在多余空 Table 被自动释放后再次增长时重建。是否改为高水位常驻必须由 churn、Query、内存和缓存数据共同决定。
+- Table、Buffer 租约与 TypedArray view 是 Chunk 生命周期对象；当前既会在新容量时创建，也会在超过一个保留空 Chunk后再次增长时重建。是否改为更高保留量必须由 churn、Query、内存和缓存数据共同决定。
 - Scheduler 的 Stage Map 和 WeakMap 缓存仍由宿主引擎管理；源码不假定其内部节点分配方式。
 
 ## 验证
@@ -249,5 +228,16 @@ Table 策略选择是独立存储性能决策：所选策略必须单独批准�
 - `npm run test`：普通运行时正确性与回归测试。
 - `npm run build`：生产构建和声明生成。
 - `npm run test:no-jit`：先构建，再使用 Node `--jitless` 执行 Command、Migration、纯 Set 和固定时间 smoke test。
+- `npm run bench`：使用 `benchmarks/config.v1.json` 的 smoke 配置运行单构建采样；结果明确标记
+  `approvalEligible: false`，只验证场景和产物可执行。
+- `npm run bench:core`：运行固定核心工作量的单构建采样。正式 A/A 或 A/B 使用独立目录：
+
+```text
+node benchmarks/compare.mjs --baseline-root <baseline> --candidate-root <candidate> --profile core
+```
+
+  控制器为每个 scenario/pair 启动两个独立 Node 进程，分别预热，按 A/B、B/A 交替触发
+  measurement round，并保留原始 paired `ns/op`。相同目录用于 A/A 校准；不同冻结构建用于
+  A/B。两个目录必须使用同版本 benchmark 配置和已经完成的生产构建。
 
 性能测试只能提供证据，不能证明零分配；代码审计和明确的数据所有权仍是主要判据。

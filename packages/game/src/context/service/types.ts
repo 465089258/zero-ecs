@@ -1,9 +1,12 @@
-import { ClassType } from "../container";
+import { AbsClassType, ClassType } from "../container";
 import type { Resource, ResourceType } from "../resource";
 import type { State, StateType } from "../state";
 import { ServiceContainer } from "./container";
 
-/** Service 的注册 token 或实现类型；普通上层 Service 应提供无参构造函数。 */
+/** 可用于查找和声明依赖的 Service token；允许抽象领域父类。 */
+export type ServiceToken<T extends Service = Service> = AbsClassType<T>;
+
+/** 可由 GameBuilder 实例化的具体 Service 实现类型。 */
 export type ServiceType<T extends Service = Service> = ClassType<T>;
 
 declare const ServiceBrand: unique symbol;
@@ -19,7 +22,7 @@ export interface ServiceInitContext {
 /** 所有 Service 完成初始化后，用于建立跨 Service 连接的一次性上下文。 */
 export interface ServiceActivateContext extends ServiceInitContext {
     /** 获取已经完成 init 的 Service，并记录当前 Service 对它的生命周期依赖。 */
-    service<T extends Service>(type: ServiceType<T>): T;
+    service<T extends Service>(type: ServiceToken<T>): T;
 }
 
 /**
