@@ -1,15 +1,21 @@
 import { describe, expect, test } from "@rstest/core";
 import {
     All,
+    Allocator,
     Any,
     type Component,
+    type ComponentMeta,
     defineComponentMeta,
     GameBuilder,
+    type IArchetypeSource,
+    type IComponentResolver,
     Optional,
+    Query,
     QueryType,
     Types,
     With,
     Without,
+    World,
 } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
@@ -88,6 +94,89 @@ describe("QueryType and QueryIter", () => {
         expect(iter.current[0]).toBe(1);
         expect(iter.current[1][0]).toBe(2);
         expect(iter.next()).toBe(false);
+    });
+
+    test("keeps the stable iter path independent of matched Archetype count", () => {
+        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+        const world = new World(allocator);
+        const position = defineComponentMeta(world, PositionType);
+        const archetype = world.getOrCreateArchetype(position.mask, [position]);
+        archetype.insert(1 as never);
+
+        let archetypeReads = 0;
+        let archetypeVersionReads = 0;
+        const observed = new Proxy(archetype, {
+            get(target, key, receiver) {
+                if (key === "version") archetypeVersionReads++;
+                return Reflect.get(target, key, receiver);
+            },
+        });
+        const source: IArchetypeSource = {
+            version: 1,
+            layoutVersion: archetype.version,
+            get archetypes() {
+                archetypeReads++;
+                return [observed];
+            },
+        };
+        const resolver = {
+            defQueryMeta: () => position as ComponentMeta<object>,
+        } as IComponentResolver;
+        const query = new Query(QueryType.from(With(PositionType)), resolver, source);
+
+        archetypeReads = 0;
+        archetypeVersionReads = 0;
+        query.iter();
+        query.iter();
+
+        expect(archetypeReads).toBe(0);
+        expect(archetypeVersionReads).toBe(0);
+        world.dispose();
+        allocator.clear();
+    });
+
+    test("incrementally releases and reuses Query Chunk entries", () => {
+        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+        const world = new World(allocator);
+        const position = defineComponentMeta(world, PositionType);
+        const archetype = world.getOrCreateArchetype(position.mask, [position]);
+        const capacity = archetype.chunkCapacity;
+        let count = 0;
+        const insert = (): void => { archetype.insert(++count as never); };
+        const removeLast = (): void => {
+            const ordinal = --count;
+            archetype.remove(archetype.locationAt(
+                Math.floor(ordinal / capacity),
+                ordinal % capacity,
+            ));
+        };
+
+        insert();
+        const query = world.query(QueryType.from(With(PositionType)));
+        while (count < capacity * 2 + 1) insert();
+
+        let iter = query.iter();
+        const currents = [] as unknown[];
+        while (iter.next()) currents.push(iter.current);
+        expect(currents).toHaveLength(3);
+
+        while (count > capacity) removeLast();
+        iter = query.iter();
+        expect(iter.next()).toBe(true);
+        expect(iter.current[0]).toBe(capacity);
+        expect(iter.next()).toBe(false);
+
+        while (count < capacity * 2 + 1) insert();
+        iter = query.iter();
+        let chunkIndex = 0;
+        while (iter.next()) {
+            if (chunkIndex === 2) expect(iter.current).toBe(currents[2]);
+            chunkIndex++;
+        }
+        expect(chunkIndex).toBe(3);
+
+        world.dispose();
+        allocator.clear();
     });
 
     test("rejects Optional inside Any", () => {

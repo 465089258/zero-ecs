@@ -56,7 +56,12 @@ export class Archetype {
     get allocatedChunkCount(): number { return this._dataSet.length; }
 
     /** 创建指定组件掩码对应的 Archetype。 */
-    constructor(mask: Mask, types: readonly ComponentMeta[] | undefined, allocator: IAllocator) {
+    constructor(
+        mask: Mask,
+        types: readonly ComponentMeta[] | undefined,
+        allocator: IAllocator,
+        private readonly _onLayoutChange?: () => void,
+    ) {
         this.mask = mask.clone();
         this._types = types === undefined ? [] : [...types].sort((a, b) => a.id - b.id);
         const columnTypes: Types[] = [Types.Entity];
@@ -218,7 +223,7 @@ export class Archetype {
         this._viewStorage.length = 0;
         this._entityStorage.length = 0;
         this._count = 0;
-        if (hadChunks) this._version++;
+        if (hadChunks) this.markLayoutChanged();
     }
 
     private ensureChunk(chunkIdx: number): void {
@@ -236,7 +241,7 @@ export class Archetype {
             const views = this.createViews(table);
             this._viewStorage.push(views);
             this._entityStorage.push(table.columns[ENTITY_COLUMN] as unknown as EntitySet);
-            this._version++;
+            this.markLayoutChanged();
         } catch (error) {
             this._viewStorage.length = previousViewCount;
             this._entityStorage.length = previousEntityCount;
@@ -263,9 +268,14 @@ export class Archetype {
         while (this._dataSet.length > keep) {
             this._viewStorage.pop();
             this._entityStorage.pop();
-            this._version++;
+            this.markLayoutChanged();
             this._dataSet.pop();
         }
+    }
+
+    private markLayoutChanged(): void {
+        this._version++;
+        if (this._onLayoutChange) this._onLayoutChange();
     }
 
     private assertUsable(): void {

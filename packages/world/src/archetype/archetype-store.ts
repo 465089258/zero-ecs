@@ -7,17 +7,23 @@ interface ArchetypeMaskIndex {
     mask: Mask;
     idx: number;
 }
+interface LayoutVersionTracker {
+    version: number;
+    readonly markChanged: () => void;
+}
 
 /** @internal World 内核持有的 Archetype 集合与掩码索引。 */
 export class ArchetypeStore {
     private readonly _archetypes: Archetype[] = [];
     private readonly _maskIndexes: ArchetypeMaskIndex[] = [];
     private _version = 0;
+    private readonly _layout = createLayoutVersionTracker();
 
     constructor(private readonly _allocator: IAllocator) {}
 
     get archetypes(): readonly Archetype[] { return this._archetypes; }
     get version(): number { return this._version; }
+    get layoutVersion(): number { return this._layout.version; }
 
     getAtIdx(idx: number): Archetype | undefined { return this._archetypes[idx]; }
 
@@ -40,7 +46,7 @@ export class ArchetypeStore {
         let idx = this.getIdxAtMask(mask);
         if (idx !== -1) return idx;
         idx = this._archetypes.length;
-        const archetype = new Archetype(mask, types, this._allocator);
+        const archetype = new Archetype(mask, types, this._allocator, this._layout.markChanged);
         this._archetypes.push(archetype);
         this.bindArchetype(archetype, idx);
         this._version++;
@@ -56,7 +62,7 @@ export class ArchetypeStore {
         let archetype = this.getAtMask(mask);
         if (archetype) return archetype;
         const idx = this._archetypes.length;
-        archetype = new Archetype(mask, types, this._allocator);
+        archetype = new Archetype(mask, types, this._allocator, this._layout.markChanged);
         this._archetypes.push(archetype);
         this.bindArchetype(archetype, idx);
         this._version++;
@@ -81,4 +87,12 @@ export class ArchetypeStore {
         }
         indexes.splice(low, 0, { mask: archetype.mask, idx });
     }
+}
+
+function createLayoutVersionTracker(): LayoutVersionTracker {
+    const tracker: LayoutVersionTracker = {
+        version: 0,
+        markChanged: (): void => { tracker.version++; },
+    };
+    return tracker;
 }

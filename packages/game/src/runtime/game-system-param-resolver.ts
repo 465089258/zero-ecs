@@ -19,6 +19,7 @@ export class GameSystemParamResolver implements SystemParamProvider<SystemParam>
         let value: unknown;
         if (isMutParam(param)) value = this._context.states.get(param.target);
         else if (param === World) value = world;
+        // 每个参数位置持有独立 Query，使重复 QueryType token 可以安全嵌套遍历。
         else if (param instanceof QueryType) value = world.query(param);
         else if (param.prototype instanceof Resource) value = this._context.resources.get(param as ResourceType);
         else if (param.prototype instanceof State) value = this._context.states.get(param as StateType);

@@ -112,8 +112,10 @@ export function validateSystemParams(params: readonly SystemParam[]): void {
             declared.add(param.target);
             continue;
         }
+        // Query 参数按声明位置解析为独立 Query；重复 token 用于安全地嵌套相同查询。
+        if (param instanceof QueryType) continue;
         if (declared.has(param)) {
-            const name = typeof param === "function" ? param.name : "QueryType";
+            const name = typeof param === "function" ? param.name : "SystemParam";
             throw new Error(`System parameter ${name} is declared more than once`);
         }
         declared.add(param);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@rstest/core";
 import * as publicApi from "@zero-ecs/game";
 import {
+    Allocator,
     CommandModule,
     Command,
     Commands,
@@ -201,6 +202,55 @@ describe("system registration and scheduling", () => {
         ecs.start();
         ecs.update();
         expect(received).toBeInstanceOf(Query);
+    });
+
+    test("resolves repeated Query tokens as independent nested Query instances", () => {
+        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+        const queryType = QueryType.from(With(PositionType));
+        let outerQuery: Query<[PositionType]> | undefined;
+        let innerQuery: Query<[PositionType]> | undefined;
+        let pairs = 0;
+        function querySystem(outer: Query<[PositionType]>, inner: Query<[PositionType]>): void {
+            outerQuery = outer;
+            innerQuery = inner;
+            const outerIter = outer.iter();
+            while (outerIter.next()) {
+                const outerCount = outerIter.current[0];
+                const innerIter = inner.iter();
+                while (innerIter.next()) pairs += outerCount * innerIter.current[0];
+            }
+        }
+
+        const builder = new GameBuilder().setAllocator(allocator);
+        builder.addSystem(defSystem(Update.fixed, querySystem, [queryType, queryType]));
+        const game = builder.build();
+        const world = game.structureWriter() as World;
+        const entityCount = 24;
+        for (let i = 0; i < entityCount; i++) {
+            const entity = world.reserveEntity();
+            expect(world.applyEntityCommand(
+                world.createEntityCommand(entity).add(PositionType).set(PositionType, Position.x, i),
+            )).toBe(true);
+        }
+
+        game.init();
+        game.start();
+        game.update();
+
+        expect(outerQuery).not.toBe(innerQuery);
+        expect(outerQuery?.iter()).not.toBe(innerQuery?.iter());
+        expect(pairs).toBe(entityCount * entityCount);
+        game.dispose();
+        allocator.clear();
+    });
+
+    test("continues to reject repeated non-Query parameters", () => {
+        const builder = new GameBuilder();
+        const system = defSystem(Update.fixed, (_first: Readonly<ClockState>, _second: Readonly<ClockState>) => {}, [
+            ClockState,
+            ClockState,
+        ]);
+        expect(() => builder.addSystem(system)).toThrow(/ClockState is declared more than once/);
     });
 
     test("system parameters do not register State or Service types", () => {
