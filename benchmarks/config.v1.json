@@ -6,8 +6,12 @@
       "measurementRounds": 5,
       "runtimePairs": 1,
       "schedulerUpdates": 10000,
+      "schedulerInvocations": 100000,
       "readEntityCount": 4096,
       "readPasses": 2,
+      "queryArchetypeCount": 16,
+      "queryPasses": 128,
+      "chunkCycles": 256,
       "queuedOperations": 2048,
       "churnEntityCount": 256
     },
@@ -16,8 +20,12 @@
       "measurementRounds": 50,
       "runtimePairs": 5,
       "schedulerUpdates": 1000000,
+      "schedulerInvocations": 1000000,
       "readEntityCount": 65536,
       "readPasses": 16,
+      "queryArchetypeCount": 64,
+      "queryPasses": 16384,
+      "chunkCycles": 16384,
       "queuedOperations": 16384,
       "churnEntityCount": 16384
     }

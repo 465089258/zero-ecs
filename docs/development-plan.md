@@ -485,7 +485,8 @@ src/
 
 完成记录：
 
-- Scheduler 使用 Stage token Map 直接定位，0～8 参数走固定调用分支；每 Tick 不再创建 find 回调或使用参数 spread。
+- Scheduler 使用 Stage token Map 直接定位 prepare 期编译的 runner；每 Tick 不再创建
+  find 回调、读取参数数组、判断参数数量或使用参数 spread。
 - Ecs、QueryIter、Command、Migration、Timer、Event 稳定路径统一使用索引循环。
 - DataSet/Archetype 增加 tableId/row 数字访问，纯 Set 不再创建 location 对象；阶段 16 进一步将结构迁移 DataRow/RemoveResult 数字化。
 - Query rebuild 移除临时 Archetype view 和 closure；统一结构版本与跨 rebuild 深度缓存复用保留为独立优化边界。

@@ -3,10 +3,12 @@ import {
     Allocator,
     AllocatorService,
     ArchetypeChunk,
+    Buffer,
     type Component,
     entityIndexOf,
     GameBuilder,
     type Entity,
+    type IAllocator,
     QueryType,
     Types,
     With,
@@ -22,6 +24,40 @@ class PositionType implements Component<Position> {
 const enum Health { value }
 class HealthType implements Component<Health> {
     readonly [Health.value] = Types.I32;
+}
+
+class ThrowAfterDisposeBuffer extends Buffer {
+    override doDispose(): void {
+        super.doDispose();
+        throw new Error("expected Buffer release failure");
+    }
+}
+
+class FailingReleaseAllocator implements IAllocator {
+    readonly config = Object.freeze({
+        bufferByteLength: 64,
+        blockByteLength: 256,
+        buffersPerBlock: 4,
+    });
+    private allocationCount = 0;
+
+    alloc(): Buffer {
+        const source = new ArrayBuffer(this.config.bufferByteLength);
+        return this.allocationCount++ === 0
+            ? new Buffer(source)
+            : new ThrowAfterDisposeBuffer(source);
+    }
+
+    stats() {
+        return {
+            blockCount: 0,
+            bufferCapacity: 0,
+            allocatedBuffers: 0,
+            freeBuffers: 0,
+            reservedBytes: 0,
+            allocatedBytes: 0,
+        };
+    }
 }
 
 test("World entities and Archetypes share DataSet-backed Buffer memory", () => {
@@ -96,7 +132,8 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
 
     expect(world.despawn(entities.pop()!)).toBe(true);
     expect(archetype.chunks).toBe(1);
-    expect(archetype.allocatedChunkCount).toBe(2);
+    expect(archetype.allocatedChunkCount).toBe(1);
+    expect(archetype.chunkAt(1)).toBeUndefined();
 
     const query = world.query(QueryType.from(With(PositionType)));
     let iter = query.iter();
@@ -117,11 +154,12 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
     allocator.clear();
 });
 
-test("Archetype releases and recreates only continuous tail Chunks", () => {
+test("Archetype retains only the configured number of continuous tail Chunks", () => {
     const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
     const world = new World(allocator);
     const position = world.component(PositionType);
     const archetype = world.getOrCreateArchetype(position.mask, [position]);
+    archetype.setSpareChunkLimit(1);
     const entities: Entity[] = [];
     const capacity = archetype.chunkCapacity;
 
@@ -163,6 +201,83 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
     world.dispose();
     expect(allocator.stats().allocatedBuffers).toBe(0);
     allocator.clear();
+});
+
+test("Archetype defaults to full Chunk release and updates only its local version", () => {
+    const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+    const world = new World(allocator);
+    const position = world.component(PositionType);
+    const archetype = world.getOrCreateArchetype(position.mask, [position]);
+    const worldVersion = world.version;
+    const allocatedBeforeInsert = allocator.stats().allocatedBuffers;
+
+    expect(archetype.spareChunkLimit).toBe(0);
+    expect(archetype.version).toBe(0);
+
+    const row = archetype.insert(1 as never);
+    expect(world.version).toBe(worldVersion);
+    expect(archetype.version).toBe(1);
+    expect(archetype.allocatedChunkCount).toBe(1);
+    expect(allocator.stats().allocatedBuffers).toBe(allocatedBeforeInsert + 1);
+
+    archetype.remove(row);
+    expect(world.version).toBe(worldVersion);
+    expect(archetype.version).toBe(2);
+    expect(archetype.chunks).toBe(0);
+    expect(archetype.allocatedChunkCount).toBe(0);
+    expect(allocator.stats().allocatedBuffers).toBe(allocatedBeforeInsert);
+
+    world.dispose();
+    allocator.clear();
+});
+
+test("Archetype validates and immediately applies spareChunkLimit changes", () => {
+    const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+    const world = new World(allocator);
+    const position = world.component(PositionType);
+    const archetype = world.getOrCreateArchetype(position.mask, [position]);
+
+    for (const invalid of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => archetype.setSpareChunkLimit(invalid)).toThrow(
+            /non-negative safe integer/,
+        );
+    }
+
+    archetype.setSpareChunkLimit(1);
+    expect(archetype.spareChunkLimit).toBe(1);
+    expect(archetype.allocatedChunkCount).toBe(0);
+    const row = archetype.insert(1 as never);
+    const versionAfterInsert = archetype.version;
+    archetype.remove(row);
+    expect(archetype.allocatedChunkCount).toBe(1);
+    expect(archetype.version).toBe(versionAfterInsert);
+
+    archetype.setSpareChunkLimit(0);
+    expect(archetype.allocatedChunkCount).toBe(0);
+    expect(archetype.version).toBe(versionAfterInsert + 1);
+
+    archetype.dispose();
+    expect(() => archetype.setSpareChunkLimit(1)).toThrow(/disposed/);
+    world.dispose();
+    allocator.clear();
+});
+
+test("Archetype disposal keeps versions consistent and continues after Buffer release failures", () => {
+    const allocator = new FailingReleaseAllocator();
+    const world = new World(allocator);
+    const position = world.component(PositionType);
+    const archetype = world.getOrCreateArchetype(position.mask, [position]);
+    for (let i = 0; i < archetype.chunkCapacity * 3; i++) {
+        archetype.insert((i + 1) as Entity);
+    }
+    const versionBeforeDispose = archetype.version;
+
+    expect(() => archetype.dispose()).toThrow(/expected Buffer release failure/);
+    expect(archetype.allocatedChunkCount).toBe(0);
+    expect(archetype.version).toBe(versionBeforeDispose + 3);
+    expect(() => archetype.setSpareChunkLimit(1)).toThrow(/disposed/);
+
+    world.dispose();
 });
 
 test("Archetype reuses removed row data without clearing component fields", () => {

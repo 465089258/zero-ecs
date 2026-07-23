@@ -1,19 +1,13 @@
 import type { Schedule, SystemDependency } from "./schedule";
 import type { Stage } from "./stage";
 import type { SystemParamProvider } from "./system-param-provider";
-import type { SystemDefinition, SystemId } from "./system";
+import type {
+    SystemDefinition,
+    SystemFunction,
+    SystemId,
+} from "./system";
 
-/** 已解析参数、可直接调用的运行时系统。 */
-export interface RuntimeSystem<Param = unknown> {
-    readonly definition: SystemDefinition<Param>;
-    readonly args: readonly unknown[];
-}
-
-/** 同一阶段内已完成拓扑排序的运行时系统集合。 */
-export interface RuntimeStage<Param = unknown> {
-    readonly stage: Stage;
-    readonly systems: readonly RuntimeSystem<Param>[];
-}
+type SystemRunner = () => void;
 
 interface SortedStage<Param> {
     readonly stage: Stage;
@@ -33,8 +27,7 @@ enum SchedulerPhase {
 export class Scheduler<Param = unknown> {
     private _phase = SchedulerPhase.Created;
     private _sortedStages: readonly SortedStage<Param>[] = [];
-    private _stages: readonly RuntimeStage<Param>[] = [];
-    private _stageLookup = new Map<Stage, RuntimeStage<Param>>();
+    private _stageLookup = new Map<Stage, readonly SystemRunner[]>();
 
     constructor(readonly schedule: Schedule<Param>) {}
 
@@ -63,26 +56,17 @@ export class Scheduler<Param = unknown> {
         }
         this._phase = SchedulerPhase.Preparing;
         try {
-            const stages: RuntimeStage<Param>[] = [];
-            const lookup = new Map<Stage, RuntimeStage<Param>>();
+            const lookup = new Map<Stage, readonly SystemRunner[]>();
             for (const stage of this._sortedStages) {
-                const systems: RuntimeSystem<Param>[] = [];
+                const runners: SystemRunner[] = [];
                 for (const definition of stage.systems) {
                     const args = definition.params.map(param => provider.resolve(param));
-                    systems.push(Object.freeze({
-                        definition,
-                        args: Object.freeze(args),
-                    }));
+                    runners.push(createRunner(definition.fn, args));
                 }
-                const runtime = Object.freeze({
-                    stage: stage.stage,
-                    systems: Object.freeze(systems),
-                });
-                stages.push(runtime);
-                lookup.set(stage.stage, runtime);
+                lookup.set(stage.stage, Object.freeze(runners));
             }
-            this._stages = Object.freeze(stages);
             this._stageLookup = lookup;
+            this._sortedStages = [];
             this._phase = SchedulerPhase.Prepared;
         } catch (error) {
             this._phase = SchedulerPhase.PrepareFailed;
@@ -95,16 +79,17 @@ export class Scheduler<Param = unknown> {
         if (this._phase !== SchedulerPhase.Prepared) {
             throw new Error("Scheduler has not been prepared");
         }
-        const runtime = this._stageLookup.get(stage);
-        if (!runtime) return;
-        const systems = runtime.systems;
-        for (let i = 0; i < systems.length; i++) invoke(systems[i]);
+        const runners = this._stageLookup.get(stage);
+        if (!runners) return;
+        for (let i = 0; i < runners.length; i++) {
+            const runner = runners[i];
+            runner();
+        }
     }
 
     dispose(): void {
         if (this._phase === SchedulerPhase.Disposed) return;
         this._sortedStages = [];
-        this._stages = [];
         this._stageLookup.clear();
         this._stageLookup = new Map();
         this._phase = SchedulerPhase.Disposed;
@@ -135,10 +120,10 @@ export class Scheduler<Param = unknown> {
                 )) next = i;
             }
             if (next === -1) {
-                const names = definitions
-                    .filter((_, index) => !emitted[index])
-                    .map(item => item.handle.name)
-                    .join(" -> ");
+                const cycle = findDependencyCycle(outgoing, emitted);
+                const names = cycle.length === 0
+                    ? "unknown"
+                    : cycle.map(index => definitions[index].handle.name).join(" -> ");
                 throw new Error(`System dependency cycle detected: ${names}`);
             }
             emitted[next] = 1;
@@ -149,19 +134,95 @@ export class Scheduler<Param = unknown> {
     }
 }
 
-function invoke(system: RuntimeSystem): void {
-    const fn = system.definition.fn;
-    const args = system.args;
+function findDependencyCycle(
+    outgoing: readonly (readonly number[])[],
+    emitted: Uint8Array,
+): number[] {
+    const states = new Uint8Array(outgoing.length);
+    const path: number[] = [];
+    const positions = new Int32Array(outgoing.length);
+    positions.fill(-1);
+
+    interface Frame {
+        readonly node: number;
+        edge: number;
+    }
+
+    for (let start = 0; start < outgoing.length; start++) {
+        if (emitted[start] !== 0 || states[start] !== 0) continue;
+        const frames: Frame[] = [{ node: start, edge: 0 }];
+        states[start] = 1;
+        positions[start] = path.length;
+        path.push(start);
+
+        while (frames.length > 0) {
+            const frame = frames[frames.length - 1];
+            const targets = outgoing[frame.node];
+            if (frame.edge >= targets.length) {
+                states[frame.node] = 2;
+                positions[frame.node] = -1;
+                frames.pop();
+                path.pop();
+                continue;
+            }
+
+            const target = targets[frame.edge++];
+            if (emitted[target] !== 0) continue;
+            if (states[target] === 0) {
+                states[target] = 1;
+                positions[target] = path.length;
+                path.push(target);
+                frames.push({ node: target, edge: 0 });
+                continue;
+            }
+            if (states[target] === 1) {
+                const begin = positions[target];
+                return [...path.slice(begin), target];
+            }
+        }
+    }
+    return [];
+}
+
+function createRunner(fn: SystemFunction, args: unknown[]): SystemRunner {
     switch (args.length) {
-        case 0: fn(); break;
-        case 1: fn(args[0]); break;
-        case 2: fn(args[0], args[1]); break;
-        case 3: fn(args[0], args[1], args[2]); break;
-        case 4: fn(args[0], args[1], args[2], args[3]); break;
-        case 5: fn(args[0], args[1], args[2], args[3], args[4]); break;
-        case 6: fn(args[0], args[1], args[2], args[3], args[4], args[5]); break;
-        case 7: fn(args[0], args[1], args[2], args[3], args[4], args[5], args[6]); break;
-        case 8: fn(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]); break;
-        default: fn.apply(undefined, args as unknown as any[]);
+        case 0:
+            return fn;
+        case 1: {
+            const a0 = args[0];
+            return () => fn(a0);
+        }
+        case 2: {
+            const [a0, a1] = args;
+            return () => fn(a0, a1);
+        }
+        case 3: {
+            const [a0, a1, a2] = args;
+            return () => fn(a0, a1, a2);
+        }
+        case 4: {
+            const [a0, a1, a2, a3] = args;
+            return () => fn(a0, a1, a2, a3);
+        }
+        case 5: {
+            const [a0, a1, a2, a3, a4] = args;
+            return () => fn(a0, a1, a2, a3, a4);
+        }
+        case 6: {
+            const [a0, a1, a2, a3, a4, a5] = args;
+            return () => fn(a0, a1, a2, a3, a4, a5);
+        }
+        case 7: {
+            const [a0, a1, a2, a3, a4, a5, a6] = args;
+            return () => fn(a0, a1, a2, a3, a4, a5, a6);
+        }
+        case 8: {
+            const [a0, a1, a2, a3, a4, a5, a6, a7] = args;
+            return () => fn(a0, a1, a2, a3, a4, a5, a6, a7);
+        }
+        default: {
+            const values = Object.freeze(args);
+            return () => fn.apply(undefined, values as unknown as any[]);
+        }
     }
 }

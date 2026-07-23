@@ -19,7 +19,6 @@ export type ArchetypeRow = number & { readonly [ARCHETYPE_ROW_BRAND]: true };
 
 /** 单个 Archetype 不可能包含超过 World 实体索引容量的行。 */
 const MAX_ARCHETYPE_ROW = ENTITY_INDEX_MASK - 1;
-const RETAIN_EMPTY_CHUNKS = 1;
 /** 组件集合相同的实体密集存储；行和 Chunk 状态由 Archetype 自己拥有。 */
 export class Archetype {
     readonly mask: Mask;
@@ -32,24 +31,24 @@ export class Archetype {
     /** 当前实体数量。 */
     count = 0;
     version = 0;
+    private _spareChunkLimit = 0;
     private _disposed = false;
 
-    /** 当前包含有效行的 Chunk 数量；可能小于 `views.length`。 */
+    /** 当前包含有效行的逻辑 Chunk 数量；可能小于已分配 Chunk 数量。 */
     get chunks(): number { return Math.ceil(this.count / this.chunkCapacity); }
     /** 当前全部已分配 Chunk 占用的 Buffer 字节数。 */
     get allocatedBytes(): number { return this._chunks.allocatedBytes; }
 
-    /** 按组件编号排序的组件元数据。 */
-
     /** @internal 当前已分配（包含保留空 Chunk）的数量。 */
     get allocatedChunkCount(): number { return this._chunks.length; }
+    /** 最多保留的连续空闲尾 Chunk 数量。 */
+    get spareChunkLimit(): number { return this._spareChunkLimit; }
 
     /** 创建指定组件掩码对应的 Archetype。 */
     constructor(
         mask: Mask,
         types: readonly ComponentMeta[] | undefined,
         allocator: IAllocator,
-        private readonly onLayoutChange?: () => void,
     ) {
         this.mask = mask.clone();
         this.types = types === undefined ? [] : [...types].sort((a, b) => a.id - b.id);
@@ -68,6 +67,17 @@ export class Archetype {
         );
         this.chunkCapacity = this._chunks.layout.capacity;
         this.maxChunkIdx = Math.floor(MAX_ARCHETYPE_ROW / this.chunkCapacity);
+    }
+
+    /** 设置最多保留的连续空闲尾 Chunk 数量；增大限制不会主动分配 Chunk。 */
+    setSpareChunkLimit(value: number): void {
+        this.assertUsable();
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw new RangeError("spareChunkLimit must be a non-negative safe integer");
+        }
+        if (value === this._spareChunkLimit) return;
+        this._spareChunkLimit = value;
+        this.releaseUnusedChunks();
     }
 
     /** 返回指定 Chunk 当前有效行数。 */
@@ -220,10 +230,27 @@ export class Archetype {
     dispose(): void {
         if (this._disposed) return;
         this._disposed = true;
-        const hadChunks = this._chunks.length > 0;
-        this._chunks.dispose();
         this.count = 0;
-        if (hadChunks) this.markLayoutChanged();
+        let failed = false;
+        let firstError: unknown;
+        try {
+            this.releaseChunksUntil(0);
+        } catch (error) {
+            failed = true;
+            firstError = error;
+        }
+        const beforeDispose = this._chunks.length;
+        try {
+            this._chunks.dispose();
+        } catch (error) {
+            if (!failed) {
+                failed = true;
+                firstError = error;
+            }
+        } finally {
+            if (this._chunks.length < beforeDispose) this.version++;
+        }
+        if (failed) throw firstError;
     }
 
     private ensureChunk(chunkIdx: number): void {
@@ -235,25 +262,41 @@ export class Archetype {
             throw new RangeError(`Archetype Chunk capacity exceeded: ${this.maxChunkIdx + 1}`);
         }
         this._chunks.push();
-        try {
-            this.markLayoutChanged();
-        } catch (error) {
-            this._chunks.pop();
-            throw error;
-        }
+        this.version++;
     }
 
     private releaseUnusedChunks(): void {
-        const keep = this.chunks + RETAIN_EMPTY_CHUNKS;
-        while (this._chunks.length > keep) {
-            this.markLayoutChanged();
-            this._chunks.pop();
-        }
+        const keep = Math.min(
+            this._chunks.length,
+            this.chunks + this._spareChunkLimit,
+        );
+        this.releaseChunksUntil(keep);
     }
 
-    private markLayoutChanged(): void {
-        this.version++;
-        if (this.onLayoutChange) this.onLayoutChange();
+    private releaseChunksUntil(keep: number): void {
+        let failed = false;
+        let firstError: unknown;
+        while (this._chunks.length > keep) {
+            const before = this._chunks.length;
+            try {
+                this._chunks.pop();
+            } catch (error) {
+                if (!failed) {
+                    failed = true;
+                    firstError = error;
+                }
+            }
+            if (this._chunks.length < before) {
+                this.version++;
+                continue;
+            }
+            if (!failed) {
+                failed = true;
+                firstError = new Error("Archetype Chunk release made no progress");
+            }
+            break;
+        }
+        if (failed) throw firstError;
     }
 
     private assertUsable(): void {

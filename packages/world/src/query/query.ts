@@ -20,10 +20,8 @@ export interface IComponentResolver {
 }
 /** Query 构造时所需的原型数据源接口。 */
 export interface IArchetypeSource {
-    /** 存活期间追加 Archetype、整体释放时递增。 */
+    /** 存活期间追加 Archetype、终态清空时递增。 */
     readonly version: number;
-    /** 任一 Archetype 的已分配 Chunk 集合变化时递增。 */
-    readonly layoutVersion: number;
     readonly archetypes: readonly Archetype[];
 }
 
@@ -57,6 +55,72 @@ interface QueryArchetypeEntry<Components extends readonly (object | undefined)[]
 
 const MAX_DNF_CLAUSES = 256;
 
+function synchronizeChunks<Components extends readonly (object | undefined)[]>(
+    archetypeEntry: QueryArchetypeEntry<Components>,
+    selections: readonly Selection[],
+): void {
+    const archetype = archetypeEntry.archetype;
+    const activeCount = archetype.allocatedChunkCount;
+    let stableCount = Math.min(archetypeEntry.chunkCount, activeCount);
+
+    while (stableCount > 0) {
+        const chunkIdx = stableCount - 1;
+        const chunk = archetype.chunkAt(chunkIdx);
+        if (chunk && archetypeEntry.chunks[chunkIdx].current[1] === chunk.entities) break;
+        stableCount--;
+    }
+    for (let chunkIdx = stableCount; chunkIdx < archetypeEntry.chunkCount; chunkIdx++) {
+        releaseEntry(archetypeEntry.chunks[chunkIdx], selections.length);
+    }
+    for (let chunkIdx = stableCount; chunkIdx < activeCount; chunkIdx++) {
+        writeEntry(archetypeEntry, chunkIdx, selections);
+    }
+    archetypeEntry.chunkCount = activeCount;
+    archetypeEntry.version = archetype.version;
+}
+
+function writeEntry<Components extends readonly (object | undefined)[]>(
+    archetypeEntry: QueryArchetypeEntry<Components>,
+    chunkIdx: number,
+    selections: readonly Selection[],
+): void {
+    const archetype = archetypeEntry.archetype;
+    const chunk = archetype.chunkAt(chunkIdx);
+    if (!chunk) throw new Error(`Archetype Chunk ${chunkIdx} is missing`);
+    let entry = archetypeEntry.chunks[chunkIdx];
+    if (!entry) {
+        const current: unknown[] = new Array(2 + selections.length);
+        entry = {
+            current: current as QueryCurrent<Components>,
+        };
+        archetypeEntry.chunks.push(entry);
+    }
+    const current = entry.current as unknown[];
+    current[0] = archetype.chunkRowCount(chunkIdx);
+    current[1] = chunk.entities;
+    const views = chunk.views;
+    for (let i = 0; i < selections.length; i++) {
+        const selection = selections[i];
+        const columns = views[selection.meta.id];
+        if (!columns && !selection.optional) {
+            throw new Error(`Required component ${selection.meta.name} is missing from matched archetype`);
+        }
+        current[i + 2] = columns;
+    }
+}
+
+function releaseEntry<Components extends readonly (object | undefined)[]>(
+    entry: QueryChunkEntry<Components>,
+    selectionCount: number,
+): void {
+    const current = entry.current as unknown[];
+    current[0] = 0;
+    current[1] = undefined;
+    for (let viewIndex = 0; viewIndex < selectionCount; viewIndex++) {
+        current[viewIndex + 2] = undefined;
+    }
+}
+
 /**
  * 按 Archetype Chunk 遍历查询结果的低分配迭代器。
  *
@@ -64,6 +128,7 @@ const MAX_DNF_CLAUSES = 256;
  */
 export class QueryIter<Components extends readonly (object | undefined)[]> {
     private _entries: readonly QueryArchetypeEntry<Components>[] = [];
+    private _selections: readonly Selection[] = [];
     private _length = 0;
     private _archetypeIndex = 0;
     private _chunkIndex = 0;
@@ -71,9 +136,14 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     current!: QueryCurrent<Components>;
 
     /** @internal 重置 Query 持有的复用迭代器。 */
-    reset(entries: readonly QueryArchetypeEntry<Components>[], length: number): this {
+    reset(
+        entries: readonly QueryArchetypeEntry<Components>[],
+        length: number,
+        selections: readonly Selection[],
+    ): this {
         this._entries = entries;
         this._length = length;
+        this._selections = selections;
         this._archetypeIndex = 0;
         this._chunkIndex = 0;
         return this;
@@ -82,12 +152,16 @@ export class QueryIter<Components extends readonly (object | undefined)[]> {
     /** 前进到下一个非空 Chunk；成功时返回 `true` 并更新 {@link current}。 */
     next(): boolean {
         const entries = this._entries;
+        const selections = this._selections;
         const length = this._length;
         let archetypeIndex = this._archetypeIndex;
         let chunkIndex = this._chunkIndex;
 
         while (archetypeIndex < length) {
             const archetypeEntry = entries[archetypeIndex];
+            if (chunkIndex === 0 && archetypeEntry.version !== archetypeEntry.archetype.version) {
+                synchronizeChunks(archetypeEntry, selections);
+            }
             while (chunkIndex < archetypeEntry.chunkCount) {
                 const currentChunkIndex = chunkIndex++;
                 const entry = archetypeEntry.chunks[currentChunkIndex];
@@ -118,8 +192,7 @@ export class Query<Components extends readonly (object | undefined)[]> {
     private readonly _entries: QueryArchetypeEntry<Components>[] = [];
     private readonly _iterator = new QueryIter<Components>();
     private _knownArchetypeCount = 0;
-    private _archetypeVersion = -1;
-    private _layoutVersion = -1;
+    private _worldVersion = -1;
 
     /** 使用组件解析器与原型数据源创建运行时查询；通常由 World.query() 调用。 */
     constructor(
@@ -134,7 +207,7 @@ export class Query<Components extends readonly (object | undefined)[]> {
             selection.optional ||= !symbolic.every(clause => clause.required.indexOf(selection.type) !== -1);
         }
         this._selections = selections;
-        this.synchronize();
+        this.synchronizeArchetypes();
     }
 
     /**
@@ -143,11 +216,10 @@ export class Query<Components extends readonly (object | undefined)[]> {
      * 同一 Query 始终复用一个迭代器，因此不支持嵌套调用。
      */
     iter(): QueryIter<Components> {
-        if (this._archetypeVersion !== this._archetypes.version ||
-            this._layoutVersion !== this._archetypes.layoutVersion) {
-            this.synchronize();
+        if (this._worldVersion !== this._archetypes.version) {
+            this.synchronizeArchetypes();
         }
-        return this._iterator.reset(this._entries, this._entries.length);
+        return this._iterator.reset(this._entries, this._entries.length, this._selections);
     }
 
     private collectSelections(ast: QueryTypeNode): Selection[] {
@@ -259,11 +331,11 @@ export class Query<Components extends readonly (object | undefined)[]> {
         return false;
     }
 
-    private synchronize(): void {
+    private synchronizeArchetypes(): void {
         const archetypes = this._archetypes.archetypes;
-        // 当前 Store 存活期间只追加 Archetype；缩短表示整体释放或外部数据源重置。
+        // 数据源存活期间只追加 Archetype；缩短表示终态释放。
         if (archetypes.length < this._knownArchetypeCount) {
-            this._entries.length = 0;
+            this.releaseAllEntries();
             this._knownArchetypeCount = 0;
         }
         for (let archetypeIndex = this._knownArchetypeCount; archetypeIndex < archetypes.length; archetypeIndex++) {
@@ -276,64 +348,21 @@ export class Query<Components extends readonly (object | undefined)[]> {
                 version: -1,
             };
             this._entries.push(entry);
-            this.synchronizeChunks(entry);
+            synchronizeChunks(entry, this._selections);
         }
         this._knownArchetypeCount = archetypes.length;
+        this._worldVersion = this._archetypes.version;
+    }
 
-        // Chunk 布局变化是低频路径；这里只扫描已匹配分组，并只同步版本改变的分组。
-        if (this._layoutVersion !== this._archetypes.layoutVersion) {
-            for (let i = 0; i < this._entries.length; i++) {
-                const entry = this._entries[i];
-                if (entry.version !== entry.archetype.version) this.synchronizeChunks(entry);
+    private releaseAllEntries(): void {
+        for (let entryIdx = 0; entryIdx < this._entries.length; entryIdx++) {
+            const archetypeEntry = this._entries[entryIdx];
+            for (let chunkIdx = 0; chunkIdx < archetypeEntry.chunkCount; chunkIdx++) {
+                releaseEntry(archetypeEntry.chunks[chunkIdx], this._selections.length);
             }
+            archetypeEntry.chunkCount = 0;
+            archetypeEntry.version = -1;
         }
-        this._archetypeVersion = this._archetypes.version;
-        this._layoutVersion = this._archetypes.layoutVersion;
-    }
-
-    private synchronizeChunks(archetypeEntry: QueryArchetypeEntry<Components>): void {
-        const archetype = archetypeEntry.archetype;
-        const activeCount = archetype.allocatedChunkCount;
-        for (let chunkIdx = archetypeEntry.chunkCount; chunkIdx < activeCount; chunkIdx++) {
-            this.writeEntry(archetypeEntry, chunkIdx);
-        }
-        for (let chunkIdx = activeCount; chunkIdx < archetypeEntry.chunkCount; chunkIdx++) {
-            this.releaseEntry(archetypeEntry.chunks[chunkIdx]);
-        }
-        archetypeEntry.chunkCount = activeCount;
-        archetypeEntry.version = archetype.version;
-    }
-
-    private writeEntry(archetypeEntry: QueryArchetypeEntry<Components>, chunkIdx: number): void {
-        const archetype = archetypeEntry.archetype;
-        const chunk = archetype.chunkAt(chunkIdx);
-        if (!chunk) throw new Error(`Archetype Chunk ${chunkIdx} is missing`);
-        let entry = archetypeEntry.chunks[chunkIdx];
-        if (!entry) {
-            const current: unknown[] = new Array(2 + this._selections.length);
-            entry = {
-                current: current as QueryCurrent<Components>,
-            };
-            archetypeEntry.chunks.push(entry);
-        }
-        const current = entry.current as unknown[];
-        current[0] = archetype.chunkRowCount(chunkIdx);
-        current[1] = chunk.entities;
-        const views = chunk.views;
-        for (let i = 0; i < this._selections.length; i++) {
-            const selection = this._selections[i];
-            const columns = views[selection.meta.id];
-            if (!columns && !selection.optional) throw new Error(`Required component ${selection.meta.name} is missing from matched archetype`);
-            current[i + 2] = columns;
-        }
-    }
-
-    private releaseEntry(entry: QueryChunkEntry<Components>): void {
-        const current = entry.current as unknown[];
-        current[0] = 0;
-        current[1] = undefined;
-        for (let viewIndex = 0; viewIndex < this._selections.length; viewIndex++) {
-            current[viewIndex + 2] = undefined;
-        }
+        this._entries.length = 0;
     }
 }

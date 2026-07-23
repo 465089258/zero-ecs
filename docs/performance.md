@@ -19,13 +19,16 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 固定工作集且相关池、数组、缓存和 Table 容量不发生收缩与再次增长时，不创建源码可见的 object、array、closure、iterator、tuple/result wrapper、Error、TypedArray 或 Buffer。
 - 不依赖 JIT 内联、逃逸分析或临时对象消除来宣称零分配。
 - 执行性能优先于 GC 数字；只有经过基准证明，才允许用对象池、高水位缓存和更复杂的复用结构换取收益。
-- 达到新的 Entity、Command、EntityTransaction、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Archetype 当前保留一个额外空 Chunk，并释放更远的连续空尾 Chunk；再次增长超过保留容量时会重新创建 Buffer 租约、Table 和 TypedArray views，因此不能只凭历史实体峰值声明结构迁移零分配。
+- 达到新的 Entity、Command、EntityTransaction、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Archetype 的 `spareChunkLimit` 默认是 0，因此立即释放全部逻辑需求之外的连续空尾 Chunk；再次增长会重新创建 Buffer 租约、Table 和 TypedArray views。高级调用方可以显式提高保留上限，但不能只凭历史实体峰值声明结构迁移零分配。
 - 热路径中的复用对象必须具有稳定 shape，并避免 Proxy、临时闭包、逐项 capability/context 和不必要的多态转发。
 - 不为已经由 SystemParam 类型映射或接口能力分层排除的操作增加第二套运行时权限判断。
 
 这里的“零显式分配”描述库源码可控制的行为，不承诺 JavaScript 引擎内部的 Map 节点、调用栈、JIT 或内联缓存实现绝对不分配。
 
-固定实体总数下的 A↔B 结构 churn 仍可能超过每个 Archetype 保留的一个空 Chunk并持续分配。这是当前明确的存储策略边界；性能测试必须把创建、释放和 GC 计入真实工作量。未来若评审 high-water retain 或显式 `trim()`，必须作为独立存储 candidate 落地并重新建立基线，不能与 World facade、Query 或 Scheduler 改造混合归因。
+默认配置下，固定实体总数的 A↔B 结构 churn 可能在 Chunk 边界持续释放和重建物理 Chunk。
+这是当前明确的存储策略边界；性能测试必须把创建、释放和 GC 计入真实工作量。显式
+`spareChunkLimit > 0` 与未来 Game 自适应策略必须作为独立存储 candidate 建立基线，不能
+与 World facade、Query 或 Scheduler 改造混合归因。
 
 ### 冷路径原则
 
@@ -69,12 +72,16 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - Node 的每个 runtime pair 使用两个预热完成的独立子进程，控制器只允许当前一侧进入计时段；不得在同一进程或 Worker isolate 中同时加载 baseline 与 candidate。Chromium 使用两个独立浏览器进程/实例组成一对，不在同一页面、renderer 或共享 V8 isolate 中加载两份 bundle；仅创建不同 browser context 不足以证明 heap 隔离。
 - 每个 measurement pair 都包含相同工作量的 baseline 与 candidate，控制器按 `A/B → B/A` 交替触发，避免温度、降频和后台负载始终偏向一方。顺序在计时前确定，计时段内不创建随机数或调度对象；原始记录必须保留 runtime-pair id、round index、进程/浏览器标识和执行顺序。
 - 空/少量 System 场景每 round 执行 1,000,000 次完整 `update()`，分别覆盖 0、1、4 个 no-op System。
+- Scheduler 参数绑定专项场景绕过 Game，直接执行 `Scheduler.run()`，并以实际系统调用数作为
+  分母。固定覆盖 1/16/64 个系统与 0/1/4/8/9 个参数，分别观察单系统 Stage、常见参数数量、
+  0～8 专用 runner 边界和 `apply` fallback；不能用只有零参数的完整 `update()` 场景决定
+  runner 选型。
 - 实体读取场景固定 65,536 个已物化实体，每个方法循环 16 遍，即每 round 1,048,576 次调用；World 的 `valid/get/has` 分开计时。当前 `view()` 需要额外 row 才能完成实体字段访问，不对孤立的返回动作建立 facade benchmark。
 - **固定起始状态的真实批量结构场景**每 round 处理 16,384 个实体，materialize、migrate 和 despawn 分开报告；只允许把一次性构造初始 World 排除在计时外。每个场景必须在 baseline 前定义逻辑起始状态 `S0`、目标子段 `T: S0 → S1` 和恢复子段 `R: S1 → S0`，一个完整 round 严格执行 `t0 → T → t1 → R → t2`。materialize 的恢复包括 despawn 并重新 reserve 下一轮句柄，migrate 的恢复是反向迁移和独立 flush，despawn 的恢复包括 reserve/materialize 替代实体；若实体身份不能保持，恢复必须在预分配输入缓冲中更新下一轮句柄，并把该工作计入 R。不得在计时外恢复 World、Table、池或输入数组。
 - 真实批量结构场景同时报告目标子段 `(t1 - t0) / targetOperationCount`、恢复子段 `(t2 - t1) / entityCount`（命名为 `ns/entity-recovery`）和完整 cycle `(t2 - t0) / entityCount`。完整 cycle 是正式防隐藏成本指标；目标子段只用于定位操作差异，不能单独作为策略通过依据。T/R 引起的 Table 创建、释放、分配和 GC 都属于工作量；中间时钟读取是所有候选相同的固定成本，并纳入 A/A 校准。
 - **已有容量内的内核场景**预先建立足够的源/目标 Table 容量，每 round 同样处理 16,384 个实体；目标与恢复组成完整 A→B→A cycle，被测过程不得创建、释放或改变 Table 身份/容量，用于单独观察结构迁移内核成本。preflight 和 round 后检查必须验证 Table 计数、身份、容量与版本符合该前提。
 - 另设循环 churn 场景：固定 16,384 个实体和历史峰值，每个被测循环必须严格执行 `record A→B → flush → record B→A → flush`。两段操作不能在同一次 `Update.post` 提交前记录，否则同一 Entity 的 EntityTransaction 可能合并回 A 而不发生真实迁移。两次 record/flush 以及当前 Chunk 尾部释放、保留和再次创建都属于真实工作量，不能排除在计时、分配记录或 GC 诊断之外。
-- churn 在正式计时前执行带完整 instrumentation 的正确性/诊断 preflight：每个 cycle 的 delta 必须满足 `appliedMigrationCount === entityCount * 2`、`flushCount === 2`，且全部实体最终位于 A。不能只检查最终 mask；必须使用 Archetype 版本、Chunk 数和诊断计数证明两次 flush 都真实执行。当前策略还必须验证每个 Archetype 最多保留一个额外空 Chunk，释放只发生在连续尾部，随后 `push` 复用相同的连续 `chunkIdx`。
+- churn 在正式计时前执行带完整 instrumentation 的正确性/诊断 preflight：每个 cycle 的 delta 必须满足 `appliedMigrationCount === entityCount * 2`、`flushCount === 2`，且全部实体最终位于 A。不能只检查最终 mask；必须使用 Archetype 版本、Chunk 数和诊断计数证明两次 flush 都真实执行。默认策略必须验证空尾 Chunk 全部释放；显式 `spareChunkLimit > 0` 场景验证只保留配置数量的连续尾 Chunk，随后 `push` 复用相同的连续 `chunkIdx`。
 - churn 正式计时主要报告 `ns/entity-cycle`，一个 op 表示单个实体完整经历 A→B→A，分母为 `entityCount`；同时报告 `ns/applied-migration`，分母固定为 `entityCount * 2`。两项都包含 record 和 flush 的全部成本；配套诊断结果保存实际 `appliedMigrationCount` 并证明该固定分母成立，不得让候选自行选择更有利的分母。
 - 正确性/诊断运行与正式计时运行必须使用独立构建。诊断运行允许在被测逻辑中更新迁移和 Chunk/Table 生命周期计数，但只比较每轮 delta，并在计时段外重置；这些运行不产生正式 ns/op。正式计时构建必须从产物中完全移除非生产计数器的字段、分支和写入，并通过产物审计确认，只保留 baseline/candidate 完全相同的时钟调用、操作序列和计时外 O(1) 状态校验。除 instrumentation 外，两种构建使用同一提交、生产优化配置和实验参数；完整状态、两次 flush 和 Chunk 身份先由诊断构建证明，正式构建在 round 后使用公开状态做一致的最终状态校验。
 - 每个正式生产计时产物还必须在 warmup 前独立执行一次不计时的完整功能 preflight，不能只依赖 instrumentation 构建：record A→B 并第一次 flush 后，通过 Query 数量、`has`/等价公开状态和有语义的调用返回值验证全部 `entityCount` 个实体确实位于 B、A 中为零；再 record B→A 并第二次 flush，验证全部返回 A、B 中为零。materialize/despawn 场景同样在目标子段后验证 S1、恢复后验证 S0。任一正式产物 preflight 失败就中止该 runtime，不得产生 warmup 或 measurement 样本；preflight 结束在下一步 warmup 所需的逻辑 S0。
@@ -134,7 +141,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 | 路径 | 稳定容量分配 | 说明 |
 |---|---|---|
 | Game 阶段推进 | 无显式分配 | 使用索引循环执行 `first/fixed/last/post` |
-| Scheduler.run | 无显式分配 | 通过 Stage token 的 Map 直接定位；0～8 参数直接调用，更多参数复用已编译 args 执行 `apply` |
+| Scheduler.run | 无显式分配 | 通过 Stage token 的 Map 直接定位 runner 数组；参数数量已在 prepare 编译，0～8 参数使用固定 runner，更多参数复用冻结 args 执行 `apply` |
 | QueryIter.next/current | 无显式分配 | 复用 QueryIter、entry 和 current tuple，只更新 count/current 引用 |
 | flushCommandsSystem | 无显式分配 | Commands Service 的双高水位队列、used 游标与按类型对象池复用；新峰值才扩容 |
 | EntityCommand 记录 | 无显式分配 | 固定四槽数字指令覆盖历史数组；新峰值才 `push` |
@@ -151,8 +158,8 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 |---|---|---|
 | 首次 Command 类型/并发峰值 | Command 实例、池数组、队列扩容 | 达到高水位后复用 |
 | Commands 收集 EntityCommand | 首次触达 Entity 索引页及 accumulator 高水位 | 分页 TypedArray 保存 entity→accumulator，触达列表和命令数组复用 |
-| 新 Archetype/Chunk | Archetype、DataSet Table、配置大小的 Buffer、TypedArray views | Chunk 首次创建；每个 Archetype 最多保留一个额外空 Chunk，更多空尾 Chunk 自动释放 |
-| Entity/Archetype insert/remove | 新 Chunk/Buffer，或空尾 Chunk 释放后的再次增长 | ArchetypeRow 与 remove 返回值不分配对象；超过保留容量的 churn 会重建 Buffer、Table 和 TypedArray views |
+| 新 Archetype/Chunk | Archetype、DataSet Table、配置大小的 Buffer、TypedArray views | Chunk 首次创建；默认不保留空 Chunk，可通过 `spareChunkLimit` 显式设置连续尾部保留上限 |
+| Entity/Archetype insert/remove | 新 Chunk/Buffer，或空尾 Chunk 释放后的再次增长 | ArchetypeRow 与 remove 返回值不分配对象；默认边界 churn 会重建 Buffer、Table 和 TypedArray views |
 | Query 结构刷新 | 首次达到更多匹配 Chunk 时扩展高水位缓存 | matched/version、entry 和 current 跨 rebuild 复用；组件列直接借用 Archetype.views |
 | Timer.once | InnerTask 首次对象及 bucket 扩容 | 槽直接保存池化 InnerTask，不再创建 LevelTask 包装对象 |
 | EventService.event/post | EventArgs 首次实例及队列扩容 | EventArgs 按类型回池，双队列复用 |
@@ -187,14 +194,12 @@ DenseRows 或 Query 自己的组件列数组。Chunk 创建/释放递增 Archety
 变化不触发 Query 结构 rebuild；`QueryIter.next()` 每次从 Archetype 读取当前 Chunk 行数。
 
 当前回收策略由 Archetype 明确执行：逻辑行始终密集，除最后一个活动 Chunk 外都满；删除
-使用全局末行填补。Archetype 最多保留一个额外空 Chunk，更多空 Chunk 只从尾部 `pop`。
-这使常见的小幅回落可直接复用已有 Chunk，同时避免扫描 Table 或在 DataSet 中维护
-occupied/empty frontier。超过该保留容量的 A↔B churn 仍会重新创建 Buffer、Table 和
-TypedArray views，必须在 benchmark 中如实计入。
+使用全局末行填补。`spareChunkLimit` 默认是 0，全部超出逻辑需求的空 Chunk 只从尾部
+`pop`；提高限制只影响未来释放，不主动分配，降低限制会立即释放超额尾 Chunk。
 
-若未来要改变空 Chunk 保留数、采用完全 high-water retain 或增加显式 `trim()`，它是独立
-存储策略变更：必须同时测量结构 cycle、Query、内存与 Tick 尾延迟，先落地并冻结存储基线，
-再评估其他 facade 或调度改造。不能把存储策略收益归因给上层 API 变化。
+默认边界 churn 会重新创建 Buffer、Table 和 TypedArray views，必须在 benchmark 中如实
+计入。显式保留上限与未来 Game 自适应策略必须同时测量结构 cycle、Query、内存与 Tick
+尾延迟，不能把存储策略收益归因给上层 API 变化。
 
 ## 已完成的无 JIT 调整
 

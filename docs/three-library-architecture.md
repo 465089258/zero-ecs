@@ -74,8 +74,9 @@ Entity 使用 20 位索引和独立 12 位版本。slot 位置使用一个 U32�
 
 ### 2.2 Query
 
-World 维护 Archetype 集合版本与全局 Chunk 布局版本。稳定布局时 Query 检查为 O(1)；
-版本变化时才匹配新增 Archetype 或同步受影响 Chunk。
+World 版本只表达 Archetype 集合变化，每个 Archetype 的版本只表达自己的物理 Chunk
+集合变化。稳定 `Query.iter()` 为 O(1)；QueryIter 首次进入匹配 Archetype 时比较局部版本，
+只同步发生变化的连续尾 Chunk。
 
 一个 Query 复用一个内置 QueryIter，因此同一实例不可重入。Game 允许系统参数重复声明
 相同 QueryType，并为每个参数位置创建独立 Query，嵌套同型查询使用两个参数即可。
@@ -96,8 +97,9 @@ Scheduler 只认识：
 - before/after 依赖；
 - `SystemParamProvider`。
 
-Game 在 start/prepare 冷路径解析参数。运行阶段复用固定参数数组，0～8 参数使用固定调用
-分支。Scheduler 不导入 World、Query、Resource、State、Service 或 Game 生命周期。
+Game 在 start/prepare 冷路径解析参数，Scheduler 将结果编译为 0～8 参数专用 runner；
+更多参数复用冻结数组执行 `apply`。运行阶段不再判断参数数量。Scheduler 不导入 World、
+Query、Resource、State、Service 或 Game 生命周期。
 
 ## 4. Game
 

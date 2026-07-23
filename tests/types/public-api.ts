@@ -45,6 +45,8 @@ import {
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
 import { Scheduler } from "@zero-ecs/scheduler";
+// @ts-expect-error Runtime scheduler storage is not part of the public API.
+import type { RuntimeStage, RuntimeSystem } from "@zero-ecs/scheduler";
 
 const enum Position { x, y }
 

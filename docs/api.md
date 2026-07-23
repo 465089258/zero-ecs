@@ -99,6 +99,15 @@ for (let chunkIdx = 0; chunkIdx < archetype.chunks; chunkIdx++) {
 这些列属于 Archetype/Chunk 生命周期，结构变化后不得长期保留。底层 `DataSet` 只管理
 Table 的 `push/pop`，Table 本身不提供行分配、删除、计数或版本 API。
 
+Archetype 默认不保留逻辑需求之外的空 Chunk。高级调用方可以显式调整连续空闲尾 Chunk
+保留上限；增大限制不会主动分配，降低限制会立即释放超额 Chunk：
+
+```ts
+archetype.setSpareChunkLimit(1);
+archetype.spareChunkLimit; // 1
+archetype.setSpareChunkLimit(0); // 立即归还全部 spare Chunk
+```
+
 ### World
 
 ```ts
@@ -145,7 +154,8 @@ scheduler.dispose();
 ```
 
 依赖目标支持 SystemHandle、唯一函数和 SystemSet。before/after 只能连接同一 Stage；
-`beforeIfPresent/afterIfPresent` 允许可选系统函数。参数在 prepare 解析一次。
+严格 `before/after` 指向空 SystemSet 会报错，`beforeIfPresent/afterIfPresent` 对不存在的
+系统函数或空集合保持 no-op。参数在 prepare 解析一次并编译为固定 runner。
 
 ## @zero-ecs/game
 

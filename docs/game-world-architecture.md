@@ -264,8 +264,8 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 | QueryType | `world.query(type)` |
 | Resource / State / Write(State) / Service | 对应 Game 容器实例 |
 
-运行阶段只复用固定参数数组，不每 Tick 查询容器。State Read/Write 仍是类型映射和
-调度元数据，不是运行时访问控制。
+prepare 阶段把解析值编译进固定 runner；运行阶段不再读取参数描述、查询容器或判断参数
+数量。State Read/Write 仍是类型映射和调度元数据，不是运行时访问控制。
 
 ## 10. 公共 API 与兼容性
 
@@ -292,6 +292,6 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 - 旧核心 Service 不出现在 root 或 advanced 包入口。
 - 正常 JIT、`--jitless`、声明类型与示例构建全部通过。
 
-当前 Archetype 保留一个额外空 Chunk，并只从连续尾部释放更多空 Chunk；DataSet 不参与
-行数、版本或回收策略。若未来要切换为完全 high-water retain 或增加显式 trim，应作为独立
-存储性能变更评审，不能与 World facade 或 Scheduler candidate 混测。
+当前 Archetype 的 `spareChunkLimit` 默认是 0，因此立即释放全部逻辑需求之外的连续尾
+Chunk；高级调用方可以显式提高保留上限。DataSet 不参与行数、版本或回收策略。未来 Game
+自适应保留或其他 high-water 策略仍应作为独立存储性能变更评审。

@@ -218,10 +218,9 @@ Game 的安全 API 是默认路径，World 是可选的底层扩展路径。二�
 
 ### 7.2 必须收紧或迁移
 
-#### P0：完成 World 的局部 Chunk 版本模型
+#### P0（已完成）：World 的局部 Chunk 版本模型
 
-当前 World 仍维护全局 `layoutVersion`，任一 Archetype 的 Chunk 数变化都会让全部 Query
-进入布局同步检查。应按已经确认的设计迁移为：
+World 已删除全局 `layoutVersion`，当前职责为：
 
 - `World.version` 只表达 Archetype 集合变化；
 - `Archetype.version` 只表达自身物理 Chunk 集合变化；
@@ -230,9 +229,9 @@ Game 的安全 API 是默认路径，World 是可选的底层扩展路径。二�
 
 这不是把策略上移到 Game，而是让 World 的数据机制具有正确的局部失效粒度。
 
-#### P0：把固定空 Chunk 改为机制参数
+#### P0（已完成）：把固定空 Chunk 改为机制参数
 
-当前 Archetype 使用硬编码 `RETAIN_EMPTY_CHUNKS = 1`。应改为：
+Archetype 已删除硬编码 `RETAIN_EMPTY_CHUNKS = 1`，当前机制为：
 
 - 每个 Archetype 拥有 `spareChunkLimit`，默认 `0`；
 - 降低限制时立即释放超额连续尾 Chunk；
@@ -269,28 +268,32 @@ Game 的安全 API 是默认路径，World 是可选的底层扩展路径。二�
 - 不全局修改 Scheduler prototype；
 - 同时补充 Archetype/Chunk 填充率、逻辑/物理 Chunk 和 spare Chunk 统计。
 
-#### P1：清理 Scheduler 的无效 Builder 标识
+#### 已完成：清理 Scheduler 的无效 Builder 标识
 
-当前 `ScheduleBuilder` 保存 `_builderId`，句柄也写入未声明的 `__builderId`，但实际校验已经
-通过 `id + 对象身份` 完成。该字段没有提供额外保护，应删除全局 builder 计数、字段和隐藏
-句柄属性，保留对象身份校验。
+`ScheduleBuilder` 已删除全局 builder 计数、`_builderId` 和 Handle 上未声明的
+`__builderId`。归属校验只使用 `id + 对象身份`；不同 Builder 即使生成相同数字 ID，
+Handle 也不能交叉使用。
 
-#### P1：编译 Scheduler runner
+#### 已完成：编译 Scheduler runner
 
-将参数数量分支从 `run()` 移到 `prepare()` 是符合冷热分离原则的内部优化，但必须：
+参数数量分支已经从 `run()` 移到 `prepare()`：
 
-- 以目标平台基准决定是否采用；
-- 保留当前 0～8 参数专用路径；
-- 避免 `systems[i].runner()` 改变 0 参数普通函数的 `this`；
-- 优先让 RuntimeStage 直接保存 runner 数组；
-- 不宣称“零数组索引”或“无 Map”，只说明消除了参数数组读取与每次参数数量分支。
+- 0 参数直接保存原函数，1～8 参数生成固定参数 runner；
+- 9 个及以上参数由 runner 复用冻结参数数组执行 `apply`；
+- Stage token 直接映射到不可变 runner 数组，不再保存 RuntimeStage/RuntimeSystem 包装；
+- `run()` 先把数组元素取到局部变量再调用，保持 0 参数普通函数的 `this === undefined`；
+- 热路径仍包含 Stage Map 查找、runner 数组索引和函数调用，不宣称“零数组索引”或“无 Map”。
 
-#### P1：补全 Scheduler 冷路径诊断
+本机 Node/V8 专项基准已经证明 1～8 参数路径具有明确收益，9 参数 fallback 基本持平。
+这只作为实现选型证据；正式发布仍执行 `performance.md` 规定的固定 Node、`--jitless`
+和 Chromium 配对门槛。
 
-- 严格 `before/after` 遇到空 SystemSet 时应报错；
-- `beforeIfPresent/afterIfPresent` 遇到空集合时保持 no-op；
-- Kahn 失败后提取真实环路，不把全部未输出节点伪装成一条环；
-- `RuntimeSystem`、`RuntimeStage` 若没有外部使用价值，应从稳定导出中收回为内部类型。
+#### 已完成：补全 Scheduler 冷路径诊断
+
+- 严格 `before/after` 遇到空 SystemSet 会报错；
+- `beforeIfPresent/afterIfPresent` 遇到空集合保持 no-op；
+- Kahn 失败后只在剩余图中提取真实闭环，不再把全部未输出节点伪装成一条环；
+- `RuntimeSystem`、`RuntimeStage` 已删除，冗余 `_stages` 也不再保留。
 
 #### P1：收紧 Game 根入口
 
@@ -345,12 +348,12 @@ Game 从 World 重导出常用组件、Query DSL 和 World 身份本身不违反
 3. 引入默认 0 的 `spareChunkLimit`。
 4. 增加 Chunk 完全回收、局部 Query 同步和波动基准。
 
-### 阶段 C：完成 Scheduler 收敛
+### 阶段 C：完成 Scheduler 收敛（已完成）
 
-1. 删除无效 builderId。
-2. 强化空 SystemSet 与真实环路诊断。
-3. 以多引擎基准决定 runner 预绑定。
-4. 收回不必要的运行时内部类型。
+1. 已删除无效 builderId，并以 Handle 对象身份维持跨 Builder 隔离。
+2. 已固定空 SystemSet 语义并提供真实环路诊断。
+3. 已建立直接 Scheduler 参数专项基准，并根据当前选型证据采用 runner 预绑定。
+4. 已删除 RuntimeSystem、RuntimeStage 和冗余运行时阶段包装。
 
 ### 阶段 D：完成 Game 控制面收敛
 

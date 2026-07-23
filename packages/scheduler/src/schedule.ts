@@ -31,11 +31,8 @@ interface PendingDependency {
     readonly optional: boolean;
 }
 
-let nextBuilderId = 1;
-
 /** 收集领域无关系统、参数和依赖，并生成不可变 Schedule。 */
 export class ScheduleBuilder<Param = unknown> {
-    private readonly _builderId = nextBuilderId++;
     private readonly _systems: SystemDefinition<Param>[] = [];
     private readonly _byFunction = new Map<Function, SystemHandle[]>();
     private readonly _setMembers = new Map<SystemSet, SystemHandle[]>();
@@ -56,7 +53,6 @@ export class ScheduleBuilder<Param = unknown> {
             id,
             name: fn.name || `System${id}`,
             stage,
-            __builderId: this._builderId,
         }) as SystemHandle;
         this._systems.push(Object.freeze({
             handle,
@@ -173,7 +169,12 @@ export class ScheduleBuilder<Param = unknown> {
     ): readonly SystemHandle[] {
         if (target instanceof SystemSet) {
             this.assertSetStage(target, ownerStage);
-            return this._setMembers.get(target) ?? [];
+            const members = this._setMembers.get(target);
+            if (!members?.length) {
+                if (optional) return [];
+                throw new Error(`Dependency target SystemSet ${target.name} has no registered systems`);
+            }
+            return members;
         }
         if (typeof target !== "function") return [target];
         const handles = this._byFunction.get(target);

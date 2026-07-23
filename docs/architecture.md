@@ -55,8 +55,8 @@ World 不提供业务层结构修改时序保证。直接访问它等同于使�
 ## Query
 
 Query 按 Archetype Chunk 返回缓存列视图，并复用自身 QueryIter。World 维护 Archetype
-集合版本和全局 Chunk 布局版本；稳定布局检查为 O(1)，版本变化时 Query 才增量匹配新
-Archetype 或同步受影响 Chunk。
+集合版本，Archetype 分别维护自己的物理 Chunk 版本。`Query.iter()` 稳定路径为 O(1)；
+QueryIter 首次进入匹配 Archetype 时比较局部版本，只同步发生变化的连续尾 Chunk。
 
 同一个 Query 实例的内置 iterator 不可重入。Game 在同一个 System 参数列表中允许重复
 声明同一个 QueryType，每个参数位置会构建独立 Query 实例，因此嵌套同型查询应显式声明
@@ -65,7 +65,7 @@ Archetype 或同步受影响 Chunk。
 ## Scheduler
 
 Scheduler 只认识 Stage、SystemSet、系统函数、不透明参数与依赖图。参数由 Game 在
-prepare 阶段解析一次，运行阶段复用固定参数数组。
+prepare 阶段解析一次并编译为固定 runner，运行阶段只按 Stage 遍历 runner 数组。
 
 ## Game
 

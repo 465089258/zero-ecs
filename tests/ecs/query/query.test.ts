@@ -112,7 +112,6 @@ describe("QueryType and QueryIter", () => {
         });
         const source: IArchetypeSource = {
             version: 1,
-            layoutVersion: archetype.version,
             get archetypes() {
                 archetypeReads++;
                 return [observed];
@@ -130,6 +129,11 @@ describe("QueryType and QueryIter", () => {
 
         expect(archetypeReads).toBe(0);
         expect(archetypeVersionReads).toBe(0);
+        const iter = query.iter();
+        expect(iter.next()).toBe(true);
+        expect(archetypeVersionReads).toBe(1);
+        expect(iter.next()).toBe(false);
+        expect(archetypeVersionReads).toBe(1);
         world.dispose();
         allocator.clear();
     });
@@ -175,6 +179,70 @@ describe("QueryType and QueryIter", () => {
         expect(chunkIndex).toBe(3);
 
         world.dispose();
+        allocator.clear();
+    });
+
+    test("rewrites replaced tail Chunk views when the allocated count returns to the same value", () => {
+        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+        const world = new World(allocator);
+        const position = world.component(PositionType);
+        const archetype = world.getOrCreateArchetype(position.mask, [position]);
+        const capacity = archetype.chunkCapacity;
+        let count = 0;
+        const insert = (): void => { archetype.insert(++count as never); };
+        const removeLast = (): void => {
+            const ordinal = --count;
+            archetype.remove(archetype.locationAt(
+                Math.floor(ordinal / capacity),
+                ordinal % capacity,
+            ));
+        };
+
+        while (count < capacity * 3) insert();
+        const query = world.query(QueryType.from(With(PositionType)));
+        const iter = query.iter();
+        const currents = [] as typeof iter.current[];
+        while (iter.next()) currents.push(iter.current);
+        const oldSecondEntities = currents[1][1];
+        const oldThirdEntities = currents[2][1];
+
+        while (count > capacity) removeLast();
+        while (count < capacity * 3) insert();
+        expect(archetype.allocatedChunkCount).toBe(3);
+        expect(archetype.chunkAt(1)?.entities).not.toBe(oldSecondEntities);
+        expect(archetype.chunkAt(2)?.entities).not.toBe(oldThirdEntities);
+
+        const refreshed = query.iter();
+        let chunkIdx = 0;
+        while (refreshed.next()) {
+            expect(refreshed.current).toBe(currents[chunkIdx]);
+            if (chunkIdx === 1) expect(refreshed.current[1]).not.toBe(oldSecondEntities);
+            if (chunkIdx === 2) expect(refreshed.current[1]).not.toBe(oldThirdEntities);
+            chunkIdx++;
+        }
+        expect(chunkIdx).toBe(3);
+
+        world.dispose();
+        allocator.clear();
+    });
+
+    test("clears cached Chunk views after the World reaches terminal disposal", () => {
+        const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+        const world = new World(allocator);
+        const position = world.component(PositionType);
+        const archetype = world.getOrCreateArchetype(position.mask, [position]);
+        archetype.insert(1 as never);
+        const query = world.query(QueryType.from(With(PositionType)));
+        const iter = query.iter();
+        expect(iter.next()).toBe(true);
+        const cached = iter.current as unknown[];
+
+        world.dispose();
+        query.iter();
+
+        expect(cached[0]).toBe(0);
+        expect(cached[1]).toBeUndefined();
+        expect(cached[2]).toBeUndefined();
         allocator.clear();
     });
 

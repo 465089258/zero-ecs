@@ -1,12 +1,12 @@
 # Archetype、Query 与 Chunk 生命周期收敛方案
 
-状态：`ArchetypeChunk` 单序列存储已实施；版本收敛与空 Chunk 策略已审查，待分阶段实施和
-独立 benchmark 验证。
+状态：阶段 A～C 已实施并通过测试、构建；独立 benchmark 场景已落地，正式 A/A 与 A/B
+数据待冻结构建后采集。阶段 D Game 自适应策略延期。
 
-本文统一解决以下三个相关问题：
+本文统一解决改造前的以下三个相关问题：
 
 1. 任意 Archetype 的 Chunk 变化都会递增 `World.layoutVersion`，从而唤醒全部 Query。
-2. 空 Archetype 当前固定保留一个 Chunk，导致 Buffer 分散滞留在各个 Archetype。
+2. 空 Archetype 固定保留一个 Chunk，导致 Buffer 分散滞留在各个 Archetype。
 3. 完全释放空 Chunk 后，实体数量在 Chunk 边界反复波动可能产生重复
    `ArchetypeChunk` 和 TypedArray 视图创建。
 
@@ -873,8 +873,8 @@ O(被替换、增加或释放的连续尾部长度 + 1)
 
 ### 14.1 Query 局部版本 candidate
 
-第一步保持当前“最多保留一个空 Chunk”的存储策略，只比较全局 layoutVersion 与局部
-Archetype.version 模型。除现有 Query 核心场景外，至少覆盖：
+正式比较时先使用保留旧“最多一个空 Chunk”策略的冻结 baseline，只比较全局
+layoutVersion 与局部 Archetype.version 模型。除现有 Query 核心场景外，至少覆盖：
 
 ```text
 无结构变化，少量匹配 Archetype

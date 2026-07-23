@@ -75,8 +75,6 @@ export class World extends Disposable {
     private readonly _archetypes: Archetype[] = [];
     private readonly _archetypeMaskIndexes: ArchetypeMaskIndex[] = [];
     private _version = 0;
-    private _layoutVersion = 0;
-    private readonly _markLayoutChanged = (): void => { this._layoutVersion++; };
 
     constructor(allocator: IAllocator) {
         super();
@@ -304,8 +302,6 @@ export class World extends Disposable {
     get archetypes(): readonly Archetype[] { return this._archetypes; }
     /** @internal Archetype 集合版本。 */
     get version(): number { return this._version; }
-    /** @internal 任一 Archetype 的 Chunk 布局版本。 */
-    get layoutVersion(): number { return this._layoutVersion; }
 
     /** 查询组件存储元数据，不触发注册。 */
     @Disposable.guard
@@ -440,7 +436,7 @@ export class World extends Disposable {
         if (idx > MAX_ARCHETYPE_INDEX) {
             throw new RangeError(`Archetype capacity exceeded: ${MAX_ARCHETYPE_INDEX + 1}`);
         }
-        const archetype = new Archetype(mask, types, this._allocator, this._markLayoutChanged);
+        const archetype = new Archetype(mask, types, this._allocator);
         this._archetypes.push(archetype);
         const indexes = this._archetypeMaskIndexes;
         let low = 0;

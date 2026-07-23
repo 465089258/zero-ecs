@@ -74,9 +74,20 @@ export class DataSet<
 
     /** 释放全部 Table；可重复调用。 */
     protected doDispose(): void {
+        let failed = false;
+        let firstError: unknown;
         while (this.tables.length > 0) {
             const table = this.tables.pop();
-            if (table) table.dispose();
+            if (!table) continue;
+            try {
+                table.dispose();
+            } catch (error) {
+                if (!failed) {
+                    failed = true;
+                    firstError = error;
+                }
+            }
         }
+        if (failed) throw firstError;
     }
 }

@@ -22,7 +22,11 @@ export class TimerModule implements Module {
         builder.addSystem(advanceTimersSystem, { inSet: GameSystemSet.TimerAdvance });
         builder.addSystem(dispatchTimerCallbacksSystem, {
             inSet: GameSystemSet.TimerCallbacks,
-            before: [GameSystemSet.Commands, GameSystemSet.Structure, GameSystemSet.Events],
+            beforeIfPresent: [
+                GameSystemSet.Commands,
+                GameSystemSet.Structure,
+                GameSystemSet.Events,
+            ],
         });
     }
 }

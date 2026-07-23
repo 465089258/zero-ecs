@@ -16,7 +16,8 @@ import {
     Types,
     Update,
 } from "@zero-ecs/game";
-import { Allocator, World } from "@zero-ecs/world";
+import { ScheduleBuilder, Scheduler, Stage } from "@zero-ecs/scheduler";
+import { Allocator, QueryType, With, World } from "@zero-ecs/world";
 
 const CONFIG_URL = new URL("./config.v1.json", import.meta.url);
 let checksum = 0;
@@ -40,9 +41,21 @@ export const scenarioNames = Object.freeze([
     "scheduler-0",
     "scheduler-1",
     "scheduler-4",
+    "scheduler-direct-s1-a0",
+    "scheduler-direct-s16-a0",
+    "scheduler-direct-s16-a1",
+    "scheduler-direct-s16-a4",
+    "scheduler-direct-s16-a8",
+    "scheduler-direct-s16-a9",
+    "scheduler-direct-s64-a0",
     "world-valid",
     "world-get",
     "world-has",
+    "query-stable-archetypes",
+    "query-stable-chunks",
+    "query-unmatched-churn",
+    "chunk-boundary-spare-0",
+    "chunk-boundary-spare-1",
     "commands",
     "events",
     "timers",
@@ -50,10 +63,23 @@ export const scenarioNames = Object.freeze([
 ]);
 
 export function createScenario(name, config) {
+    const directScheduler = /^scheduler-direct-s(\d+)-a(\d+)$/.exec(name);
+    if (directScheduler) {
+        return createDirectSchedulerScenario(
+            Number(directScheduler[1]),
+            Number(directScheduler[2]),
+            config,
+        );
+    }
     if (name.startsWith("scheduler-")) {
         return createSchedulerScenario(Number(name.slice("scheduler-".length)), config);
     }
     if (name.startsWith("world-")) return createWorldReadScenario(name, config);
+    if (name === "query-stable-archetypes") return createStableArchetypeQueryScenario(config);
+    if (name === "query-stable-chunks") return createStableChunkQueryScenario(config);
+    if (name === "query-unmatched-churn") return createUnmatchedChunkChurnScenario(config);
+    if (name === "chunk-boundary-spare-0") return createChunkBoundaryScenario(config, 0);
+    if (name === "chunk-boundary-spare-1") return createChunkBoundaryScenario(config, 1);
     if (name === "commands") return createCommandScenario(config);
     if (name === "events") return createEventScenario(config);
     if (name === "timers") return createTimerScenario(config);
@@ -78,6 +104,49 @@ function createSchedulerScenario(systemCount, config) {
         },
         dispose() { game.dispose(); },
     };
+}
+
+function createDirectSchedulerScenario(systemCount, arity, config) {
+    const stage = new Stage("benchmark", 0);
+    const builder = new ScheduleBuilder();
+    const params = Array.from({ length: arity }, (_, index) => index + 1);
+    for (let systemIndex = 0; systemIndex < systemCount; systemIndex++) {
+        builder.addSystem(
+            stage,
+            createAritySystem(arity, systemIndex),
+            params,
+        );
+    }
+    const scheduler = new Scheduler(builder.build());
+    scheduler.init();
+    scheduler.prepare({ resolve: value => value });
+    const runs = Math.ceil(config.schedulerInvocations / systemCount);
+    return {
+        name: `scheduler-direct-s${systemCount}-a${arity}`,
+        operations: runs * systemCount,
+        run() {
+            for (let i = 0; i < runs; i++) scheduler.run(stage);
+        },
+        dispose() { scheduler.dispose(); },
+    };
+}
+
+function createAritySystem(arity, systemIndex) {
+    const salt = systemIndex + 1;
+    switch (arity) {
+        case 0: return function schedulerArity0() { checksum += salt; };
+        case 1: return function schedulerArity1(a0) { checksum += salt + a0; };
+        case 4: return function schedulerArity4(a0, a1, a2, a3) {
+            checksum += salt + a0 + a1 + a2 + a3;
+        };
+        case 8: return function schedulerArity8(a0, a1, a2, a3, a4, a5, a6, a7) {
+            checksum += salt + a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7;
+        };
+        case 9: return function schedulerArity9(a0, a1, a2, a3, a4, a5, a6, a7, a8) {
+            checksum += salt + a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8;
+        };
+        default: throw new RangeError(`Unsupported Scheduler benchmark arity: ${arity}`);
+    }
 }
 
 function createWorldReadScenario(name, config) {
@@ -123,6 +192,117 @@ function createWorldReadScenario(name, config) {
         name,
         operations,
         run,
+        dispose() {
+            world.dispose();
+            allocator.clear();
+        },
+    };
+}
+
+function createStableArchetypeQueryScenario(config) {
+    const allocator = new Allocator();
+    const world = new World(allocator);
+    const position = world.component(BenchPosition);
+    for (let i = 0; i < config.queryArchetypeCount; i++) {
+        const Tag = class QueryBenchmarkTag { 0 = Types.U8; };
+        const tag = world.component(Tag);
+        world.getOrCreateArchetype(position.mask.or(tag.mask), [position, tag]).insert((i + 1) >>> 0);
+    }
+    const query = world.query(QueryType.from(With(BenchPosition)));
+    return {
+        name: "query-stable-archetypes",
+        operations: config.queryArchetypeCount * config.queryPasses,
+        run() {
+            let count = 0;
+            for (let pass = 0; pass < config.queryPasses; pass++) {
+                const iter = query.iter();
+                while (iter.next()) count += iter.current[0];
+            }
+            checksum += count;
+        },
+        dispose() {
+            world.dispose();
+            allocator.clear();
+        },
+    };
+}
+
+function createStableChunkQueryScenario(config) {
+    const allocator = new Allocator();
+    const world = new World(allocator);
+    const position = world.component(BenchPosition);
+    const archetype = world.getOrCreateArchetype(position.mask, [position]);
+    for (let i = 0; i < config.readEntityCount; i++) archetype.insert((i + 1) >>> 0);
+    const query = world.query(QueryType.from(With(BenchPosition)));
+    return {
+        name: "query-stable-chunks",
+        operations: config.readEntityCount * config.readPasses,
+        run() {
+            let count = 0;
+            for (let pass = 0; pass < config.readPasses; pass++) {
+                const iter = query.iter();
+                while (iter.next()) count += iter.current[0];
+            }
+            checksum += count;
+        },
+        dispose() {
+            world.dispose();
+            allocator.clear();
+        },
+    };
+}
+
+function createUnmatchedChunkChurnScenario(config) {
+    const allocator = new Allocator();
+    const world = new World(allocator);
+    const position = world.component(BenchPosition);
+    const churn = world.component(ChurnA);
+    world.getOrCreateArchetype(position.mask, [position]).insert(1);
+    const unmatched = world.getOrCreateArchetype(churn.mask, [churn]);
+    const query = world.query(QueryType.from(With(BenchPosition)));
+    return {
+        name: "query-unmatched-churn",
+        operations: config.chunkCycles,
+        run() {
+            let count = 0;
+            for (let cycle = 0; cycle < config.chunkCycles; cycle++) {
+                const row = unmatched.insert(2);
+                unmatched.remove(row);
+                const iter = query.iter();
+                while (iter.next()) count += iter.current[0];
+            }
+            checksum += count;
+        },
+        dispose() {
+            world.dispose();
+            allocator.clear();
+        },
+    };
+}
+
+function createChunkBoundaryScenario(config, spareChunkLimit) {
+    const allocator = new Allocator();
+    const world = new World(allocator);
+    const position = world.component(BenchPosition);
+    const archetype = world.getOrCreateArchetype(position.mask, [position]);
+    archetype.setSpareChunkLimit(spareChunkLimit);
+    for (let i = 0; i < archetype.chunkCapacity; i++) archetype.insert((i + 1) >>> 0);
+    const query = world.query(QueryType.from(With(BenchPosition)));
+    return {
+        name: `chunk-boundary-spare-${spareChunkLimit}`,
+        operations: config.chunkCycles,
+        run() {
+            let count = 0;
+            for (let cycle = 0; cycle < config.chunkCycles; cycle++) {
+                const row = archetype.insert(2);
+                let iter = query.iter();
+                while (iter.next()) count += iter.current[0];
+                archetype.remove(row);
+                iter = query.iter();
+                while (iter.next()) count += iter.current[0];
+            }
+            checksum += count;
+        },
         dispose() {
             world.dispose();
             allocator.clear();

@@ -13,7 +13,7 @@ export class EventModule implements Module {
         builder.addService(EventService);
         builder.addSystem(flushEventsSystem, {
             inSet: GameSystemSet.Events,
-            after: GameSystemSet.Structure,
+            afterIfPresent: GameSystemSet.Structure,
         });
     }
 }
