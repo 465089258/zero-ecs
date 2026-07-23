@@ -1,7 +1,6 @@
 import {
     AllocatorService,
     Buffer,
-    ChildOf,
     Commands,
     defaultAllocatorConfig,
     DefaultCoreModule,
@@ -9,15 +8,12 @@ import {
     ErrorHandlerService,
     Game,
     GameBuilder,
-    HierarchyModule,
-    HierarchyService,
     Inject,
     ManualStage,
     Resource,
     Service,
+    Startup,
     State,
-    TimerService,
-    TimerConfigResource,
     Types,
     INVALID_ENTITY,
     Update,
@@ -42,8 +38,20 @@ import {
     type ServiceToken,
     type ServiceType,
 } from "@zero-ecs/game";
+import {
+    ChildOf,
+    HierarchyModule,
+    HierarchyService,
+} from "@zero-ecs/game/hierarchy";
+import { TimerConfigResource, TimerService } from "@zero-ecs/game/timer";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
+// @ts-expect-error Optional Timer APIs are available only from the timer subpath.
+import { TimerService as RootTimerService } from "@zero-ecs/game";
+// @ts-expect-error Optional Hierarchy APIs are available only from the hierarchy subpath.
+import { HierarchyModule as RootHierarchyModule } from "@zero-ecs/game";
+// @ts-expect-error Pool APIs are available only from the pool subpath.
+import { ObjectPoolService as RootObjectPoolService } from "@zero-ecs/game";
 import { Scheduler } from "@zero-ecs/scheduler";
 // @ts-expect-error Runtime scheduler storage is not part of the public API.
 import type { RuntimeStage, RuntimeSystem } from "@zero-ecs/scheduler";
@@ -155,6 +163,13 @@ function worldSystem(world: World): void {
     world.service(ToolService);
 }
 
+function createInitialEntity(commands: Commands): void {
+    commands.spawn()
+        .set(PositionType, Position.x, 10)
+        .set(PositionType, Position.y, 20)
+        .submit();
+}
+
 class WorldHelper {
     @Inject.world() readonly world!: World;
 }
@@ -184,6 +199,7 @@ builder.addSystem(defSystem(
 ));
 builder.addSystem(defSystem(Update.fixed, writeSystem, [Write(CounterState)]));
 builder.addSystem(defSystem(Update.fixed, worldSystem, [World]));
+builder.addSystem(defSystem(Startup, createInitialEntity, [Commands]));
 const optionalDependencySystem = defSystem(Update.post, () => {}, []);
 const optionalPostSystem = defSystem(Update.post, () => {}, []);
 builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem });
@@ -208,6 +224,8 @@ ecs.scheduler;
 
 const game = new GameBuilder().build();
 game.runStage(ManualRender);
+// @ts-expect-error Module instances are build-time installers and are not retained by Game.
+game.modules;
 // @ts-expect-error Standard lifecycle stages cannot be invoked through the manual-stage API.
 game.runStage(Update.fixed);
 game.world.spawn();
@@ -237,6 +255,9 @@ defSystem(Update.fixed, (_game: Game) => {}, [Game]);
 new Game();
 
 void RootScheduler;
+void RootTimerService;
+void RootHierarchyModule;
+void RootObjectPoolService;
 void abstractServiceToken;
 void concreteServiceType;
 void invalidConcreteServiceType;

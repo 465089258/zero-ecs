@@ -1,10 +1,10 @@
 import {
     Commands,
     defSystem,
-    TimeState,
     Update,
     type QueryOf,
 } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import { Float2, GameConfigResource, GameMode, GameSessionState } from "../common";
 import { Bullet } from "./components";
 import { BulletQuery } from "./queries";

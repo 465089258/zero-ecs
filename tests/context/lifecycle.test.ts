@@ -2,23 +2,24 @@ import { expect, test } from "@rstest/core";
 import {
     defSystem,
     ErrorHandlerService,
+    Game,
     GameBuilder,
+    GamePhase,
     Inject,
     InjectionService,
     Write,
     type Mut,
-    ObjectPoolService,
-    ObjectPool,
-    definePool,
     Resource,
     Service,
     type ServiceActivateContext,
     type ServiceInitContext,
+    Shutdown,
     Startup,
     State,
     Update,
     World,
 } from "@zero-ecs/game";
+import { ObjectPool, ObjectPoolService, definePool } from "@zero-ecs/game/pool";
 
 interface PooledValue { value: number }
 const ValuePool = definePool<PooledValue>({
@@ -389,6 +390,7 @@ test("Service init, activate and start form barriers with scoped lookup contexts
         .addService(PhaseConsumerService)
         .addService(PhaseDependencyService);
     builder.addSystem(defSystem(Startup, () => phaseLifecycle.push("startup"), []));
+    builder.addSystem(defSystem(Shutdown, () => phaseLifecycle.push("shutdown"), []));
     const ecs = builder.build();
 
     ecs.init();
@@ -403,17 +405,130 @@ test("Service init, activate and start form barriers with scoped lookup contexts
 
     ecs.start();
     expect(phaseLifecycle.slice(4)).toEqual([
-        "startup",
         "dependency:start",
         "consumer:start",
+        "startup",
     ]);
 
     ecs.stop();
     ecs.dispose();
     expect(phaseLifecycle.slice(7)).toEqual([
+        "shutdown",
         "consumer:stop",
         "dependency:stop",
         "consumer:dispose",
         "dependency:dispose",
     ]);
+});
+
+class PhaseProbeService extends Service {
+    constructor(
+        private readonly onStart: () => void,
+        private readonly onStop: () => void,
+    ) { super(); }
+
+    start(): void { this.onStart(); }
+    stop(): void { this.onStop(); }
+}
+
+test("Startup and Shutdown run while Services are active and lifecycle phases reject reentry", () => {
+    const order: string[] = [];
+    let game: Game;
+    const service = new PhaseProbeService(
+        () => {
+            order.push("service:start");
+            expect(game.phase).toBe(GamePhase.Starting);
+            expect(() => game.start()).toThrow(/phase Starting/);
+        },
+        () => {
+            order.push("service:stop");
+            expect(game.phase).toBe(GamePhase.Stopping);
+        },
+    );
+    const builder = new GameBuilder().setService(PhaseProbeService, service);
+    builder.addSystem(defSystem(Startup, () => {
+        order.push("startup");
+        expect(game.phase).toBe(GamePhase.Starting);
+        expect(() => game.dispose()).toThrow(/phase Starting/);
+    }, []));
+    builder.addSystem(defSystem(Shutdown, () => {
+        order.push("shutdown");
+        expect(game.phase).toBe(GamePhase.Stopping);
+        expect(() => game.dispose()).toThrow(/phase Stopping/);
+    }, []));
+    game = builder.build();
+
+    game.init();
+    game.start();
+    expect(game.phase).toBe(GamePhase.Running);
+    game.stop();
+    expect(game.phase).toBe(GamePhase.Stopped);
+    expect(order).toEqual([
+        "service:start",
+        "startup",
+        "shutdown",
+        "service:stop",
+    ]);
+    game.dispose();
+});
+
+class ThrowingStartService extends Service {
+    constructor(private readonly order: string[]) { super(); }
+    start(): void {
+        this.order.push("service:start");
+        throw new Error("expected service start failure");
+    }
+    stop(): void { this.order.push("service:stop"); }
+}
+
+test("Service start failure rolls back without running Startup or Shutdown", () => {
+    const order: string[] = [];
+    const builder = new GameBuilder().setService(
+        ThrowingStartService,
+        new ThrowingStartService(order),
+    );
+    builder.addSystem(defSystem(Startup, () => order.push("startup"), []));
+    builder.addSystem(defSystem(Shutdown, () => order.push("shutdown"), []));
+    const game = builder.build();
+    game.init();
+
+    expect(() => game.start()).toThrow(/service start failure/);
+    expect(game.phase).toBe(GamePhase.Stopped);
+    expect(order).toEqual(["service:start", "service:stop"]);
+    game.dispose();
+});
+
+class StartupRollbackService extends Service {
+    constructor(private readonly order: string[]) { super(); }
+    start(): void { this.order.push("service:start"); }
+    stop(): void { this.order.push("service:stop"); }
+}
+
+test("Startup failure runs Shutdown before stopping Services", () => {
+    const order: string[] = [];
+    const builder = new GameBuilder().setService(
+        StartupRollbackService,
+        new StartupRollbackService(order),
+    );
+    builder.addSystem(defSystem(Startup, () => {
+        order.push("startup");
+        throw new Error("expected startup failure");
+    }, []));
+    let game: Game;
+    builder.addSystem(defSystem(Shutdown, () => {
+        order.push("shutdown");
+        expect(game.phase).toBe(GamePhase.Stopping);
+    }, []));
+    game = builder.build();
+    game.init();
+
+    expect(() => game.start()).toThrow(/startup failure/);
+    expect(game.phase).toBe(GamePhase.Stopped);
+    expect(order).toEqual([
+        "service:start",
+        "startup",
+        "shutdown",
+        "service:stop",
+    ]);
+    game.dispose();
 });

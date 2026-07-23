@@ -1,4 +1,5 @@
-import { Commands, defSystem, TimeState, Update, type Entity, type QueryOf } from "@zero-ecs/game";
+import { Commands, defSystem, Update, type Entity, type QueryOf } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import { Float2, GameMode, GameSessionState } from "../common";
 import { Shooter, ShotRequest, ShotRequestType } from "./components";
 import { ShooterQuery } from "./queries";

@@ -1,11 +1,11 @@
 import {
     defSystem,
-    RandomService,
-    TimeState,
     Update,
     Write,
     type Mut,
 } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
+import { TimeState } from "@zero-ecs/game/time";
 import { GameConfigResource, GameMode, GameSessionState } from "../common";
 import { pickUpgrades, ProgressionState } from "../progression";
 import { GameContentService } from "./game-content-service";

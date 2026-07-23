@@ -19,9 +19,7 @@ export interface ICommand {
 /** 可池化、需要显式提交的命令基类。 */
 export abstract class Command implements ICommand {
     protected _flags = CommandFlags.Recycled;
-
     constructor(private _submit: CommandSubmit) {}
-
     /**
      * 将命令加入延迟执行队列。
      *

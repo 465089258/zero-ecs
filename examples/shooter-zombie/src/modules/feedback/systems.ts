@@ -1,4 +1,5 @@
-import { Commands, defSystem, TimeState, Update, type QueryOf } from "@zero-ecs/game";
+import { Commands, defSystem, Update, type QueryOf } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import { Float2, GameMode, GameSessionState } from "../common";
 import { DamageText } from "./components";
 import { DamageTextQuery } from "./queries";

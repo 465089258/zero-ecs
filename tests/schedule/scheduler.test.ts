@@ -293,7 +293,7 @@ describe("system registration and scheduling", () => {
         }
 
         function failingSystem(commands: Commands): void {
-            commands.cmd(DeferredCommand).submit();
+            commands.command(DeferredCommand).submit();
             throw new Error("expected system failure");
         }
 

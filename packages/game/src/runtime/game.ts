@@ -13,20 +13,19 @@ import { type Allocator, World } from "@zero-ecs/world";
 import { Scheduler, type SystemParamProvider } from "@zero-ecs/scheduler";
 import { GAME_CONSTRUCTION_TOKEN } from "./construction-token";
 import { GamePhase } from "./lifecycle";
-import type { Module } from "./module";
 import { type ManualStage, Shutdown, Startup, Update } from "./stage";
 import type { SystemParam } from "./system";
 import { finalizeWorld } from "./world-ownership";
+import { GAME_SCHEDULER } from "./game-control";
 
 export { GamePhase } from "./lifecycle";
 
 /**
  * ECS 模拟的组合根和运行时实例。
- * Game 协调 World、容器、Scheduler 与 Module 的构建后生命周期。
+ * Game 协调 World、容器与 Scheduler 的构建后生命周期。
  */
 export class Game {
     private _phase = GamePhase.Built;
-    private _modulesDisposed = false;
     private _worldFinalized = false;
     private _ownedAllocatorDisposed = false;
 
@@ -40,7 +39,6 @@ export class Game {
         private readonly _services: ServiceContainer,
         private readonly _scheduler: Scheduler<SystemParam>,
         private readonly _params: SystemParamProvider<SystemParam>,
-        readonly modules: readonly Module[],
     ) {
         if (token !== GAME_CONSTRUCTION_TOKEN) {
             throw new TypeError("Game must be created by GameBuilder");
@@ -58,7 +56,6 @@ export class Game {
         services: ServiceContainer,
         scheduler: Scheduler<SystemParam>,
         params: SystemParamProvider<SystemParam>,
-        modules: readonly Module[],
     ): Game {
         if (token !== GAME_CONSTRUCTION_TOKEN) {
             throw new TypeError("Game must be created by GameBuilder");
@@ -73,7 +70,6 @@ export class Game {
             services,
             scheduler,
             params,
-            modules,
         );
     }
 
@@ -98,8 +94,11 @@ export class Game {
     readonly service = <T extends Service>(type: ServiceToken<T>): T =>
         this._services.get(type);
 
+    /** @internal 返回仅属于当前 Game 的 Scheduler。 */
+    [GAME_SCHEDULER](): Scheduler<SystemParam> { return this._scheduler; }
+
     /**
-     * 初始化 State、Service、Scheduler 和 Module；World 在构造时已经可用。
+     * 初始化 State、Service 和 Scheduler；World 在构造时已经可用。
      */
     init(): void {
         this.assertPhase(GamePhase.Built, "init");
@@ -108,7 +107,6 @@ export class Game {
             this._services.initServices();
             this._services.activateServices();
             this._scheduler.init();
-            for (const module of this.modules) module.init?.(this);
             this._phase = GamePhase.Initialized;
         } catch (error) {
             try { this.dispose(); } catch { /* preserve init error */ }
@@ -116,9 +114,10 @@ export class Game {
         }
     }
 
-    /** 事务式准备系统参数，执行 Startup，再开放 Service 与 Module。 */
+    /** 事务式准备系统参数，启动全部 Service，再执行 Startup。 */
     start(): void {
         this.assertPhase(GamePhase.Initialized, "start");
+        this._phase = GamePhase.Starting;
         try {
             this._scheduler.prepare(this._params);
         } catch (error) {
@@ -126,21 +125,20 @@ export class Game {
             throw error;
         }
 
-        let lastStarted = -1;
+        try {
+            this._services.start();
+        } catch (error) {
+            this._phase = GamePhase.Stopped;
+            throw error;
+        }
+
         try {
             this._scheduler.run(Startup);
-            this._services.start();
-            for (let i = 0; i < this.modules.length; i++) {
-                lastStarted = i;
-                this.modules[i].start?.(this);
-            }
             this._phase = GamePhase.Running;
         } catch (error) {
-            for (let i = lastStarted; i >= 0; i--) {
-                try { this.modules[i].stop?.(this); } catch { /* preserve start error */ }
-            }
-            try { this._services.stop(); } catch { /* preserve start error */ }
+            this._phase = GamePhase.Stopping;
             try { this._scheduler.run(Shutdown); } catch { /* preserve start error */ }
+            try { this._services.stop(); } catch { /* preserve start error */ }
             this._phase = GamePhase.Stopped;
             throw error;
         }
@@ -169,17 +167,14 @@ export class Game {
         }
     }
 
-    /** 停止运行，逆序调用 Module.stop() 并执行 Shutdown 系统。 */
+    /** 执行 Shutdown，再按依赖逆序停止全部 Service。 */
     stop(): void {
         if (this._phase !== GamePhase.Running) return;
+        this._phase = GamePhase.Stopping;
         let firstError: unknown;
-        for (let i = this.modules.length - 1; i >= 0; i--) {
-            try { this.modules[i].stop?.(this); }
-            catch (error) { firstError ??= error; }
-        }
-        try { this._services.stop(); }
-        catch (error) { firstError ??= error; }
         try { this._scheduler.run(Shutdown); }
+        catch (error) { firstError ??= error; }
+        try { this._services.stop(); }
         catch (error) { firstError ??= error; }
         this._phase = GamePhase.Stopped;
         if (firstError !== undefined) throw firstError;
@@ -188,16 +183,12 @@ export class Game {
     /** 按依赖逆序释放全部运行时对象；重复调用安全。 */
     dispose(): void {
         if (this._phase === GamePhase.Disposed) return;
+        if (this._phase === GamePhase.Starting || this._phase === GamePhase.Stopping) {
+            throw new Error(`Game.dispose() is invalid during phase ${GamePhase[this._phase]}`);
+        }
         let firstError: unknown;
         try { this.stop(); }
         catch (error) { firstError ??= error; }
-        if (!this._modulesDisposed) {
-            this._modulesDisposed = true;
-            for (let i = this.modules.length - 1; i >= 0; i--) {
-                try { this.modules[i].dispose?.(this); }
-                catch (error) { firstError ??= error; }
-            }
-        }
         try { this._scheduler.dispose(); }
         catch (error) { firstError ??= error; }
 

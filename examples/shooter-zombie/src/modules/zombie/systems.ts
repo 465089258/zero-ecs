@@ -1,4 +1,5 @@
-import { defSystem, TimeState, Update, type QueryOf } from "@zero-ecs/game";
+import { defSystem, Update, type QueryOf } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import { Float2, GameConfigResource, GameMode, GameSessionState } from "../common";
 import { Zombie } from "./components";
 import { ZombieQuery } from "./queries";

@@ -1,6 +1,12 @@
 import { INVALID_ENTITY, type Entity, type IAllocator, type World } from "@zero-ecs/world";
 import { Inject, Service, type ServiceActivateContext } from "../../context";
-import { Commands } from "../../command/command-service";
+import { Commands, type ICommands } from "../../command/command-service";
+import {
+    COMMANDS_ADD_FLUSH_EXTENSION,
+    COMMANDS_REMOVE_FLUSH_EXTENSION,
+    commandsControl,
+    type CommandFlushContext,
+} from "../../command/control";
 import { ChildOfStorage, ParentOfStorage } from "./storage-components";
 import { HierarchyStore } from "./storage";
 
@@ -24,7 +30,7 @@ export class HierarchyService extends Service {
 
     activate(context: ServiceActivateContext): void {
         const commands = context.service(Commands);
-        commands.addFlushExtension(this);
+        commandsControl(commands)[COMMANDS_ADD_FLUSH_EXTENSION](this);
         this._commands = commands;
     }
 
@@ -77,17 +83,20 @@ export class HierarchyService extends Service {
     }
 
     /** @internal 在结构事务合并前提交关系操作并展开递归 despawn。 */
-    flushCommands(commands: Commands): void {
+    flushCommands(context: CommandFlushContext): void {
+        const commands = context.commands;
         this.commitRelations(commands);
-        const count = commands.pendingEntityCommandCount;
+        const count = context.pendingEntityCommandCount();
         for (let i = 0; i < count; i++) {
-            if (!commands.pendingEntityWillDespawnAt(i)) continue;
-            this.expandDespawn(commands.pendingEntityAt(i), commands);
+            if (!context.pendingEntityWillDespawnAt(i)) continue;
+            this.expandDespawn(context.pendingEntityAt(i), commands);
         }
     }
 
     dispose(): void {
-        this._commands?.removeFlushExtension(this);
+        if (this._commands) {
+            commandsControl(this._commands)[COMMANDS_REMOVE_FLUSH_EXTENSION](this);
+        }
         this._commands = undefined;
         this._pendingUsed = 0;
         this._pendingChildren.length = 0;
@@ -97,7 +106,7 @@ export class HierarchyService extends Service {
         this._store.dispose();
     }
 
-    private commitRelations(commands: Commands): void {
+    private commitRelations(commands: ICommands): void {
         const used = this._pendingUsed;
         this._pendingUsed = 0;
         for (let i = 0; i < used; i++) {
@@ -112,7 +121,7 @@ export class HierarchyService extends Service {
         }
     }
 
-    private commitSetParent(child: Entity, parent: Entity, commands: Commands): void {
+    private commitSetParent(child: Entity, parent: Entity, commands: ICommands): void {
         const oldParent = this._store.parentOf(child);
         if (oldParent === parent) return;
         const oldParentHadOneChild = oldParent !== INVALID_ENTITY &&
@@ -129,7 +138,7 @@ export class HierarchyService extends Service {
         if (parentWasEmpty) commands.entity(parent).add(ParentOfStorage).submit();
     }
 
-    private commitRemoveParent(child: Entity, commands: Commands): void {
+    private commitRemoveParent(child: Entity, commands: ICommands): void {
         const oldParent = this._store.parentOf(child);
         if (oldParent === INVALID_ENTITY) return;
         const oldParentHadOneChild = this._store.firstChildOf(oldParent) === child &&
@@ -141,7 +150,7 @@ export class HierarchyService extends Service {
         }
     }
 
-    private expandDespawn(root: Entity, commands: Commands): void {
+    private expandDespawn(root: Entity, commands: ICommands): void {
         if (!this._world.valid(root)) return;
         const externalParent = this._store.parentOf(root);
         if (externalParent !== INVALID_ENTITY) {

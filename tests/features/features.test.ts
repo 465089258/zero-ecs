@@ -6,21 +6,14 @@ import {
     Commands,
     DefaultCoreModule,
     GameBuilder,
-    EventArgs,
-    EventModule,
-    EventService,
     ErrorHandlerService,
-    FixedTimeResource,
-    RandomModule,
-    RandomService,
     Service,
-    TimeModule,
-    TimeState,
-    TimerModule,
-    TimerConfigResource,
-    TimerService,
     Types,
 } from "@zero-ecs/game";
+import { EventArgs, EventModule, EventService } from "@zero-ecs/game/event";
+import { RandomModule, RandomService } from "@zero-ecs/game/random";
+import { FixedTimeResource, TimeModule, TimeState } from "@zero-ecs/game/time";
+import { TimerConfigResource, TimerModule, TimerService } from "@zero-ecs/game/timer";
 
 const enum Position { x }
 class PositionType implements Component<Position> {
@@ -50,7 +43,9 @@ class ReentrantCommand extends Command {
     set(remaining: number): this { this.assertMutable(); this.remaining = remaining; return this; }
     execute(): void {
         reentrantCommandCalls++;
-        if (this.remaining > 1) this.commands.cmd(ReentrantCommand).set(this.remaining - 1).submit();
+        if (this.remaining > 1) {
+            this.commands.command(ReentrantCommand).set(this.remaining - 1).submit();
+        }
     }
     protected clear(): void { this.remaining = 0; }
 }
@@ -201,7 +196,7 @@ describe("fixed time and optional features", () => {
             .addModule(new CommandModule()));
         const values: number[] = [];
         ecs.service(EventService).on(PingEvent, event => values.push(event.value));
-        ecs.service(Commands).cmd(EmitPingCommand).set(7).submit();
+        ecs.service(Commands).command(EmitPingCommand).set(7).submit();
 
         ecs.update();
 
@@ -214,7 +209,7 @@ describe("fixed time and optional features", () => {
         const errors: string[] = [];
         const ecs = start(new GameBuilder().addModule(new CommandModule()));
         ecs.service(ErrorHandlerService).setHandler((_error, source) => { errors.push(source); });
-        ecs.service(Commands).cmd(ReentrantCommand).set(1001).submit();
+        ecs.service(Commands).command(ReentrantCommand).set(1001).submit();
 
         ecs.update();
         expect(reentrantCommandCalls).toBe(1000);

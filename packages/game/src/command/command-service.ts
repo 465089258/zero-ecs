@@ -11,18 +11,22 @@ import {
 import { type EntityMutator, EntityTransaction } from "../migration/entity-transaction";
 import { Migrations } from "../migration/migration-service";
 import { Command, type CommandType } from "./command";
+import {
+    COMMANDS_ADD_FLUSH_EXTENSION,
+    COMMANDS_FLUSH,
+    COMMANDS_REMOVE_FLUSH_EXTENSION,
+    type CommandFlushContext,
+    type CommandFlushExtension,
+} from "./control";
+
+const ENQUEUE_ENTITY_COMMAND: unique symbol = Symbol("Commands.enqueueEntityCommand");
+const CANCEL_ENTITY_COMMAND: unique symbol = Symbol("Commands.cancelEntityCommand");
 
 /** 命令创建与延迟提交的稳定接口。 */
 export interface ICommands {
-    cmd<T extends Command>(type: CommandType<T>): Omit<T, "execute">;
+    command<T extends Command>(type: CommandType<T>): Omit<T, "execute">;
     entity(entity: Entity): EntityCommand;
     spawn(): EntityCommand;
-}
-
-/** Commands 提交边界上的组合层扩展协议；不得由 World 内核依赖。 */
-export interface CommandFlushExtension {
-    /** 普通 Command 已执行、实体事务尚未合并时调用。 */
-    flushCommands(commands: Commands): void;
 }
 
 /**
@@ -44,11 +48,18 @@ export class Commands extends Service implements ICommands {
     private _processing: Command[] = [];
 
     private readonly _flushExtensions: CommandFlushExtension[] = [];
+    private readonly _flushContext: CommandFlushContext = Object.freeze({
+        commands: this,
+        pendingEntityCommandCount: (): number => this._migrations.pendingCount,
+        pendingEntityAt: (index: number): Entity => this._migrations.pendingEntityAt(index),
+        pendingEntityWillDespawnAt: (index: number): boolean =>
+            this._migrations.pendingWillDespawnAt(index),
+    });
 
     private readonly _submitCommand = (command: Command): void => { this.enqueueCommand(command); };
 
     /** 获取指定类型的普通 Game Command；调用方必须显式调用其 `submit()`。 */
-    cmd<T extends Command>(type: CommandType<T>): Omit<T, "execute"> {
+    command<T extends Command>(type: CommandType<T>): Omit<T, "execute"> {
         let pool = this._commandPools.get(type);
         if (!pool) {
             pool = [];
@@ -66,7 +77,7 @@ export class Commands extends Service implements ICommands {
     /** 为已有实体取得可池化的 Game 局部事务。 */
     entity(entity: Entity): EntityCommand {
         const transaction = this._migrations.create(entity);
-        const command = this.cmd(EntityCommand) as EntityCommand;
+        const command = this.command(EntityCommand) as EntityCommand;
         command.bind(transaction);
         return command;
     }
@@ -75,45 +86,32 @@ export class Commands extends Service implements ICommands {
     spawn(): EntityCommand { return this.entity(this._world.spawn()); }
 
     /** @internal 接收 Game EntityCommand 解包后的迁移事务。 */
-    enqueueEntityCommand(transaction: EntityTransaction): void {
+    [ENQUEUE_ENTITY_COMMAND](transaction: EntityTransaction): void {
         this._migrations.enqueue(transaction);
     }
 
     /** @internal 回收尚未进入迁移队列的事务。 */
-    cancelEntityCommand(transaction: EntityTransaction): void {
+    [CANCEL_ENTITY_COMMAND](transaction: EntityTransaction): void {
         this._migrations.cancel(transaction);
     }
 
-    /** @internal 注册一个提交扩展；通常由可选 Game Module 的 Service.activate 调用。 */
-    addFlushExtension(extension: CommandFlushExtension): void {
+    /** @internal 注册一个包内提交扩展。 */
+    [COMMANDS_ADD_FLUSH_EXTENSION](extension: CommandFlushExtension): void {
         if (this._flushExtensions.indexOf(extension) !== -1) return;
         this._flushExtensions.push(extension);
     }
 
     /** @internal 移除此前注册的提交扩展。 */
-    removeFlushExtension(extension: CommandFlushExtension): void {
+    [COMMANDS_REMOVE_FLUSH_EXTENSION](extension: CommandFlushExtension): void {
         const index = this._flushExtensions.indexOf(extension);
         if (index !== -1) this._flushExtensions.splice(index, 1);
     }
 
-    /** @internal 尚未合并的实体事务数量。 */
-    get pendingEntityCommandCount(): number { return this._migrations.pendingCount; }
-
-    /** @internal 读取尚未合并事务的目标实体。 */
-    pendingEntityAt(index: number): Entity {
-        return this._migrations.pendingEntityAt(index);
-    }
-
-    /** @internal 判断尚未合并的事务是否以 despawn 终止。 */
-    pendingEntityWillDespawnAt(index: number): boolean {
-        return this._migrations.pendingWillDespawnAt(index);
-    }
-
     /** @internal 执行普通命令，并按实体把已提交局部事务合并为 accumulator。 */
-    flush(): void {
+    [COMMANDS_FLUSH](): void {
         let firstError: unknown;
         let batches = 0;
-        for (;;) {
+        for (; ;) {
             while (this._pendingUsed > 0 && batches++ < 1000) {
                 const batch = this._pending;
                 const used = this._pendingUsed;
@@ -138,7 +136,7 @@ export class Commands extends Service implements ICommands {
             const extensions = this._flushExtensions;
             for (let i = 0; i < extensions.length; i++) {
                 const extension = extensions[i];
-                try { extension.flushCommands(this); }
+                try { extension.flushCommands(this._flushContext); }
                 catch (error) { firstError ??= this.report(error, "command", extension); }
             }
             if (this._pendingUsed === 0) break;
@@ -267,13 +265,13 @@ export class EntityCommand extends Command implements EntityMutator {
     execute(): void {
         const transaction = this.requireTransaction();
         this._transaction = undefined;
-        this._commands.enqueueEntityCommand(transaction);
+        this._commands[ENQUEUE_ENTITY_COMMAND](transaction);
     }
 
     protected clear(): void {
         const transaction = this._transaction;
         this._transaction = undefined;
-        if (transaction) this._commands.cancelEntityCommand(transaction);
+        if (transaction) this._commands[CANCEL_ENTITY_COMMAND](transaction);
     }
 
     private requireTransaction(): EntityTransaction {

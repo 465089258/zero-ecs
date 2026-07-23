@@ -43,6 +43,28 @@ assert.equal(typeof game.GameBuilder, "function");
 assert.equal(typeof game.Commands, "function");
 assert.equal("EntityCommand" in game, false);
 assert.equal(typeof game.DefaultCoreModule, "function");
+for (const optionalExport of [
+    "EventArgs",
+    "EventModule",
+    "EventService",
+    "FixedTimeResource",
+    "TimeModule",
+    "TimeState",
+    "TimerConfigResource",
+    "TimerModule",
+    "TimerService",
+    "RandomModule",
+    "RandomService",
+    "HierarchyModule",
+    "HierarchyService",
+    "ChildOf",
+    "ParentOf",
+    "ObjectPool",
+    "ObjectPoolService",
+    "definePool",
+]) {
+    assert.equal(optionalExport in game, false, `${optionalExport} leaked from @zero-ecs/game`);
+}
 assert.equal("CommandService" in game, false);
 assert.equal("Scheduler" in game, false);
 assert.equal("DataSet" in game, false);
@@ -70,6 +92,9 @@ assert.equal("Ecs" in game, false);
 assert.equal("EcsBuilder" in game, false);
 assert.equal("EcsPhase" in game, false);
 assert.throws(() => new game.Game(), /Game must be created by GameBuilder/);
+const compositionGame = new game.GameBuilder().build();
+assert.equal("modules" in compositionGame, false);
+compositionGame.dispose();
 
 const allocator = new world.Allocator();
 const standalone = new world.World(allocator);
@@ -91,6 +116,10 @@ await assert.rejects(
 );
 await assert.rejects(
     import("@zero-ecs/game/dist/migration/migration-service.js"),
+    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+);
+await assert.rejects(
+    import("@zero-ecs/game/dist/command/control.js"),
     error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
 );
 

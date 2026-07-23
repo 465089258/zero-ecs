@@ -2,11 +2,9 @@ import {
     CommandModule,
     GameBuilder,
     ErrorHandlerService,
-    FixedTimeResource,
-    RandomModule,
-    RandomService,
-    TimeModule,
 } from "@zero-ecs/game";
+import { RandomModule, RandomService } from "@zero-ecs/game/random";
+import { FixedTimeResource, TimeModule } from "@zero-ecs/game/time";
 import { BreakoutModule } from "./breakout-module";
 import { GameViewResource, type TelemetryElements } from "./resources";
 import { MetricsService } from "./services/metrics-service";

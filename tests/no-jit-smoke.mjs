@@ -1,12 +1,11 @@
 import {
     Commands,
     DefaultCoreModule,
-    FixedTimeResource,
     GameBuilder,
-    TimeState,
     Types,
 } from "@zero-ecs/game";
 import { Allocator, DataSet } from "@zero-ecs/game/advanced";
+import { FixedTimeResource, TimeState } from "@zero-ecs/game/time";
 
 class PositionType {
     [0] = Types.F32;

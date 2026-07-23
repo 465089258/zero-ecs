@@ -38,9 +38,12 @@ export abstract class Service {
     init?(context: ServiceInitContext): void;
     /** 所有 Service 完成 init 后建立跨 Service 连接。 */
     activate?(context: ServiceActivateContext): void;
-    /** Startup System 完成后开放宿主事件、Worker 等外部输入。 */
+    /**
+     * 进入完整运行状态；Startup System 在全部 Service 启动后执行。
+     * 可以连接或缓存外部输入，但不得同步驱动 Game 阶段。
+     */
     start?(): void;
-    /** 停止宿主事件、Worker 等外部输入。 */
+    /** Shutdown System 完成后退出运行状态并停止外部输入。 */
     stop?(): void;
     /** 可选释放钩子；按初始化逆序调用。 */
     dispose?(): void;

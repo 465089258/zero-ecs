@@ -8,15 +8,17 @@ import {
     type Entity,
 } from "@zero-ecs/world";
 import {
-    ChildOf,
     CommandModule,
     Commands,
     ErrorHandlerService,
     GameBuilder,
+} from "@zero-ecs/game";
+import {
+    ChildOf,
     HierarchyModule,
     HierarchyService,
     ParentOf,
-} from "@zero-ecs/game";
+} from "@zero-ecs/game/hierarchy";
 
 function createGame() {
     const allocator = new Allocator();

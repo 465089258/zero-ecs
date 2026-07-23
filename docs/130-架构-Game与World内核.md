@@ -1,12 +1,18 @@
 # Game / World 内核架构
 
-> 状态：已实施。World 已从 Service/State facade 迁移为独立实体内核；组件、Archetype、
-> EntitySlots 和 Query 数据源由 World 物理持有。存储又进一步完成行所有权收敛：
-> DataSet 只管理连续 Table，逻辑行属于 Archetype/EntitySlots。
+> 类别：架构
+> 状态：已完成
+> 权威性：说明性
+> 适用范围：`@zero-ecs/world`、`@zero-ecs/game`
+> 最后更新：2026-07-24
 >
 > 当前代码已进一步拆为相互独立的 World、Scheduler、Game 三个库，完整边界与
-> 实施结果见 [three-library-architecture.md](./three-library-architecture.md)。本文保留
+> 实施结果见 [三库架构](./120-架构-三库架构.md)。本文保留
 > 已实施的 Game/World 内核迁移记录，不再作为最终包依赖图。
+
+World 已从 Service/State facade 迁移为独立实体内核；组件、Archetype、EntitySlots 和
+Query 数据源由 World 物理持有。存储又进一步完成行所有权收敛：DataSet 只管理连续
+Table，逻辑行属于 Archetype/EntitySlots。
 
 ## 1. 定位
 
@@ -27,8 +33,7 @@ Game
 ├─ ServiceContainer
 │  └─ AllocatorService          借用构建 World 时使用的 IAllocator
 ├─ SystemParamProvider
-├─ Scheduler
-└─ Module[]
+└─ Scheduler
 ```
 
 World 不拥有以下能力：
@@ -201,6 +206,9 @@ Commands.spawn
 
 EntityCommand、EntityTransaction 和 Migrations 全部位于 Game。Migrations 通过
 `@Inject.world()` 取得完整 World，World 不再拥有事务、合并、命令池或提交阶段。
+当前局部 EntityTransaction 内支持 read-your-writes；不同事务在 collect 前彼此隔离，
+Query 在结构提交前看到旧 World。每个 Migrations collect/apply 批次中，每个 Entity
+最多发生一次最终迁移。
 
 ## 8. Game 生命周期
 
@@ -216,16 +224,24 @@ build
   register built-in instances through ServiceContainer.set
   construct/register upper Service types; subclass prototype aliases replace matching defaults
   inject State and Service
+  Module.build 已在 addModule 时完成，不保留 Module 实例
 
 init
   State.init
   Service.init barrier
   Service.activate barrier
   Scheduler.init
-  Module.init
+
+start
+  Scheduler.prepare
+  Service.start
+  Startup
+
+stop
+  Shutdown
+  Service.stop
 
 dispose
-  Module.dispose
   Scheduler.dispose
   Service.dispose
   State.dispose
@@ -236,6 +252,9 @@ dispose
 Service 在 init、activate 和 dispose 中都可以使用注入的 World。Service 必须在
 dispose 返回前归还通过 AllocatorService 申请的 Buffer。World 随后归还内核 Buffer；
 若 Allocator 由 GameBuilder 默认创建，Game 最后再清理它。
+
+Startup 和 Shutdown 运行时全部 Service 均处于已启动状态。Module 只承担构建期组合；
+模块若需要宿主事件、Worker 或外部句柄生命周期，应注册内部 Service 管理。
 
 World 仍由 build 冷路径 claim，防止同一个实体内核同时交给两个 Game；Game dispose
 或 build 失败后 World 进入终态，不可再次被 Game 采用。这个归属校验不进入 World

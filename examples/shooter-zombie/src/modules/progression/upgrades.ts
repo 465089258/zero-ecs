@@ -1,4 +1,5 @@
-import { type Mut, RandomService } from "@zero-ecs/game";
+import type { Mut } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
 import { ProgressionState, UpgradeType } from "./state";
 
 const UPGRADES: readonly UpgradeType[] = [

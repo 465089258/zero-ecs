@@ -3,8 +3,6 @@ import {
     defSystem,
     INVALID_ENTITY,
     QueryType,
-    RandomService,
-    TimeState,
     Update,
     With,
     Write,
@@ -12,6 +10,8 @@ import {
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
+import { TimeState } from "@zero-ecs/game/time";
 import {
     AttributeChangeRequest,
     AttributeChangeRequestType,

@@ -24,8 +24,6 @@ export { InjectionService } from "./context/injection/service";
 export { ErrorHandlerService } from "./context/error-handler-service";
 export type { RuntimeErrorHandler, RuntimeErrorSource } from "./context/error-handler-service";
 export { AllocatorService } from "./memory/allocator-service";
-export { ObjectPool, ObjectPoolService, definePool } from "./pool/object-pool-service";
-export type { ObjectPoolOptions, ObjectPoolToken } from "./pool/object-pool-service";
 
 export { Command } from "./command/command";
 export type { ICommand } from "./command/command";
@@ -51,8 +49,3 @@ export { GameBuilder } from "./runtime/game-builder";
 export type { ServiceBuildContext } from "./runtime/game-builder";
 export type { Module } from "./runtime/module";
 export { DefaultCoreModule } from "./features/default-core-module";
-export * from "./features/event/index";
-export * from "./features/time/index";
-export * from "./features/timer/index";
-export * from "./features/random/index";
-export * from "./features/hierarchy/index";

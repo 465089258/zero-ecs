@@ -1,12 +1,12 @@
 import {
     Commands,
     defSystem,
-    TimeState,
     Update,
     Write,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import { Float2, GameConfigResource, GameMode, GameSessionState } from "../common";
 import { ExpOrb } from "./components";
 import { ExperienceCollectorQuery, ExpOrbQuery } from "./queries";

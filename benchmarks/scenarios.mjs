@@ -5,17 +5,13 @@ import {
     CommandModule,
     Commands,
     defSystem,
-    EventArgs,
-    EventModule,
-    EventService,
-    FixedTimeResource,
     GameBuilder,
-    TimeModule,
-    TimerModule,
-    TimerService,
     Types,
     Update,
 } from "@zero-ecs/game";
+import { EventArgs, EventModule, EventService } from "@zero-ecs/game/event";
+import { FixedTimeResource, TimeModule } from "@zero-ecs/game/time";
+import { TimerModule, TimerService } from "@zero-ecs/game/timer";
 import { ScheduleBuilder, Scheduler, Stage } from "@zero-ecs/scheduler";
 import { Allocator, QueryType, With, World } from "@zero-ecs/world";
 
@@ -317,7 +313,9 @@ function createCommandScenario(config) {
         name: "commands",
         operations: config.queuedOperations,
         run() {
-            for (let i = 0; i < config.queuedOperations; i++) commands.cmd(BenchCommand).submit();
+            for (let i = 0; i < config.queuedOperations; i++) {
+                commands.command(BenchCommand).submit();
+            }
             game.update();
         },
         dispose() { game.dispose(); },

@@ -1,14 +1,14 @@
 import {
     Commands,
     defSystem,
-    RandomService,
     Startup,
-    TimeState,
     Update,
     Write,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
+import { TimeState } from "@zero-ecs/game/time";
 import {
     Ball,
     BallType,

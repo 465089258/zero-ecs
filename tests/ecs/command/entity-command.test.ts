@@ -46,6 +46,19 @@ function setup() {
 }
 
 describe("unified Commands", () => {
+    test("does not expose the package-internal submission control surface", () => {
+        const ecs = setup();
+        const commands = ecs.service(Commands) as unknown as Record<string, unknown>;
+
+        expect("flush" in commands).toBe(false);
+        expect("addFlushExtension" in commands).toBe(false);
+        expect("removeFlushExtension" in commands).toBe(false);
+        expect("pendingEntityCommandCount" in commands).toBe(false);
+        expect("pendingEntityAt" in commands).toBe(false);
+        expect("pendingEntityWillDespawnAt" in commands).toBe(false);
+        ecs.dispose();
+    });
+
     test("pools EntityCommand through the ordinary Command channel", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
@@ -70,7 +83,7 @@ describe("unified Commands", () => {
         CountCommand.total = 0;
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const command = commands.cmd(CountCommand);
+        const command = commands.command(CountCommand);
         command.set(3).submit();
 
         expect(() => command.submit()).toThrow(/already been submitted/);
@@ -79,7 +92,7 @@ describe("unified Commands", () => {
         expect(CountCommand.total).toBe(3);
         expect(() => command.set(4)).toThrow(/already been recycled/);
 
-        const reused = commands.cmd(CountCommand);
+        const reused = commands.command(CountCommand);
         expect(reused).toBe(command);
         reused.set(2).submit();
         ecs.update();
@@ -89,16 +102,16 @@ describe("unified Commands", () => {
     test("trims command and migration pools only at an idle boundary", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const first = commands.cmd(CountCommand);
-        const second = commands.cmd(CountCommand);
+        const first = commands.command(CountCommand);
+        const second = commands.command(CountCommand);
         first.submit();
         expect(() => commands.trimPools()).toThrow(/pending/);
         second.submit();
         ecs.update();
 
         commands.trimPools(1, 0);
-        const retained = commands.cmd(CountCommand);
-        const created = commands.cmd(CountCommand);
+        const retained = commands.command(CountCommand);
+        const created = commands.command(CountCommand);
         expect(retained).toBe(first);
         expect(created).not.toBe(first);
         expect(created).not.toBe(second);
@@ -115,12 +128,12 @@ describe("unified Commands", () => {
             expect(source).toBe("command");
             errors.push(error);
         });
-        const command = commands.cmd(ThrowCommand);
+        const command = commands.command(ThrowCommand);
         command.submit();
         ecs.update();
 
         expect(errors).toHaveLength(1);
-        expect(commands.cmd(ThrowCommand)).toBe(command);
+        expect(commands.command(ThrowCommand)).toBe(command);
     });
 
     test("reserves spawn IDs immediately and executes EntityCommand in the same queue", () => {

@@ -1,9 +1,9 @@
 import {
     Commands,
-    RandomService,
     Resource,
     Service,
 } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
 import {
     Ball,
     BallType,

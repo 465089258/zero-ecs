@@ -67,7 +67,7 @@ export class ServiceContainer extends Container<Service> {
         this.initialized = true;
     }
 
-    /** Startup System 完成后，按生命周期顺序开放全部 Service。 */
+    /** 按生命周期顺序使全部 Service 进入运行状态。 */
     start(): void {
         if (!this.initialized) throw new Error("ServiceContainer has not been activated");
         if (this.started.length > 0) return;

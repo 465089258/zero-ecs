@@ -1,10 +1,9 @@
 import {
     CommandModule,
-    FixedTimeResource,
     GameBuilder,
-    RandomModule,
-    TimeModule,
 } from "@zero-ecs/game";
+import { RandomModule } from "@zero-ecs/game/random";
+import { FixedTimeResource, TimeModule } from "@zero-ecs/game/time";
 import { createGameView } from "./app/create-game-view";
 import { runGame } from "./app/game-runtime";
 import { ShooterZombieModule } from "./modules";

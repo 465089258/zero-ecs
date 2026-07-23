@@ -1,4 +1,5 @@
-import { Commands, RandomService, Resource, Service, State } from "@zero-ecs/game";
+import { Commands, Resource, Service, State } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
 import { Health, HealthType } from "../attribute";
 import { Float2, GameConfigResource, GameEntityType, PositionType, VelocityType } from "../common";
 import { DamageText, DamageTextType } from "../feedback";

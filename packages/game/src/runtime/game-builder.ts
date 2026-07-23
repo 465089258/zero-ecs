@@ -48,7 +48,7 @@ export class GameBuilder {
     private readonly _states = new Set<StateType>();
     private readonly _services = new Map<ServiceToken, ServiceRegistration>();
     private readonly _schedule = new ScheduleBuilder<SystemParam>();
-    private readonly _modules: Module[] = [];
+    private readonly _modules = new Set<Module>();
     private _world: World | undefined;
     private _allocator: IAllocator | undefined;
     private _built = false;
@@ -177,10 +177,10 @@ export class GameBuilder {
     /** 注册并立即执行 Module 的 `build()`。 */
     addModule(module: Module): this {
         return this.modify(() => {
-            if (this._modules.indexOf(module) !== -1) {
+            if (this._modules.has(module)) {
                 throw new Error(`Module instance already registered: ${module.constructor.name}`);
             }
-            this._modules.push(module);
+            this._modules.add(module);
             module.build(this);
             return this;
         });
@@ -190,6 +190,7 @@ export class GameBuilder {
     build(): Game {
         this.assertMutable();
         this._built = true;
+        this._modules.clear();
 
         const ownedAllocator = this._world === undefined && this._allocator === undefined
             ? new Allocator()
@@ -247,7 +248,6 @@ export class GameBuilder {
                 services,
                 scheduler,
                 params,
-                Object.freeze([...this._modules]),
             );
         } catch (error) {
             try { finalizeWorld(world, owner); }

@@ -2,17 +2,16 @@ import { describe, expect, test } from "@rstest/core";
 import {
     CommandModule,
     defSystem,
-    FixedTimeResource,
     type Game,
     GameBuilder,
-    RandomModule,
     State,
-    TimeModule,
     Update,
     Write,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
+import { RandomModule } from "@zero-ecs/game/random";
+import { FixedTimeResource, TimeModule } from "@zero-ecs/game/time";
 import { Float2 } from "../../examples/shooter-zombie/src/modules/common/components";
 import { GameMode, GameSessionState } from "../../examples/shooter-zombie/src/modules/common/game-state";
 import { GameConfigResource } from "../../examples/shooter-zombie/src/modules/common/resources";

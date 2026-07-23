@@ -1,8 +1,8 @@
 import {
     Game,
     ErrorHandlerService,
-    RandomService,
 } from "@zero-ecs/game";
+import { RandomService } from "@zero-ecs/game/random";
 import { GameViewResource, MetricsService } from "../modules/host";
 import { Render, RenderFrameService } from "../modules/presentation";
 
