@@ -75,7 +75,8 @@ function updateDomHud(
     hud.setMetric(HudMetric.Entities, statistics.entities.toLocaleString());
     hud.setMetric(HudMetric.Bullets, statistics.bullets.toLocaleString());
     hud.setMetric(HudMetric.Zombies, statistics.zombies.toLocaleString());
-    hud.setMetric(HudMetric.Score, statistics.score.toString().padStart(6, "0"));
+    const score = statistics.score.toString();
+    hud.setMetric(HudMetric.Score, "000000".slice(score.length) + score);
     hud.setMetric(HudMetric.Wave, wave.wave.toString());
     hud.setMetric(HudMetric.Level, progression.level.toString());
     hud.setMetric(HudMetric.Experience, `${progression.xp}/${progression.xpToNext}`);

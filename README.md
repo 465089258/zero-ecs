@@ -53,7 +53,7 @@ import { Allocator, World } from "@zero-ecs/world";
 
 const allocator = new Allocator();
 const world = new World(allocator);
-const entity = world.reserveEntity();
+const entity = world.spawn();
 const ref = world.ref(entity); // 低频只读便利对象
 const command = world.createEntityCommand(entity);
 world.applyEntityCommand(command);

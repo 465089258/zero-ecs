@@ -76,7 +76,7 @@ export class Commands extends Service implements ICommands {
     /** 为已有实体取得可池化的 World-local 局部事务。 */
     entity(entity: Entity): EntityCommand {
         let raw = this._entityPool.pop();
-        if (raw) raw._reset(entity);
+        if (raw) raw.reset(entity);
         else raw = this._world.createEntityCommand(entity) as InternalRawEntityCommand;
         const command = this.cmd(EntityCommand) as EntityCommand;
         command.bind(raw);
@@ -84,7 +84,7 @@ export class Commands extends Service implements ICommands {
     }
 
     /** 立即预留实体句柄，并返回尚未提交的局部事务。 */
-    spawn(): EntityCommand { return this.entity(this._world.reserveEntity()); }
+    spawn(): EntityCommand { return this.entity(this._world.spawn()); }
 
     /** @internal 接收 Game EntityCommand 解包后的 World 原始事务。 */
     enqueueEntityCommand(command: RawEntityCommand): void {
@@ -371,10 +371,6 @@ export class EntityCommand extends Command implements EntityMutator {
     }
 }
 
-/** @deprecated Use Commands. */
-export { Commands as CommandService };
-/** @deprecated Use ICommands. */
-export type ICommandService = ICommands;
 
 const ENTITY_PAGE_SHIFT = 10;
 const ENTITY_PAGE_SIZE = 1 << ENTITY_PAGE_SHIFT;

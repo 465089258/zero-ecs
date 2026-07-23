@@ -88,7 +88,7 @@ advanced 代码需要直接遍历 Archetype 时，使用连续 `chunkIdx`，而�
 DataSet：
 
 ```ts
-for (let chunkIdx = 0; chunkIdx < archetype.chunkCount; chunkIdx++) {
+for (let chunkIdx = 0; chunkIdx < archetype.chunks; chunkIdx++) {
     const count = archetype.chunkRowCount(chunkIdx);
     const entities = archetype.entities[chunkIdx];
     const positions = archetype.views[chunkIdx][positionId];
@@ -99,26 +99,31 @@ for (let chunkIdx = 0; chunkIdx < archetype.chunkCount; chunkIdx++) {
 这些列属于 Archetype/Chunk 生命周期，结构变化后不得长期保留。底层 `DataSet` 只管理
 Table 的 `push/pop`，Table 本身不提供行分配、删除、计数或版本 API。
 
-### WorldView 与 StructureWriter
+### World
 
 ```ts
-interface WorldView {
+class World {
+    component<T>(type: ComponentType<T>): ComponentDefinition<T>;
+    query<T>(type: QueryType<T>): Query<T>;
+
+    spawn(): Entity;
     ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
     get(entity, component, field): ComponentFieldValue<Component, Field> | null;
     has(entity, component): boolean;
-}
-
-interface StructureWriter {
-    reserveEntity(): Entity;
+    set(entity, component, field, value): boolean;
     despawn(entity: Entity): boolean;
     createEntityCommand(entity: Entity): EntityCommand;
     applyEntityCommand(command: EntityCommand): boolean;
 }
 ```
 
-`getTypes()` 和 `getCompLocation()` 是会分配的诊断 API，不属于 `WorldView`；后者返回
-`{ chunkIdx, row }`。
+`World` 是底层 ECS 内核，不提供业务层时序安全保证。直接调用 `migrate()`、`despawn()`
+等即时结构 API 时，调用方必须确认当前没有冲突 Query 迭代。Game 业务代码通常通过
+Service 与延迟 Commands 操作实体；`game.world` 保留为扩展底层能力的显式入口。
+
+`component(type)` 是“使用即注册”，重复调用返回同一个 World-local 定义。
+`getTypes()` 和 `getCompLocation()` 是会分配的诊断 API；后者返回 `{ chunkIdx, row }`。
 
 ### EntityRef
 
@@ -131,17 +136,18 @@ if (player.valid && player.has(HealthType)) {
 }
 ```
 
-EntityRef 只保存 `WorldView + Entity`，不缓存 Archetype、Chunk、row 或组件列，也不会
+EntityRef 只保存 `World + Entity`，不缓存 Archetype、Chunk、row 或组件列，也不会
 钉住实体。实体销毁后既有引用的 `valid` 变为 `false`，`has()` 返回 `false`，`get()`
-返回 `null`。`equals()` 同时比较 World 身份与带版本 Entity 句柄。
+返回 `null`；所属 World 释放后再访问则抛出 disposed 错误。`equals()` 同时比较 World
+身份与带版本 Entity 句柄。
 
 EntityRef 是明确允许分配的低频 API，不应在 Query 的逐实体循环中创建；它不提供
-`set/add/remove/despawn`。结构修改继续使用 EntityCommand 或 StructureWriter。
+`set/add/remove/despawn`。结构修改继续使用 Game Commands 或底层 World。
 
 ### EntityCommand
 
 ```ts
-const entity = world.reserveEntity();
+const entity = world.spawn();
 const command = world.createEntityCommand(entity);
 command
     .add(PositionType)
@@ -198,7 +204,7 @@ HierarchyService。
 
 父节点通过 Game Commands despawn 时，Hierarchy 默认递归 despawn 全部后代。如果希望
 某个子树保留，必须先调用 `removeParent(root)` 或 `setParent(root, anotherParent)`；同一
-Commands flush 中关系变更先于递归展开。直接使用低层 World/StructureWriter 属于显式
+Commands flush 中关系变更先于递归展开。直接使用低层 World 属于显式
 逃生口，不承诺触发 Game 层级语义。
 
 ### Resource、State、Service
@@ -253,8 +259,8 @@ game.stop();
 game.dispose();
 ```
 
-`game.world` 是 `WorldView`；`game.structureWriter()` 返回同一 World 的结构能力。完整
-World 不进入普通 SystemParam。
+`game.world` 与 `[World]` 系统参数都返回同一个完整 `World`。这里没有 facade 或运行时
+权限检查；即时结构修改的安全时序由调用方负责。
 
 ### Commands
 
@@ -266,8 +272,7 @@ command.submit();
 
 普通自定义 Command 和 Game EntityCommand 都调用自身 `.submit()`。Game EntityCommand
 继承 Command，内部组合 `@zero-ecs/world` 的原始 EntityCommand；Commands/Structure 两个
-Post System 按 Entity 合并后统一应用。`CommandService` 仅保留为 `Commands` 的 deprecated
-类型别名。根入口只导出 Game EntityCommand 的类型，不导出其构造器；实例必须由
+Post System 按 Entity 合并后统一应用。根入口只导出 Game EntityCommand 的类型，不导出其构造器；实例必须由
 `Commands.spawn()/entity()` 创建。
 
 ### DefaultCoreModule

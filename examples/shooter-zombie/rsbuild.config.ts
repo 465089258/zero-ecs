@@ -14,8 +14,29 @@ export default defineConfig({
             root: "dist-example/shooter-zombie",
         },
         cleanDistPath: true,
+        target: "web",
+        minify: {
+            js: true,
+            jsOptions: {
+                minimizerOptions: {
+                    compress: {
+                        inline: 0,
+                        reduce_vars: false,
+                    }
+                }
+            }
+        }
+
     },
     server: {
         port: 3101,
     },
+    tools: {
+        swc: {
+            jsc: {
+                target: "es5",
+                loose: true,
+            }
+        }
+    }
 });

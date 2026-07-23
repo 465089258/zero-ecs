@@ -29,8 +29,8 @@ export type { ObjectPoolOptions, ObjectPoolToken } from "./pool/object-pool-serv
 
 export { Command } from "./command/command";
 export type { ICommand } from "./command/command";
-export { Commands, CommandService } from "./command/command-service";
-export type { EntityCommand, ICommands, ICommandService } from "./command/command-service";
+export { Commands } from "./command/command-service";
+export type { EntityCommand, ICommands } from "./command/command-service";
 export { CommandModule } from "./command/module";
 
 export { GameSystemSet, ManualStage, Shutdown, Startup, Update } from "./runtime/stage";
@@ -46,13 +46,7 @@ export type {
     SystemParamValue,
 } from "./runtime/system";
 export { Game, GamePhase } from "./runtime/game";
-/** @deprecated 使用 `Game`。 */
-export { Game as Ecs } from "./runtime/game";
 export { GameBuilder } from "./runtime/game-builder";
-/** @deprecated 使用 `GameBuilder`。 */
-export { GameBuilder as EcsBuilder } from "./runtime/game-builder";
-/** @deprecated 使用 `GamePhase`。 */
-export { GamePhase as EcsPhase } from "./runtime/lifecycle";
 export type { ServiceBuildContext } from "./runtime/game-builder";
 export type { Module } from "./runtime/module";
 export { DefaultCoreModule } from "./features/default-core-module";

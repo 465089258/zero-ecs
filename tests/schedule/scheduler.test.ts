@@ -21,7 +21,6 @@ import {
     Update,
     With,
     World,
-    type WorldView,
 } from "@zero-ecs/game";
 
 class StepResource extends Resource {
@@ -133,10 +132,10 @@ describe("system registration and scheduling", () => {
 
     test("injects peer World, Resource, State and Service parameters", () => {
         const order: string[] = [];
-        let receivedWorld: WorldView | undefined;
+        let receivedWorld: World | undefined;
 
         function timeSystem(
-            world: WorldView,
+            world: World,
             step: Readonly<StepResource>,
             time: Mut<ClockState>,
             audit: AuditService,
@@ -224,10 +223,10 @@ describe("system registration and scheduling", () => {
         const builder = new GameBuilder().setAllocator(allocator);
         builder.addSystem(defSystem(Update.fixed, querySystem, [queryType, queryType]));
         const game = builder.build();
-        const world = game.structureWriter() as World;
+        const world = game.world;
         const entityCount = 24;
         for (let i = 0; i < entityCount; i++) {
-            const entity = world.reserveEntity();
+            const entity = world.spawn();
             expect(world.applyEntityCommand(
                 world.createEntityCommand(entity).add(PositionType).set(PositionType, Position.x, i),
             )).toBe(true);

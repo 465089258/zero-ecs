@@ -43,11 +43,6 @@ export class ComponentRegistry {
         return this.defMeta(type);
     }
 
-    /** 查询已定义的组件；该操作不会触发注册。 */
-    get<T extends object>(type: ComponentType<T>): ComponentDefinition<T> | undefined {
-        return this.getMeta(type);
-    }
-
     /** @internal 定义组件并返回当前 World 的存储元数据。 */
     defMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
         const cached = this._byType.get(type);

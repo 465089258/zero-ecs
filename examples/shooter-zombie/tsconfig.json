@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ES2020", "DOM"],
+    "lib": ["ES5", "DOM"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": false,

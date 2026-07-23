@@ -6,8 +6,6 @@ import {
     defaultAllocatorConfig,
     DefaultCoreModule,
     defSystem,
-    Ecs,
-    EcsBuilder,
     EntityRef,
     ErrorHandlerService,
     Game,
@@ -39,9 +37,7 @@ import {
     type QueryProjection,
     type RuntimeErrorHandler,
     type RuntimeErrorSource,
-    type StructureWriter,
     type SystemParamValue,
-    type WorldView,
     type ServiceActivateContext,
     type ServiceInitContext,
     type ServiceToken,
@@ -49,12 +45,9 @@ import {
 } from "@zero-ecs/game";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
-// @ts-expect-error unsafe structure access is available only from the advanced entry.
-import { unsafeStructureWriter as rootUnsafeStructureWriter } from "@zero-ecs/game";
 import {
     defineComponentMeta,
     getComponentMeta,
-    unsafeStructureWriter,
 } from "@zero-ecs/game/advanced";
 import { Scheduler } from "@zero-ecs/scheduler";
 import type { EntityCommand as RawEntityCommand } from "@zero-ecs/world";
@@ -82,7 +75,7 @@ declare const worldAllocator: IAllocator;
 new World(worldAllocator);
 // @ts-expect-error World never creates or owns an implicit Allocator.
 new World();
-const definition: ComponentDefinition<PositionType> = componentWorld.defineComponent(PositionType);
+const definition: ComponentDefinition<PositionType> = componentWorld.component(PositionType);
 definition.layout;
 // @ts-expect-error World-local IDs are not part of the stable definition.
 definition.id;
@@ -108,7 +101,7 @@ const abstractServiceToken: ServiceToken<AbstractToolService> = AbstractToolServ
 const concreteServiceType: ServiceType<ConcreteToolService> = ConcreteToolService;
 // @ts-expect-error Abstract Service tokens cannot be registered as constructible implementations.
 const invalidConcreteServiceType: ServiceType<AbstractToolService> = AbstractToolService;
-type WorldParamIsView = Assert<Equal<SystemParamValue<typeof World>, WorldView>>;
+type WorldParamIsWorld = Assert<Equal<SystemParamValue<typeof World>, World>>;
 const childProjection: QueryProjection = ChildOf;
 componentWorld.query(QueryType.from(With(ChildOf)));
 new GameBuilder().addModule(new HierarchyModule());
@@ -157,7 +150,7 @@ componentWorld.createEntityCommand(entity).set(LinkType, Link.target, entity);
 // @ts-expect-error Entity reference fields reject unbranded numbers in command writes.
 componentWorld.createEntityCommand(entity).set(LinkType, Link.target, rawNumber);
 const invalidEntity: Entity = INVALID_ENTITY;
-function worldSystem(world: WorldView): void {
+function worldSystem(world: World): void {
     world.valid(entity);
     const ref: EntityRef = world.ref(entity);
     ref.valid;
@@ -167,7 +160,6 @@ function worldSystem(world: WorldView): void {
     ref.despawn();
     // @ts-expect-error EntityRef intentionally excludes component writes.
     ref.set(PositionType, Position.x, 1);
-    // @ts-expect-error WorldView intentionally excludes immediate structure changes.
     world.despawn(entity);
     // @ts-expect-error World no longer exposes Game dependency injection.
     world.service(ToolService);
@@ -176,15 +168,10 @@ function worldSystem(world: WorldView): void {
 new EntityRef(componentWorld, entity);
 
 class WorldHelper {
-    @Inject.world() readonly world!: WorldView;
-}
-
-// Decorator metadata cannot enforce the exact field declaration; this is an explicit escape hatch.
-class FullWorldHelper {
     @Inject.world() readonly world!: World;
 }
 
-const builder = new EcsBuilder()
+const builder = new GameBuilder()
     .addResource(ConfigResource, new ConfigResource())
     .addState(CounterState)
     .addService(ToolService);
@@ -215,7 +202,6 @@ builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem
 builder.addSystem(optionalDependencySystem);
 const ManualRender = new ManualStage("render", 10);
 builder.addSystem(defSystem(ManualRender, () => {}, []));
-// @ts-expect-error [World] supplies WorldView, not the nominal full World type.
 builder.addSystem(defSystem(Update.fixed, (_world: World) => {}, [World]));
 // @ts-expect-error Only functions returned by defSystem can be registered.
 builder.addSystem(plainSystem);
@@ -223,26 +209,22 @@ builder.addSystem(plainSystem);
 const ecs = builder.build();
 ecs.resource(ConfigResource).value;
 ecs.state(CounterState).count;
-// @ts-expect-error Ecs exposes Resources as shallow readonly values.
+// @ts-expect-error Game exposes Resources as shallow readonly values.
 ecs.resource(ConfigResource).value++;
-// @ts-expect-error Ecs exposes States as shallow readonly values.
+// @ts-expect-error Game exposes States as shallow readonly values.
 ecs.state(CounterState).count++;
-// @ts-expect-error Containers are internal Ecs ownership details.
+// @ts-expect-error Containers are internal Game ownership details.
 ecs.resources;
-// @ts-expect-error Scheduler is not a stable Ecs property.
+// @ts-expect-error Scheduler is not a stable Game property.
 ecs.scheduler;
-// @ts-expect-error Ecs instances must be built by EcsBuilder.
-new Ecs();
 
 const game = new GameBuilder().build();
 game.runStage(ManualRender);
 // @ts-expect-error Standard lifecycle stages cannot be invoked through the manual-stage API.
 game.runStage(Update.fixed);
-const writer: StructureWriter = game.structureWriter();
-writer.reserveEntity();
-writer.createEntityCommand(entity);
-// @ts-expect-error Game exposes only the non-structural WorldView by default.
-game.world.query;
+game.world.spawn();
+game.world.createEntityCommand(entity);
+game.world.query(QueryType.from(With(PositionType)));
 game.service(AllocatorService).alloc;
 game.service(AbstractToolService).increment(1);
 const allocatorContract: IAllocator = game.service(AllocatorService);
@@ -260,7 +242,6 @@ game.service(ErrorHandlerService).setHandler(runtimeErrorHandler).report(
     new Error("network failure"),
     customErrorSource,
 );
-unsafeStructureWriter(componentWorld).despawn(entity);
 // @ts-expect-error Game is a composition root, not a SystemParam.
 defSystem(Update.fixed, (_game: Game) => {}, [Game]);
 // @ts-expect-error Game instances must be built by GameBuilder.
@@ -270,7 +251,6 @@ void RootScheduler;
 void abstractServiceToken;
 void concreteServiceType;
 void invalidConcreteServiceType;
-void rootUnsafeStructureWriter;
 const entityCommand: EntityCommand = game.service(Commands).spawn();
 entityCommand.set(LinkType, Link.target, entity);
 // @ts-expect-error Hierarchy relations are readonly Query projections, not mutable ComponentType values.
@@ -292,7 +272,6 @@ void getComponentMeta;
 void IncompletePositionType;
 void LifecycleService;
 void WorldHelper;
-void FullWorldHelper;
 void allocatorContract;
 void worldAllocator;
 void allocatorOptions;

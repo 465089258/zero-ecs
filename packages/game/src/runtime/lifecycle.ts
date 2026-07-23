@@ -13,6 +13,3 @@ export enum GamePhase {
     /** 已完全销毁。 */
     Disposed,
 }
-
-/** @deprecated 使用 `GamePhase`。 */
-export { GamePhase as EcsPhase };

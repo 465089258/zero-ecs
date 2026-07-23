@@ -3,18 +3,18 @@ import type {
     ComponentFields,
     ComponentType,
 } from "../component/component";
-import type { WorldView } from "../world";
+import type { World } from "../world";
 import type { Entity } from "./entity";
 
 /**
  * 绑定一个 World-local Entity 的低频只读便利视图。
  *
- * EntityRef 只保存 WorldView 与带版本实体句柄，不缓存 Archetype、Chunk、行或组件列。
+ * EntityRef 只保存 World 与带版本实体句柄，不缓存 Archetype、Chunk、行或组件列。
  * 它不会钉住实体；实体销毁后，既有引用的 {@link valid} 会变为 `false`。
  */
 export class EntityRef {
     constructor(
-        private readonly _world: WorldView,
+        private readonly _world: World,
         readonly entity: Entity,
     ) {}
 

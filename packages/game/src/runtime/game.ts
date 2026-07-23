@@ -9,14 +9,14 @@ import {
     StateContainer,
     type StateType,
 } from "../context";
-import { type Allocator, type StructureWriter, type WorldView, World } from "@zero-ecs/world";
+import { type Allocator, World } from "@zero-ecs/world";
 import { Scheduler, type SystemParamProvider } from "@zero-ecs/scheduler";
 import { GAME_CONSTRUCTION_TOKEN } from "./construction-token";
 import { GamePhase } from "./lifecycle";
 import type { Module } from "./module";
 import { type ManualStage, Shutdown, Startup, Update } from "./stage";
 import type { SystemParam } from "./system";
-import { finalizeWorld, structureWriterOf } from "./world-ownership";
+import { finalizeWorld } from "./world-ownership";
 
 export { GamePhase } from "./lifecycle";
 
@@ -80,8 +80,11 @@ export class Game {
     /** 当前生命周期阶段。 */
     get phase(): GamePhase { return this._phase; }
 
-    /** 普通宿主代码使用的非结构 World 视图。 */
-    get world(): WorldView { return this._world; }
+    /**
+     * 底层 ECS 数据内核。
+     * 直接调用即时结构 API 时，调用方负责保证当前没有冲突的迭代或结构修改。
+     */
+    get world(): World { return this._world; }
 
     /** 按类型取得只读 Resource。 */
     readonly resource = <T extends Resource>(type: ResourceType<T>): Readonly<T> =>
@@ -94,14 +97,6 @@ export class Game {
     /** 按类型取得 Service。 */
     readonly service = <T extends Service>(type: ServiceToken<T>): T =>
         this._services.get(type);
-
-    /**
-     * 取得宿主即时结构写能力。
-     * 调用方负责只在没有冲突 System 或 Query 迭代的安全时点使用。
-     */
-    structureWriter(): StructureWriter {
-        return structureWriterOf(this._world, this._worldOwner);
-    }
 
     /**
      * 初始化 State、Service、Scheduler 和 Module；World 在构造时已经可用。

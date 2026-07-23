@@ -11,6 +11,7 @@ import {
     Types,
     World,
 } from "@zero-ecs/game";
+import { getComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -125,13 +126,13 @@ describe("unified Commands", () => {
 
     test("reserves spawn IDs immediately and executes EntityCommand in the same queue", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const commands = ecs.service(Commands);
         const command = commands.spawn();
         const entity = command.entity;
 
         expect(entities.valid(entity)).toBe(true);
-        expect(entities.component(PositionType)).toBeUndefined();
+        expect(getComponentMeta(entities, PositionType)).toBeUndefined();
         command
             .add(PositionType)
             .set(PositionType, Position.x, 10)
@@ -155,7 +156,7 @@ describe("unified Commands", () => {
     test("batch despawns across retained empty Tables and can immediately reuse Entity slots", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const errors: unknown[] = [];
         ecs.service(ErrorHandlerService).setHandler(error => errors.push(error));
         const original: Entity[] = [];
@@ -189,7 +190,7 @@ describe("unified Commands", () => {
 
     test("keeps unsubmitted EntityCommand alive and makes despawn terminal", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const commands = ecs.service(Commands);
         const command = commands.spawn();
         const entity = command.entity;
@@ -213,18 +214,18 @@ describe("unified Commands", () => {
 
     test("read access does not register an unseen component", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
-        const entity = entities.reserveEntity();
+        const entities = ecs.world;
+        const entity = entities.spawn();
 
         expect(entities.has(entity, PositionType)).toBe(false);
         expect(entities.get(entity, PositionType, Position.x)).toBeNull();
         expect(entities.view(entity, PositionType)).toBeNull();
-        expect(entities.component(PositionType)).toBeUndefined();
+        expect(getComponentMeta(entities, PositionType)).toBeUndefined();
     });
 
     test("uses idempotent Add/Remove and Set implicitly adds a zeroed component", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const commands = ecs.service(Commands);
         const create = commands.spawn();
         const entity = create.entity;
@@ -239,7 +240,7 @@ describe("unified Commands", () => {
 
         expect(entities.get(entity, PositionType, Position.x)).toBe(12);
         expect(entities.get(entity, PositionType, Position.y)).toBe(0);
-        expect(entities.component(PlayerTagType)).toBeUndefined();
+        expect(getComponentMeta(entities, PlayerTagType)).toBeUndefined();
 
         const update = commands.entity(entity)
             .add(PositionType)
@@ -252,13 +253,13 @@ describe("unified Commands", () => {
 
     test("does not enter the structural path for idempotent Add/Remove", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const commands = ecs.service(Commands);
         const create = commands.spawn().set(PositionType, Position.x, 1);
         const entity = create.entity;
         create.submit();
         ecs.update();
-        entities.defineComponent(PlayerTagType);
+        entities.component(PlayerTagType);
 
         let migrations = 0;
         const migrate = entities.migrate.bind(entities);
@@ -280,7 +281,7 @@ describe("unified Commands", () => {
 
     test("treats Remove then Add or Set as a fresh zeroed component", () => {
         const ecs = setup();
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const commands = ecs.service(Commands);
         const create = commands.spawn();
         const entity = create.entity;
@@ -312,7 +313,7 @@ describe("unified Commands", () => {
     test("provides read-your-writes through a shared zero-wrapper EntityMutator view", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const command = commands.spawn();
         const entity = command.entity;
 
@@ -341,7 +342,7 @@ describe("unified Commands", () => {
     test("keeps Add-to-Remove and Set-to-Remove entities without the component", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const added = commands.spawn();
         const addedEntity = added.entity;
         added.add(PositionType).remove(PositionType);

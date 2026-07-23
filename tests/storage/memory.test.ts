@@ -85,7 +85,7 @@ describe("Allocator", () => {
         expect(buffer.byteLength).toBe(0);
         expect(value[0]).toBe(42);
         expect(() => buffer.u8(1)).toThrow(/disposed/);
-        expect(() => buffer.dispose()).toThrow(/disposed/);
+        expect(() => buffer.dispose()).not.toThrow();
     });
 
     test("returns an allocated Buffer to its Allocator on dispose", () => {
@@ -98,7 +98,7 @@ describe("Allocator", () => {
         expect(buffer.disposed).toBe(true);
         expect(allocator.stats().allocatedBuffers).toBe(0);
         expect(() => buffer.u8(1)).toThrow();
-        expect(() => buffer.dispose()).toThrow();
+        expect(() => buffer.dispose()).not.toThrow();
         const replacement = allocator.alloc();
         expect(replacement).not.toBe(buffer);
         replacement.dispose();

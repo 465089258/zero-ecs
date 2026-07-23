@@ -45,7 +45,7 @@ World 构造完成后立即可用，不存在 attach/backend 阶段：
 ```ts
 const allocator = new Allocator();
 const world = new World(allocator);
-const entity = world.reserveEntity();
+const entity = world.spawn();
 world.valid(entity);
 world.query(QueryType.from(With(Position)));
 ```
@@ -138,40 +138,24 @@ IAllocator。AllocatorService：
 
 因此 World、Service 和上层工具使用一致的内存模型，同时所有权仍然唯一。
 
-## 5. 能力分层
+## 5. World 底层能力
 
-优先使用 TypeScript 表达协议，不在逐实体或逐结构操作中增加权限检查。
-
-```text
-WorldView              valid / get / has
-StructureWriter        reserveEntity / despawn
-World                  完整内核与稳定实体 API
-UnsafeStructureWriter  advanced 显式别名，运行时仍是 World
-```
-
-普通 System 的 `[World]` 参数映射为 `WorldView`：
+Game 与 System 直接取得完整 World，不创建能力 wrapper：
 
 ```ts
-const system = defSystem(Update.fixed, (world: WorldView) => {
+const system = defSystem(Update.fixed, (world: World) => {
     world.valid(entity);
-    // world.despawn(entity); // 编译错误
 }, [World]);
 ```
 
-Provider 在运行时传递同一个 World 实例，不创建 wrapper。`Game` 和
-StructureWriter 不属于 SystemParam。宿主通过 `game.structureWriter()` 显式取得
-结构能力；advanced `unsafeStructureWriter(world)` 同样返回原 World。
-
-这些都是君子协议：类型断言、完整 `@Inject.world()` 字段或深层源码访问可以绕过
-类型收窄，框架不为此增加热路径分支。调用方必须避免在活跃 Query 迭代期间执行
-即时迁移或 despawn。
+World 是底层不安全入口，框架不为业务层时序增加热路径分支。调用方必须避免在活跃
+Query 迭代期间执行即时迁移或 despawn；普通业务修改优先通过 Game Commands 延迟提交。
 
 ## 6. Component、Entity 与 Query
 
 稳定组件入口位于 World：
 
 ```ts
-world.defineComponent(Position);
 world.component(Position);
 ```
 
@@ -181,7 +165,7 @@ advanced 的 `defineComponentMeta(world, Type)` 与 `getComponentMeta(world, Typ
 实体方法直接在 World 上执行，不经过 Service：
 
 ```ts
-const entity = world.reserveEntity();
+const entity = world.spawn();
 world.valid(entity);
 world.has(entity, Position);
 world.get(entity, Position, PositionField.x);
@@ -189,11 +173,10 @@ world.ref(entity); // 低频只读便利对象；每次调用都会分配
 world.despawn(entity);
 ```
 
-`reserveEntity()` 只分配有效句柄，不物化 Archetype 行。Command 提交的组件集合仍在
+`spawn()` 只分配有效句柄，不物化 Archetype 行。Command 提交的组件集合仍在
 `Update.post` 中通过 MigrationPlan 物化或迁移。`view()`、`getTypes()` 与
-`getCompLocation()` 是完整 World 的 advanced/诊断便利能力，不进入 WorldView；后
-两者成功时会分配结果对象或数组。
-`WorldView.ref()` 同样属于明确分配的低频边界；返回的 EntityRef 不缓存
+`getCompLocation()` 是完整 World 的 advanced/诊断便利能力；后两者成功时会分配结果对象或数组。
+`World.ref()` 同样属于明确分配的低频边界；返回的 EntityRef 不缓存
 Archetype/chunkIdx/row，也不提供结构写能力。
 
 `World.query(type)` 直接构造 Query，并把 World 私有 ComponentRegistry 与
@@ -207,8 +190,8 @@ Archetype 版本触发 rebuild，没有 QueryHandle、QueryPlan、DenseRows 或 
 Command、Event 和 Timer 仍是 Game Service/State/System 功能，不进入 World 内核。
 
 ```text
-CommandService.spawn
-→ World.reserveEntity                    句柄立即有效
+Commands.spawn
+→ World.spawn                             句柄立即有效
 → flushCommandSystem                     Update.post
 → EntityMigrationService.record
 → flushEntityMigrationSystem             after flushCommandSystem
@@ -277,7 +260,7 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 
 | 参数 | 解析值 |
 | --- | --- |
-| `World` | 同一对象，函数签名收窄为 WorldView |
+| `World` | 同一个完整 World |
 | QueryType | `world.query(type)` |
 | Resource / State / Write(State) / Service | 对应 Game 容器实例 |
 
@@ -290,7 +273,7 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 
 - 删除 ComponentService、ArchetypeService、EntityService、QueryService、
   EcsMemoryService 和 CoreEcsModule 的导出与实现；
-- 新增 `World.defineComponent/component/query` 及直接实体 API；
+- 使用 `World.component/query` 及直接实体 API；
 - 新增稳定 Allocator 配置类型、默认配置、`IAllocator`、`Buffer` 与 `AllocatorService`；具体 `Allocator` 保持 advanced；
 - advanced 元数据函数从接收 ComponentService 改为接收 World；
 - Game 的 Module 列表不再隐含首个 CoreEcsModule。
@@ -304,7 +287,7 @@ Provider 自己持有解析所需的 Game 上下文；World 不作为 `prepare()
 - World 永远只归还自身 Buffer；Game 只清理 GameBuilder 创建的默认 Allocator。
 - Service 先于 World dispose。
 - Query 与 Command/Migration 算法行为保持不变。
-- `[World]` 仍编译期映射为 WorldView，运行时零 wrapper。
+- `[World]` 编译期映射为完整 World，运行时零 wrapper。
 - Scheduler/Query/字段访问/批量迁移没有新增权限分支或 capability 分配。
 - 旧核心 Service 不出现在 root 或 advanced 包入口。
 - 正常 JIT、`--jitless`、声明类型与示例构建全部通过。

@@ -85,7 +85,7 @@ function createWorldReadScenario(name, config) {
     const world = new World(allocator);
     const entities = new Uint32Array(config.readEntityCount);
     for (let i = 0; i < entities.length; i++) {
-        const entity = world.reserveEntity();
+        const entity = world.spawn();
         entities[i] = entity;
         const command = world.createEntityCommand(entity).add(BenchPosition).set(BenchPosition, 0, i);
         if (!world.applyEntityCommand(command)) throw new Error("World read setup failed");

@@ -59,7 +59,7 @@ const HealthLifecycleQuery = QueryType.from(
 [count, entities]
 ```
 
-在变化 Query 中，`With` 和 `Without` 只承担结构过滤，不返回组件列。需要读取提交后的当前字段时，系统额外取得 `WorldView` 并使用 `get` 或 `has`。
+在变化 Query 中，`With` 和 `Without` 只承担结构过滤，不返回组件列。需要读取提交后的当前字段时，系统额外取得 `World` 并使用 `get` 或 `has`。
 
 ## 3. 统一公共语法
 

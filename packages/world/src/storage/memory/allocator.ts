@@ -6,6 +6,7 @@ import type {
     AllocatorStats,
     IAllocator,
 } from "./types";
+import { Disposable } from "../disposable";
 
 interface MemoryBlock {
     readonly id: number;
@@ -31,7 +32,7 @@ class AllocatorBuffer extends Buffer {
         this._location = location;
     }
 
-    override dispose(): void {
+    override doDispose(): void {
         const owner = this._owner;
         if (!owner) throw new Error("Buffer has been disposed");
         owner.releaseBuffer(this, this._location);
@@ -42,7 +43,7 @@ class AllocatorBuffer extends Buffer {
 }
 
 /** 按实例配置从大块内存中分配固定大小 Buffer。 */
-export class Allocator implements IAllocator {
+export class Allocator extends Disposable implements IAllocator {
     private readonly _blocks = new Map<number, MemoryBlock>();
     private readonly _freeList: number[] = [];
     private _nextBlockId = 0;
@@ -52,10 +53,12 @@ export class Allocator implements IAllocator {
     readonly config: Readonly<AllocatorConfig>;
 
     constructor(config: Readonly<AllocatorOptions> = defaultAllocatorConfig) {
+        super();
         this.config = normalizeConfig(config);
     }
 
     /** 分配一个新 Buffer 对象；无空闲区域时自动增加一个 Block。 */
+    @Disposable.guard
     alloc(): Buffer {
         if (this._freeList.length === 0) this.grow();
         const location = this._freeList.pop()!;
@@ -79,6 +82,7 @@ export class Allocator implements IAllocator {
     }
 
     /** @internal 接收 AllocatorBuffer.dispose() 的归还请求。 */
+    @Disposable.guard
     releaseBuffer(buffer: AllocatorBuffer, location: number): void {
         if (!Number.isSafeInteger(location) || location < 0) throw new Error("Invalid Buffer allocation");
         const buffersPerBlock = this.config.buffersPerBlock;
@@ -97,6 +101,7 @@ export class Allocator implements IAllocator {
     }
 
     /** 返回当前 Block、Buffer 与字节占用统计。 */
+    @Disposable.guard
     stats(): AllocatorStats {
         const blockCount = this._blocks.size;
         const { blockByteLength, bufferByteLength, buffersPerBlock } = this.config;
@@ -112,6 +117,7 @@ export class Allocator implements IAllocator {
     }
 
     /** 释放全部空 Block，并返回释放的 Block 数量。 */
+    @Disposable.guard
     trim(): number {
         const emptyIds = new Set<number>();
         for (const block of this._blocks.values()) {
@@ -131,6 +137,7 @@ export class Allocator implements IAllocator {
     }
 
     /** 清空分配器；仍有 Buffer 在使用时拒绝执行。 */
+    @Disposable.guard
     clear(): void {
         if (this._allocatedBuffers !== 0) {
             throw new Error(`Cannot clear allocator with ${this._allocatedBuffers} allocated Buffer(s)`);
@@ -156,6 +163,17 @@ export class Allocator implements IAllocator {
         for (let i = buffersPerBlock - 1; i >= 0; i--) {
             this._freeList.push(id * buffersPerBlock + i);
         }
+    }
+    protected doDispose(): void {
+        if (this._allocatedBuffers !== 0) {
+            throw new Error(
+                "Cannot dispose allocator with " +
+                `${this._allocatedBuffers} active Buffer(s)`,
+            );
+        }
+        this._blocks.clear();
+        this._freeList.length = 0;
+        this._nextBlockId = 0;
     }
 }
 

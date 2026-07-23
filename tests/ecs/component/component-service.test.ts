@@ -5,7 +5,7 @@ import {
     Types,
     World,
 } from "@zero-ecs/game";
-import { defineComponentMeta } from "@zero-ecs/game/advanced";
+import { defineComponentMeta, getComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -27,12 +27,10 @@ describe("World component registry", () => {
     test("defines a component lazily and idempotently", () => {
         const registry = components();
 
-        expect(registry.component(PositionType)).toBeUndefined();
-        const first = registry.defineComponent(PositionType);
-        const second = registry.defineComponent(PositionType);
+        const first = registry.component(PositionType);
+        const second = registry.component(PositionType);
 
         expect(second).toBe(first);
-        expect(registry.component(PositionType)).toBe(first);
         expect(first.type).toBe(PositionType);
         expect(first.layout).toEqual([Types.F32, Types.F32]);
         expect(Object.isFrozen(first)).toBe(true);
@@ -48,11 +46,11 @@ describe("World component registry", () => {
         expect(defineComponentMeta(first, PositionType).id).toBe(0);
         expect(defineComponentMeta(first, HealthType).id).toBe(1);
         expect(defineComponentMeta(second, HealthType).id).toBe(0);
-        expect(second.component(PositionType)).toBeUndefined();
+        expect(getComponentMeta(second, PositionType)).toBeUndefined();
     });
 
     test("rejects non-consecutive runtime fields", () => {
         class InvalidType { readonly 1 = Types.F32; }
-        expect(() => components().defineComponent(InvalidType)).toThrow(/consecutive integers/);
+        expect(() => components().component(InvalidType)).toThrow(/consecutive integers/);
     });
 });

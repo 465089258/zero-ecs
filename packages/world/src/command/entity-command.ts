@@ -56,7 +56,7 @@ export interface EntityCommand extends EntityMutator {
 
 /** 只供匹配版本 Game 使用的编译期 bridge；运行时不创建 wrapper。 */
 export interface InternalEntityCommand extends EntityCommand {
-    _reset(entity: Entity): void;
+    reset(entity: Entity): void;
     _seal(): void;
     _willDespawn(): boolean;
     _merge(source: InternalEntityCommand): void;
@@ -65,7 +65,9 @@ export interface InternalEntityCommand extends EntityCommand {
 
 /** @internal World 工厂入口。 */
 export function createEntityCommand(world: World, entity: Entity): EntityCommand {
-    return new EntityCommandImplementation(world, entity);
+    const command = new EntityCommandImplementation(world);
+    command.reset(entity);
+    return command;
 }
 
 /** @internal World 应用入口。 */
@@ -97,21 +99,16 @@ class EntityCommandImplementation implements InternalEntityCommand {
     private readonly _writeFields: number[] = [];
     private readonly _writeValues: number[] = [];
     private _writeUsed = 0;
-    private readonly _apply = (archetype: Archetype, row: ArchetypeRow): void => {
-        this.applyFields(archetype, row);
-    };
 
-    constructor(private readonly _world: World, entity: Entity) {
-        this._reset(entity);
-    }
+    constructor(private readonly world: World) {}
 
     get entity(): Entity { return this._entity; }
 
-    belongsTo(world: World): boolean { return this._world === world; }
+    belongsTo(world: World): boolean { return this.world === world; }
 
     has<T extends object>(type: ComponentType<T>): boolean {
         this.assertMutable();
-        const component = this._world.getComponentMeta(type);
+        const component = this.world.getComponentMeta(type);
         return component !== undefined && this._targetMask.has(component.mask);
     }
 
@@ -120,7 +117,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         field: Field,
     ): ComponentFieldValue<T, Field> | null {
         this.assertMutable();
-        const component = this._world.getComponentMeta(type);
+        const component = this.world.getComponentMeta(type);
         if (!component || !this._targetMask.has(component.mask)) return null;
         this.validateField(component, field);
         for (let i = this._used - ENTITY_INSTRUCTION_SIZE; i >= 0; i -= ENTITY_INSTRUCTION_SIZE) {
@@ -137,18 +134,18 @@ class EntityCommandImplementation implements InternalEntityCommand {
             }
             if (operation === EntityInstruction.Remove) return null;
         }
-        return this._world.get(this._entity, type, field);
+        return this.world.get(this._entity, type, field);
     }
 
     add<T extends object>(type: ComponentType<T>): this {
         this.assertMutable();
-        this.recordAdd(this._world.defineComponentMeta(type));
+        this.recordAdd(this.world.defineComponentMeta(type));
         return this;
     }
 
     remove<T extends object>(type: ComponentType<T>): this {
         this.assertMutable();
-        const component = this._world.getComponentMeta(type);
+        const component = this.world.getComponentMeta(type);
         if (component) this.recordRemove(component);
         return this;
     }
@@ -159,7 +156,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         value: ComponentFieldValue<T, Field>,
     ): this {
         this.assertMutable();
-        const component = this._world.defineComponentMeta(type);
+        const component = this.world.defineComponentMeta(type);
         this.validateField(component, field);
         this.recordSet(component, field, value);
         return this;
@@ -171,11 +168,11 @@ class EntityCommandImplementation implements InternalEntityCommand {
         return this;
     }
 
-    _reset(entity: Entity): void {
+    reset(entity: Entity): void {
         if (this._phase !== EntityCommandPhase.Recycled) {
             throw new Error("EntityCommand cannot be reset before it is recycled");
         }
-        if (!this._world.valid(entity)) throw new RangeError(`Invalid entity ${entity}`);
+        if (!this.world.valid(entity)) throw new RangeError(`Invalid entity ${entity}`);
         this._entity = entity;
         this._phase = EntityCommandPhase.Mutable;
         this._flags = 0;
@@ -184,7 +181,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         this._writeUsed = 0;
         this._types.length = 0;
         this._targetMask.toZero();
-        const archetype = this._world.getArchetypeAt(this._world.getArchIdx(entity));
+        const archetype = this.world.getArchetypeAt(this.world.getArchIdx(entity));
         if (!archetype) return;
         archetype.mask.copyTo(this._targetMask);
         for (let i = 0; i < archetype.types.length; i++) this._types.push(archetype.types[i]);
@@ -203,7 +200,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     }
 
     _merge(source: InternalEntityCommand): void {
-        if (!(source instanceof EntityCommandImplementation) || source._world !== this._world) {
+        if (!(source instanceof EntityCommandImplementation) || source.world !== this.world) {
             throw new Error("Cannot merge EntityCommands from different Worlds");
         }
         if (source === this) throw new Error("EntityCommand cannot merge itself");
@@ -224,7 +221,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         for (let i = 0; i < source._used; i += ENTITY_INSTRUCTION_SIZE) {
             const operation = source._instructions[i];
             const componentId = source._instructions[i + 1] as ComponentId;
-            const component = this._world.getComponentMetaById(componentId);
+            const component = this.world.getComponentMetaById(componentId);
             if (!component) throw new RangeError(`Unknown component id ${componentId}`);
             if (operation === EntityInstruction.Add) this.recordAdd(component);
             else if (operation === EntityInstruction.Remove) this.recordRemove(component);
@@ -249,7 +246,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     }
 
     applyTo(world: World): boolean {
-        if (world !== this._world) throw new Error("EntityCommand belongs to another World");
+        if (world !== this.world) throw new Error("EntityCommand belongs to another World");
         if (this._phase === EntityCommandPhase.Mutable) this._seal();
         if (this._phase !== EntityCommandPhase.Sealed) {
             throw new Error("EntityCommand has already been applied or recycled");
@@ -259,7 +256,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
             if ((this._flags & EntityCommandFlags.Despawn) !== 0) return world.despawn(this._entity);
             if (this._used === 0) return true;
             if ((this._flags & EntityCommandFlags.Structural) !== 0) {
-                return world.migrate(this._entity, this._targetMask, this._types, this._apply);
+                return world.migrate(this._entity, this._targetMask, this._types, this.applyFields, this);
             }
             return this.writeFieldsDirect();
         } finally {
@@ -388,7 +385,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     private applyFields(archetype: Archetype, row: ArchetypeRow): void {
         for (let i = 0; i < this._resetUsed; i++) {
             const componentId = this._resetComponents[i];
-            const component = this._world.getComponentMetaById(componentId)!;
+            const component = this.world.getComponentMetaById(componentId)!;
             for (let field = 0; field < component.layout.length; field++) {
                 archetype.setField(row, componentId, field, 0);
             }
@@ -405,14 +402,14 @@ class EntityCommandImplementation implements InternalEntityCommand {
 
     private writeFieldsDirect(): boolean {
         for (let i = 0; i < this._writeUsed; i++) {
-            if (!this._world.canSetComponentFieldById(
+            if (!this.world.canSetComponentFieldById(
                 this._entity,
                 this._writeComponents[i],
                 this._writeFields[i],
             )) return false;
         }
         for (let i = 0; i < this._writeUsed; i++) {
-            if (!this._world.setComponentFieldById(
+            if (!this.world.setComponentFieldById(
                 this._entity,
                 this._writeComponents[i],
                 this._writeFields[i],

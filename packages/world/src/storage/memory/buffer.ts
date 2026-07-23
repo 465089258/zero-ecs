@@ -1,3 +1,4 @@
+import { Disposable } from "../disposable";
 import { byteSizeOf, createTypedArray, type EntityArray, type TypedArrayFor, Types } from "../typed-array";
 
 function alignUp(value: number, alignment: number): number {
@@ -11,7 +12,7 @@ function alignUp(value: number, alignment: number): number {
  * 当前包装器对内存区域的引用；此前创建的原生 TypedArray 仍遵循 JavaScript 自身的
  * 引用语义。Allocator 可以通过内部子类覆盖 dispose，实现归还池化内存。
  */
-export class Buffer {
+export class Buffer extends Disposable {
     private _source: ArrayBuffer | undefined;
     private _baseOffset: number;
     private _byteLength: number;
@@ -23,6 +24,7 @@ export class Buffer {
         byteOffset = 0,
         byteLength = source.byteLength - byteOffset,
     ) {
+        super();
         if (!(source instanceof ArrayBuffer)) throw new TypeError("Buffer source must be an ArrayBuffer");
         if (!Number.isSafeInteger(byteOffset) || byteOffset < 0) {
             throw new RangeError("byteOffset must be a non-negative safe integer");
@@ -55,6 +57,7 @@ export class Buffer {
      * 按元素类型和数量顺序分配 TypedArray。
      * 分配位置会按底层 ArrayBuffer 的绝对字节偏移自动对齐。
      */
+    @Disposable.guard
     alloc<T extends Types>(type: T, length: number): TypedArrayFor<T> {
         const source = this.requireSource();
         if (!Number.isSafeInteger(length) || length < 0) {
@@ -96,12 +99,13 @@ export class Buffer {
     entity(length: number): EntityArray { return this.alloc(Types.Entity, length); }
 
     /** 将整个包装区域清零，不改变当前分配位置。 */
+    @Disposable.guard
     zero(): void {
         new Uint8Array(this.requireSource(), this._baseOffset, this._byteLength).fill(0);
     }
 
     /** 解除当前包装器对 ArrayBuffer 区域的引用。 */
-    dispose(): void {
+    doDispose(): void {
         this.requireSource();
         this.detach();
     }

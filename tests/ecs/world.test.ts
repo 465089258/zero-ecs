@@ -13,13 +13,11 @@ import {
     Update,
     With,
     World,
-    type WorldView,
     QueryType,
 } from "@zero-ecs/game";
 import {
     Allocator,
     AllocatorService,
-    unsafeStructureWriter,
 } from "@zero-ecs/game/advanced";
 import type { Entity } from "@zero-ecs/game";
 
@@ -37,7 +35,7 @@ test("World applies standalone EntityCommands and rejects cross-World reuse", ()
     const secondAllocator = new Allocator();
     const first = new World(firstAllocator);
     const second = new World(secondAllocator);
-    const entity = first.reserveEntity();
+    const entity = first.spawn();
     const command = first.createEntityCommand(entity)
         .set(PositionType, Position.x, 12);
 
@@ -54,13 +52,11 @@ test("World applies standalone EntityCommands and rejects cross-World reuse", ()
     secondAllocator.clear();
 });
 
-test("World is an immediately usable entity kernel and writer views reuse it", () => {
+test("World is an immediately usable entity kernel", () => {
     const game = new GameBuilder().build();
     expect(game.world.valid(0 as Entity)).toBe(false);
-    expect(game.structureWriter()).toBe(game.world);
-    expect(unsafeStructureWriter(game.world)).toBe(game.world);
 
-    const entity = game.world.reserveEntity();
+    const entity = game.world.spawn();
     expect(game.world.valid(entity)).toBe(true);
     expect(game.world.despawn(entity)).toBe(true);
     expect(game.world.valid(entity)).toBe(false);
@@ -68,7 +64,7 @@ test("World is an immediately usable entity kernel and writer views reuse it", (
 });
 
 class WorldAwareService extends Service {
-    @Inject.world() readonly world!: WorldView;
+    @Inject.world() readonly world!: World;
     initialized = false;
     activated = false;
 
@@ -140,7 +136,7 @@ test("a claimed or disposed World cannot be adopted by another Game", () => {
 });
 
 class InvalidWorldState extends State {
-    @Inject.world() readonly world!: WorldView;
+    @Inject.world() readonly world!: World;
 }
 
 test("a build failure after World claim disposes the kernel", () => {
@@ -154,7 +150,7 @@ test("a build failure after World claim disposes the kernel", () => {
 });
 
 class DisposeWorldService extends Service {
-    @Inject.world() readonly world!: WorldView;
+    @Inject.world() readonly world!: World;
     sawLiveWorld = false;
     dispose(): void { this.sawLiveWorld = this.world.valid(0 as Entity) === false; }
 }

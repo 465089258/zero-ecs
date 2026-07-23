@@ -12,7 +12,7 @@ if (World !== GameWorld || Stage !== GameStage) {
 
 const allocator = new Allocator();
 const world = new World(allocator);
-const entity = world.reserveEntity();
+const entity = world.spawn();
 if (!world.valid(entity)) throw new Error("Standalone World install failed");
 world.dispose();
 allocator.clear();

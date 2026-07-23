@@ -3,7 +3,6 @@ import {
     QueryType,
     type QueryComponentTuple,
     World,
-    type WorldView,
 } from "@zero-ecs/world";
 import type { ResourceType } from "../context/resource";
 import type { ServiceToken } from "../context/service";
@@ -44,7 +43,7 @@ export function Write<const T extends MutableSystemParam>(target: T): MutParam<T
 export type SystemParam = BareSystemParam | MutParam;
 
 type InstanceOfParam<T> =
-    T extends typeof World ? WorldView :
+    T extends typeof World ? World :
     T extends QueryType<infer Components> ? Query<Components> :
     T extends ResourceType<infer Value> ? Value :
     T extends StateType<infer Value> ? Value :

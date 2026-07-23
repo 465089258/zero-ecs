@@ -35,7 +35,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 不得仅为减少少量低频分配而引入对象池、高水位缓存、复杂 reset 协议、全局 registry、额外 owner token 状态机或跨 Game 强引用缓存。
 - 不池化错误、诊断结果、拓扑排序临时数组、一次性 prepare context 或 Builder 中间对象，除非独立数据证明它们已经成为实际瓶颈。
 - `World.getTypes()` 和 `getCompLocation()` 是诊断/便利接口：前者成功时创建类型数组，后者成功时创建位置对象；它们不属于稳定 Tick 零显式分配 API。
-- `WorldView.ref()` 每次创建一个 EntityRef；它是编辑器、UI、脚本和零散单实体访问使用的低频便利 API，不进入 Query 或逐实体热循环。
+- `World.ref()` 每次创建一个 EntityRef；它是编辑器、UI、脚本和零散单实体访问使用的低频便利 API，不进入 Query 或逐实体热循环。
 - 非热路径 GC 优化只接受实现同样简单的改写，或者有明确 CPU、内存、暂停时间数据支持的方案。
 - “尽量减少分配”也包括及时释放长期引用；为避免年轻代短命对象而制造更多 old-generation 常驻对象不是有效优化。
 
@@ -69,7 +69,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - Node 的每个 runtime pair 使用两个预热完成的独立子进程，控制器只允许当前一侧进入计时段；不得在同一进程或 Worker isolate 中同时加载 baseline 与 candidate。Chromium 使用两个独立浏览器进程/实例组成一对，不在同一页面、renderer 或共享 V8 isolate 中加载两份 bundle；仅创建不同 browser context 不足以证明 heap 隔离。
 - 每个 measurement pair 都包含相同工作量的 baseline 与 candidate，控制器按 `A/B → B/A` 交替触发，避免温度、降频和后台负载始终偏向一方。顺序在计时前确定，计时段内不创建随机数或调度对象；原始记录必须保留 runtime-pair id、round index、进程/浏览器标识和执行顺序。
 - 空/少量 System 场景每 round 执行 1,000,000 次完整 `update()`，分别覆盖 0、1、4 个 no-op System。
-- 实体读取场景固定 65,536 个已物化实体，每个方法循环 16 遍，即每 round 1,048,576 次调用；Framework v1 WorldView 只对 `valid/get/has` 分开计时。当前 `view()` 需要额外 row 才能完成实体字段访问，不对孤立的返回动作建立 facade benchmark。
+- 实体读取场景固定 65,536 个已物化实体，每个方法循环 16 遍，即每 round 1,048,576 次调用；World 的 `valid/get/has` 分开计时。当前 `view()` 需要额外 row 才能完成实体字段访问，不对孤立的返回动作建立 facade benchmark。
 - **固定起始状态的真实批量结构场景**每 round 处理 16,384 个实体，materialize、migrate 和 despawn 分开报告；只允许把一次性构造初始 World 排除在计时外。每个场景必须在 baseline 前定义逻辑起始状态 `S0`、目标子段 `T: S0 → S1` 和恢复子段 `R: S1 → S0`，一个完整 round 严格执行 `t0 → T → t1 → R → t2`。materialize 的恢复包括 despawn 并重新 reserve 下一轮句柄，migrate 的恢复是反向迁移和独立 flush，despawn 的恢复包括 reserve/materialize 替代实体；若实体身份不能保持，恢复必须在预分配输入缓冲中更新下一轮句柄，并把该工作计入 R。不得在计时外恢复 World、Table、池或输入数组。
 - 真实批量结构场景同时报告目标子段 `(t1 - t0) / targetOperationCount`、恢复子段 `(t2 - t1) / entityCount`（命名为 `ns/entity-recovery`）和完整 cycle `(t2 - t0) / entityCount`。完整 cycle 是正式防隐藏成本指标；目标子段只用于定位操作差异，不能单独作为策略通过依据。T/R 引起的 Table 创建、释放、分配和 GC 都属于工作量；中间时钟读取是所有候选相同的固定成本，并纳入 A/A 校准。
 - **已有容量内的内核场景**预先建立足够的源/目标 Table 容量，每 round 同样处理 16,384 个实体；目标与恢复组成完整 A→B→A cycle，被测过程不得创建、释放或改变 Table 身份/容量，用于单独观察结构迁移内核成本。preflight 和 round 后检查必须验证 Table 计数、身份、容量与版本符合该前提。
@@ -123,7 +123,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - TypedArray、Buffer、Error、字符串格式化或诊断快照；
 - 结构 churn 中重新创建的 Buffer 租约、Table 和 TypedArray view；这些是当前策略的真实分配，不能因实体总数未创新高而从审计中排除；
 - 容器查询、逐项 capability 验证或新的多态 facade 转发。
-- 与 WorldView、Readonly/Mut、非导出 internal 接口等编译期约束重复的运行时权限检查。
+- 与 Readonly/Mut、非导出 internal 接口等编译期约束重复的运行时权限检查。
 
 明确归类为诊断/冷路径的 API 可以分配，但必须在文档中标记，不能计入零显式分配热路径清单。性能测试只能提供证据，源码审计仍是分配语义的最终判据。
 

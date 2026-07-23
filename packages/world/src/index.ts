@@ -9,11 +9,7 @@ export type {
 } from "./storage/memory";
 
 export { World } from "./world";
-export type {
-    EntityLocation,
-    StructureWriter,
-    WorldView,
-} from "./world";
+export type { EntityLocation } from "./world";
 export { INVALID_ENTITY } from "./entity/entity";
 export type { Entity } from "./entity/entity";
 export { EntityRef } from "./entity/entity-ref";

@@ -34,7 +34,7 @@ describe("Game EntityCommand batching", () => {
     test("merges multiple commands for one Entity into one migration", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const create = commands.spawn();
         const entity = create.entity;
         create
@@ -64,7 +64,7 @@ describe("Game EntityCommand batching", () => {
     test("applies idempotent Add/Remove in cross-command execution order", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const create = commands.spawn();
         const entity = create.entity;
 
@@ -94,7 +94,7 @@ describe("Game EntityCommand batching", () => {
     test("keeps the last field Set and cancels a pending plan on Despawn", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const first = commands.spawn();
         const entity = first.entity;
         first.set(PositionType, Position.x, 1);
@@ -120,7 +120,7 @@ describe("Game EntityCommand batching", () => {
     test("reuses flushed plan slots in later Post cycles", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const first = commands.spawn();
         const firstEntity = first.entity;
         first.set(PositionType, Position.x, 1);
@@ -139,7 +139,7 @@ describe("Game EntityCommand batching", () => {
     test("writes pure Set commands directly without Archetype migration", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const create = commands.spawn();
         const entity = create.entity;
         create.set(PositionType, Position.x, 1);
@@ -162,7 +162,7 @@ describe("Game EntityCommand batching", () => {
     test("merges a pure Set after a structural command and preserves a Set before one", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const create = commands.spawn();
         const entity = create.entity;
         create.set(PositionType, Position.x, 1);
@@ -185,7 +185,7 @@ describe("Game EntityCommand batching", () => {
     test("validates every pure Set before writing any field", () => {
         const ecs = setup();
         const commands = ecs.service(Commands);
-        const entities = ecs.structureWriter() as World;
+        const entities = ecs.world;
         const create = commands.spawn();
         const entity = create.entity;
         create

@@ -23,7 +23,7 @@ class LinkType implements Component<Link> {
 test("@zero-ecs/world runs transactions and queries without Game or Scheduler", () => {
     const allocator = new Allocator();
     const world = new World(allocator);
-    const entity = world.reserveEntity();
+    const entity = world.spawn();
     const command = world.createEntityCommand(entity)
         .set(PositionType, Position.x, 7);
 
@@ -44,8 +44,8 @@ test("EntityRef is a World-bound low-frequency read view without structural capa
     const otherAllocator = new Allocator();
     const world = new World(allocator);
     const otherWorld = new World(otherAllocator);
-    const entity = world.reserveEntity();
-    const otherEntity = otherWorld.reserveEntity();
+    const entity = world.spawn();
+    const otherEntity = otherWorld.spawn();
     world.applyEntityCommand(
         world.createEntityCommand(entity).set(PositionType, Position.x, 12),
     );
@@ -78,8 +78,8 @@ test("EntityRef is a World-bound low-frequency read view without structural capa
 test("Types.Entity keeps Uint32 storage while exposing branded entity values", () => {
     const allocator = new Allocator();
     const world = new World(allocator);
-    const target = world.reserveEntity();
-    const source = world.reserveEntity();
+    const target = world.spawn();
+    const source = world.spawn();
     world.applyEntityCommand(world.createEntityCommand(target).add(PositionType));
     world.applyEntityCommand(
         world.createEntityCommand(source).set(LinkType, Link.target, target),

@@ -34,7 +34,7 @@
 
 - [x] 清理根 `package.json`、Game lifecycle 和 shooter-zombie 示例中的合并标记。
 - [x] 根脚本只保留一份 `build/typecheck/test/verify:release`，示例脚本纳入统一验证。
-- [x] `GamePhase` 是正式枚举；`EcsPhase` 只保留 deprecated alias。
+- [x] `GamePhase` 是唯一正式枚举；未发布的 `EcsPhase` 旧名已删除。
 - [x] shooter-zombie 使用当前 `@zero-ecs/game` 与新 `modules/app` 入口，不回退旧单包 API。
 - [x] 运行三包 typecheck、单元测试、生产构建和两个示例 typecheck。
 
@@ -97,8 +97,7 @@
 - [x] `tests/types` 启用 `isolatedModules`，验证真实发布声明可被常见下游配置消费。
 - [x] 当前没有并行消费者时，将丢弃的 `SystemAccess` 结果收敛为参数验证；不创建无消费者的
   Set。未来开始冲突批次设计时再正式保存访问元数据。
-- [x] 保持 `[World] -> WorldView`、`Write(State) -> Mut<State>`、Game/StructureWriter 不作为
-  SystemParam 的现有类型边界。
+- [x] `[World] -> World`、`Write(State) -> Mut<State>`；Game 不作为 SystemParam。
 
 ### 验收
 
@@ -173,7 +172,7 @@ benchmark-gated 候选及原因。
 ## 8. 明确不做
 
 - 不重新引入 EntityService、ArchetypeService、DenseRows 或 World facade backend。
-- 不给 World/StructureWriter 增加逐调用 executing guard。
+- 不给 World 增加逐调用 executing guard。
 - 不在 Builder 失败时实现精细注册回滚或部分对象生命周期事务。
 - 不在没有独立 baseline/candidate 数据时改变 Table 保留策略。
 - 不为冷路径临时对象建立对象池。

@@ -1,9 +1,22 @@
 import { type Mut, RandomService } from "@zero-ecs/game";
 import { ProgressionState, UpgradeType } from "./state";
 
+const UPGRADES: readonly UpgradeType[] = [
+    UpgradeType.Damage,
+    UpgradeType.AttackSpeed,
+    UpgradeType.Scatter,
+    UpgradeType.Split,
+    UpgradeType.Ricochet,
+    UpgradeType.Burst,
+    UpgradeType.CritChance,
+    UpgradeType.CritDamage,
+    UpgradeType.FlatDamage,
+    UpgradeType.DamageMultiplier,
+];
+
 /** Progression 领域策略：生成互不重复的升级候选。 */
 export function pickUpgrades(random: RandomService, count: number): UpgradeType[] {
-    const pool = Object.values(UpgradeType).filter((value): value is UpgradeType => typeof value === "number");
+    const pool = UPGRADES.slice();
     const result: UpgradeType[] = [];
     while (result.length < count && pool.length > 0) {
         const index = random.int(pool.length);
@@ -29,4 +42,3 @@ export function applyUpgrade(progression: Mut<ProgressionState>, upgrade: Upgrad
         case UpgradeType.DamageMultiplier: progression.damageMultiplierLevel++; break;
     }
 }
-

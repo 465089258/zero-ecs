@@ -31,8 +31,8 @@ test("World entities and Archetypes share DataSet-backed Buffer memory", () => {
     const health = defineComponentMeta(entities, HealthType);
     const positionId = position.id;
     const healthId = health.id;
-    const first = entities.reserveEntity();
-    const second = entities.reserveEntity();
+    const first = entities.spawn();
+    const second = entities.spawn();
 
     entities.migrate(first, position.mask, [position], (arch, row) => {
         arch.setField(row, positionId, 0, 12.5);
@@ -74,14 +74,14 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
     const entities: Entity[] = [];
 
     for (let i = 0; i <= archetype.chunkCapacity; i++) {
-        const entity = world.reserveEntity();
+        const entity = world.spawn();
         world.migrate(entity, position.mask, [position], (target, row) => {
             target.setField(row, position.id, Position.x, i + 0.5);
         });
         entities.push(entity);
     }
 
-    expect(archetype.chunkCount).toBe(2);
+    expect(archetype.chunks).toBe(2);
     expect(archetype.views).toHaveLength(2);
     expect(archetype.entities).toHaveLength(2);
     expect(archetype.chunkRowCount(0)).toBe(archetype.chunkCapacity);
@@ -90,7 +90,7 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
     expect(archetype.entities[1][0]).toBe(entities[entities.length - 1]);
 
     expect(world.despawn(entities.pop()!)).toBe(true);
-    expect(archetype.chunkCount).toBe(1);
+    expect(archetype.chunks).toBe(1);
     expect(archetype.views).toHaveLength(2);
 
     const query = world.query(QueryType.from(With(PositionType)));
@@ -100,7 +100,7 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
     expect(iter.current[2]).toBe(archetype.views[0][position.id]);
     expect(iter.next()).toBe(false);
 
-    const reused = world.reserveEntity();
+    const reused = world.spawn();
     world.migrate(reused, position.mask, [position], () => {});
     iter = query.iter();
     let count = 0;
@@ -121,33 +121,33 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
     const capacity = archetype.chunkCapacity;
 
     for (let i = 0; i < capacity * 3; i++) {
-        const entity = world.reserveEntity();
+        const entity = world.spawn();
         world.migrate(entity, position.mask, [position], () => {});
         entities.push(entity);
     }
-    expect(archetype.chunkCount).toBe(3);
+    expect(archetype.chunks).toBe(3);
     expect(archetype.views).toHaveLength(3);
 
     for (let i = 0; i < capacity * 2; i++) {
         expect(world.despawn(entities.pop()!)).toBe(true);
     }
-    expect(archetype.chunkCount).toBe(1);
+    expect(archetype.chunks).toBe(1);
     expect(archetype.views).toHaveLength(2);
     const retained = archetype.views[1];
 
     for (let i = 0; i < capacity; i++) {
-        const entity = world.reserveEntity();
+        const entity = world.spawn();
         world.migrate(entity, position.mask, [position], () => {});
         entities.push(entity);
     }
-    expect(archetype.chunkCount).toBe(2);
+    expect(archetype.chunks).toBe(2);
     expect(archetype.views).toHaveLength(2);
     expect(archetype.views[1]).toBe(retained);
 
-    const overflow = world.reserveEntity();
+    const overflow = world.spawn();
     world.migrate(overflow, position.mask, [position], () => {});
     entities.push(overflow);
-    expect(archetype.chunkCount).toBe(3);
+    expect(archetype.chunks).toBe(3);
     expect(archetype.views).toHaveLength(3);
 
     let count = 0;
@@ -160,32 +160,67 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
     allocator.clear();
 });
 
+test("Archetype reuses removed row data without clearing component fields", () => {
+    const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
+    const world = new World(allocator);
+    const position = defineComponentMeta(world, PositionType);
+    const first = world.spawn();
+
+    world.migrate(first, position.mask, [position], (target, row) => {
+        target.setField(row, position.id, Position.x, 37.5);
+    });
+    expect(world.despawn(first)).toBe(true);
+
+    const second = world.spawn();
+    world.migrate(second, position.mask, [position], () => {});
+    expect(world.get(second, PositionType, Position.x)).toBe(37.5);
+
+    world.dispose();
+    allocator.clear();
+});
+
 test("Entity handles stay unsigned when the packed high bit is set", () => {
     const ecs = new GameBuilder().build();
     ecs.init();
     const entities = ecs.world;
     let entity = 0 as Entity;
-    for (let i = 0; i < 524_288; i++) entity = entities.reserveEntity();
+    for (let i = 0; i < 524_288; i++) entity = entities.spawn();
 
     expect(entity).toBe(entity >>> 0);
     expect(entities.valid(entity)).toBe(true);
     ecs.dispose();
 });
 
-test("retires an Entity slot before its generation can wrap", () => {
+test("quarantines an Entity slot before its generation can wrap", () => {
     const ecs = new GameBuilder().build();
     ecs.init();
     const entities = ecs.world;
-    const stale = entities.reserveEntity();
+    const stale = entities.spawn();
     let current = stale;
 
     for (let i = 0; i < 4095; i++) {
         expect(entities.despawn(current)).toBe(true);
-        current = entities.reserveEntity();
+        current = entities.spawn();
     }
 
     expect(entities.valid(stale)).toBe(false);
     expect(current).not.toBe(stale);
     expect(entities.getRawIndex(current)).not.toBe(entities.getRawIndex(stale));
+    ecs.dispose();
+});
+
+test("free Entity slots stay invalid even when their next generation is guessed", () => {
+    const ecs = new GameBuilder().build();
+    ecs.init();
+    const entities = ecs.world;
+    const entity = entities.spawn();
+    const nextGeneration = ((entity + 1) >>> 0) as Entity;
+
+    expect(entities.despawn(entity)).toBe(true);
+    expect(entities.valid(nextGeneration)).toBe(false);
+
+    const reused = entities.spawn();
+    expect(reused).toBe(nextGeneration);
+    expect(entities.valid(reused)).toBe(true);
     ecs.dispose();
 });

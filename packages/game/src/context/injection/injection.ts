@@ -18,7 +18,7 @@ const WorldSymbol = Symbol("WorldMetadata");
 /** Game 注入能力的统一声明入口。 */
 export const Inject = Object.freeze({
     /**
-     * 声明 World 属性依赖。推荐将字段声明为 `WorldView`；完整 `World` 是显式逃生口。
+     * 声明 World 属性依赖。World 是底层 ECS 内核，调用方负责结构修改时序安全。
      */
     world: () => createInjectDecorator(WorldSymbol),
 });

@@ -43,7 +43,7 @@ assert.equal(typeof game.GameBuilder, "function");
 assert.equal(typeof game.Commands, "function");
 assert.equal("EntityCommand" in game, false);
 assert.equal(typeof game.DefaultCoreModule, "function");
-assert.equal(game.CommandService, game.Commands);
+assert.equal("CommandService" in game, false);
 assert.equal("Scheduler" in game, false);
 assert.equal("DataSet" in game, false);
 assert.equal("InternalPost" in game, false);
@@ -66,20 +66,20 @@ assert.equal("ChildOfStorage" in hierarchy, false);
 assert.equal("ParentOfStorage" in hierarchy, false);
 assert.equal(typeof pool.ObjectPoolService, "function");
 
-assert.equal(game.Ecs, game.Game);
-assert.equal(game.EcsBuilder, game.GameBuilder);
-assert.equal(game.EcsPhase, game.GamePhase);
+assert.equal("Ecs" in game, false);
+assert.equal("EcsBuilder" in game, false);
+assert.equal("EcsPhase" in game, false);
 assert.throws(() => new game.Game(), /Game must be created by GameBuilder/);
 
 const allocator = new world.Allocator();
 const standalone = new world.World(allocator);
-const entityId = standalone.reserveEntity();
+const entityId = standalone.spawn();
 const entityRef = standalone.ref(entityId);
 assert.equal(entityRef instanceof world.EntityRef, true);
 assert.equal(standalone.valid(entityId), true);
 assert.equal(entityRef.valid, true);
 standalone.dispose();
-assert.equal(entityRef.valid, false);
+assert.throws(() => entityRef.valid, /disposed/);
 allocator.clear();
 
 await assert.rejects(

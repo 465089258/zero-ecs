@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Resource | 构建时提供、运行期不替换的只读依赖或能力 | 注册关系在构建后锁定 | 固定步长、容量配置、DOM、Canvas、设备句柄 |
 | State | 当前 Game 实例拥有的可变模拟数据 | 随 Tick 演进 | 时间、随机机状态、队列、派生索引 |
-| Service | 操作、查询、算法与运行时能力入口 | 与当前 Game 同生命周期 | `reserveEntity()`、`once()`、`event()`、对象池 |
+| Service | 操作、查询、算法与运行时能力入口 | 与当前 Game 同生命周期 | `spawn()`、`once()`、`event()`、对象池 |
 | System | 由 Stage/Tick 驱动的行为 | 由 Stage 调用 | 时间推进、命令提交、迁移、事件分发 |
 
 State 与“将来需要序列化的数据”不是同义词。State 可以保存权威数据、派生索引和瞬态队列；未来只有显式标记的字段进入快照，未标记字段仍然属于 State。
@@ -33,7 +33,9 @@ State 与“将来需要序列化的数据”不是同义词。State 可以保�
 3. 必要的生命周期、实例归属和动态数据校验；
 4. 热路径运行时检查——仅在类型设计无法替代且基准通过时允许。
 
-类型约束用于防止普通误用，不承诺抵抗 `as`、反射或深路径导入。System 的 `[World]` 参数因此映射为 `WorldView`；State 的只读与可写能力继续由 State 类型和 `Write(StateType)` 映射；这些都不是运行时权限隔离。
+类型约束用于防止普通误用，不承诺抵抗 `as`、反射或深路径导入。System 的 `[World]`
+参数直接映射为底层 `World`；State 的只读与可写能力继续由 State 类型和
+`Write(StateType)` 映射。World 访问不提供业务层时序安全，结构修改由调用方负责。
 
 ## 3. Service 规则
 
@@ -85,8 +87,9 @@ builder.addSystem(advanceExampleSystem);
 7. 当前构建期只校验重复参数，不保存尚无消费者的 `SystemAccess` 集合。未来开始并行批次规划时，
    再从同一参数声明生成并持有访问图；它仍只是调度元数据而不是安全边界。普通 State 参数的
    `Readonly<T>` 只是浅只读类型，数组、Map、TypedArray 和嵌套对象不会被运行时隔离。
-8. `[World]` 的函数参数必须声明为 `WorldView`。它提供 `valid/get/has` 和明确分配的低频 `ref`；普通 System 的结构变更优先使用 Command。显式注入完整 World、使用宿主 StructureWriter 或 advanced unsafe 能力属于调用方主动选择低层入口。
-9. `EntityRef` 只绑定 `WorldView + Entity`，不得缓存 Archetype、Chunk、row 或组件列，也不得提供结构写方法。它属于编辑器、UI、脚本和重要单实体引用等低频场景；Query 逐实体循环继续使用数字 Entity 与批量列。
+8. `[World]` 的函数参数声明为 `World`。普通 System 的结构变更优先使用 Commands；
+直接调用 World 即时结构 API 属于调用方主动选择的底层入口，必须自行保证迭代时序安全。
+9. `EntityRef` 只绑定 `World + Entity`，不得缓存 Archetype、Chunk、row 或组件列，也不得提供结构写方法。它属于编辑器、UI、脚本和重要单实体引用等低频场景；Query 逐实体循环继续使用数字 Entity 与批量列。
 10. Query 热循环必须在取得 `iter.current` 后、进入逐行 `for` 前缓存本 Chunk 使用的列引用；循环内只按行索引访问列，不重复执行 `components[Field][row]` 两级查找。即使当前 JIT 可能消除部分重复访问，示例和框架代码也必须保持对 no-JIT 与其他宿主同样清楚的列式写法：
 
 ```ts

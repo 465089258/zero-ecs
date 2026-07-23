@@ -46,7 +46,7 @@ scope，但不能改变依赖方向。
 ```
 
 TypeScript 约束只阻止普通误用，不抵抗类型断言、反射或主动深路径绕过。
-`WorldView`、`StructureWriter`、`Read/Write` 都是能力类型，不创建运行时 wrapper。
+World 是显式底层入口；`Read/Write` 是类型能力，不创建运行时 wrapper。
 
 性能规则：
 
@@ -71,7 +71,7 @@ Game 和 Scheduler 单独使用：
 ```ts
 const allocator = new Allocator();
 const world = new World(allocator);
-const entity = world.reserveEntity();
+const entity = world.spawn();
 const command = world.createEntityCommand(entity);
 command.add(Position).set(Position, Position.x, 10);
 world.applyEntityCommand(command);
@@ -100,10 +100,13 @@ World 不提供 Resource、State、Service、Injection、Stage、System、Schedu
 和 Types。`advanced` 导出诊断与显式底层能力；`game-bridge` 是只供锁步版本 Game
 使用的不稳定包间 SPI，不进入普通用户文档。
 
-### 3.2 API 分层
+### 3.2 World API
 
 ```ts
-export interface WorldView {
+export class World {
+    component<T>(type: ComponentType<T>): ComponentDefinition<T>;
+    query<T>(type: QueryType<T>): Query<T>;
+    spawn(): Entity;
     ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
     get<T extends object, F extends ComponentFields<T>>(
@@ -112,34 +115,30 @@ export interface WorldView {
         field: F,
     ): number | null;
     has<T extends object>(entity: Entity, type: ComponentType<T>): boolean;
-}
-
-export interface StructureWriter {
-    reserveEntity(): Entity;
+    set(entity: Entity, type: ComponentType, field: number, value: number): boolean;
     despawn(entity: Entity): boolean;
     createEntityCommand(entity: Entity): EntityCommand;
     applyEntityCommand(command: EntityCommand): boolean;
 }
 ```
 
-`World` 同时实现两个接口。Game 把同一个对象按不同静态类型交给调用方：
+Game 与系统参数直接交付同一个 World：
 
 ```text
-System [World] 参数    -> WorldView
-game.world             -> WorldView
-game.structureWriter() -> StructureWriter
-advanced               -> 完整 World / unsafe 能力
+System [World] 参数 -> World
+game.world          -> World
+advanced            -> 存储和诊断能力
 ```
 
 World 独立使用时没有调度阶段，因此结构方法是直接能力，不检查“是否正在 update”。
-Game 依靠参数类型隔离普通 System；取得 writer 后的正确使用遵守君子协议。
+Game 同样不包装或封闭 World；调用方必须自行保证结构修改时序安全。
 
-`getTypes()`、`getCompLocation()` 是会分配对象的诊断 API，不进入 `WorldView`。
+`getTypes()`、`getCompLocation()` 是会分配对象的诊断 API。
 后者返回 `{ chunkIdx, row }`。Archetype 的 `views[chunkIdx][componentId][fieldId]`、
 `entities[chunkIdx]` 和 raw location 只进入 advanced；批量组件访问继续使用 Query。
 
-`WorldView.ref(entity)` 是显式分配的低频只读入口。EntityRef 只绑定 WorldView 与带版本
-句柄，不缓存物理位置、不参与 Query，也不扩大到 StructureWriter 能力。
+`World.ref(entity)` 是显式分配的低频只读入口。EntityRef 只绑定 World 与带版本
+句柄，不缓存物理位置、不参与 Query，也不提供结构写能力。
 
 ### 3.3 Allocator 所有权
 
@@ -367,7 +366,7 @@ export const advanceFixedTimeSystem = defSystem(
 仍是原函数。Module 只注册系统定义；修改参数不需要跨文件改 Module。
 
 ```text
-World                    -> WorldView
+World                    -> World
 QueryType                -> Query
 ResourceType             -> Readonly<Resource>
 StateType                -> Readonly<State>
@@ -375,7 +374,7 @@ Write(StateType)         -> Mut<State>
 ServiceToken             -> Service
 ```
 
-`Game`、`StructureWriter` 和完整 World 不进入普通 SystemParam。系统参数不自动注册
+`Game` 不进入普通 SystemParam。完整 World 可以作为 `[World]` 参数；系统参数不自动注册
 Resource、State 或 Service；Module/Builder 必须显式注册，缺失项在 start 的事务式
 prepare 中失败。
 
@@ -498,29 +497,26 @@ InjectionContext 长期放进 Service 基类，也不增加任意时刻的 Servi
 
 ### 5.7 World 注入和能力
 
-`@Inject.world()` 属于 Game，运行时注入同一个 World，不创建视图对象。字段推荐声明
-为 `WorldView`：
+`@Inject.world()` 属于 Game，运行时注入同一个 World，不创建视图对象。字段声明
+为 `World`：
 
 ```ts
 class Helper {
     @Inject.world()
-    readonly world!: WorldView;
+    readonly world!: World;
 }
 ```
 
-属性装饰器不能可靠读取字段声明类型，因此写成完整 World 是主动选择底层能力，不
-增加运行时检查。State 禁止注入 World 或 Service。
+World 是主动选择的底层能力，不增加运行时检查。State 禁止注入 World 或 Service。
 
-Game 内部保存完整 World，对外默认收窄：
+Game 公开完整 World：
 
 ```ts
-game.world;               // WorldView
-game.structureWriter();   // StructureWriter，同一个运行时 World
+game.world; // World
 ```
 
-宿主只在 Tick 间安全点使用 writer；跨越 Query 迭代或错误保留属于协议违反。
-Framework v1 不增加 executing 状态和逐结构操作检查。完整 World 仅由 advanced 入口
-提供。
+宿主只在安全点使用即时结构方法；在活跃 Query 迭代期间修改相关结构属于协议违反。
+Framework v1 不增加 executing 状态和逐结构操作检查。
 
 Game 包维护 World claim，只防止同一个 World 同时属于多个 Game。World 自身不知道
 Game。`setWorld(world)` 表示把释放责任转移给 Game；若未来需要借用，再新增名称明确
@@ -542,7 +538,7 @@ Game.EntityCommand extends Command
   组合 World.EntityCommand，并提供统一 submit 生命周期
 ```
 
-Game 公开 `Commands extends Service`，替代 `CommandService` 命名。普通自定义
+Game 公开 `Commands extends Service`。普通自定义
 `Command` 仍属于 Game，因为它依赖提交回调、DI 和延迟执行生命周期。
 
 ### 6.2 使用方式
@@ -550,7 +546,7 @@ Game 公开 `Commands extends Service`，替代 `CommandService` 命名。普通
 World 独立使用：
 
 ```ts
-const entity = world.reserveEntity();
+const entity = world.spawn();
 const command = world.createEntityCommand(entity);
 command.add(Position).set(Position, Position.x, 1);
 world.applyEntityCommand(command);
@@ -698,17 +694,11 @@ peer dependency 的同一运行时模块，不能复制或 bundle 一份实现�
 - `defSystem/Write/Update` 从 Scheduler 概念移动到 Game；
 - World EntityCommand 不再继承 Game Command，也不具有 `.submit()`；Game 提供继承
   Command 的同名组合包装；
-- `CommandService` 迁移为 `Commands`；
+- 命令服务唯一名称为 `Commands`；
 - EntityCommand 的修改统一在实体事务应用 System 执行时可见；
-- Game 默认只暴露 WorldView。
+- Game 直接暴露完整 World。
 
-如果需要过渡发布，当前 `zero-ecs-lib` 可以暂时重导出新 Game 包并提供弃用别名：
-
-```ts
-export { Commands as CommandService } from "@zero-ecs/game";
-```
-
-过渡包只用于迁移，不属于最终三库架构，也不能保留旧 Scheduler 参数耦合。
+项目尚未正式发布，不提供旧名称或旧能力接口的兼容层。
 
 ## 9. 已完成的源码迁移映射
 
@@ -802,7 +792,7 @@ export { Commands as CommandService } from "@zero-ecs/game";
 - Game 生命周期只运行 Startup、四个 Update Stage 和 Shutdown；
 - 改变 Command/Event/Timer 的依赖边即可改变同阶段顺序，`Game.update()` 无功能特判；
 - SystemSet 的跨 Stage 使用和普通跨 Stage 依赖都会在 build 冷路径失败；
-- `[World]` 系统参数在类型测试中是 WorldView；
+- `[World]` 系统参数在类型测试中是完整 World；
 - 系统参数不自动注册容器对象；
 - RawEntityCommand pool miss 走 World 工厂，World 不保留命令池；
 - 同实体同批次只执行一次实际迁移；

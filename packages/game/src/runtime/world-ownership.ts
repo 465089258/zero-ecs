@@ -1,4 +1,4 @@
-import { type IAllocator, type StructureWriter, World } from "@zero-ecs/world";
+import { type IAllocator, World } from "@zero-ecs/world";
 import {
     allocatorOfWorld,
     finalizeWorldKernel,
@@ -30,12 +30,6 @@ export function finalizeWorld(world: World, owner: symbol): void {
     catch (error) { firstError ??= error; }
     claim.finalized = true;
     if (firstError !== undefined) throw firstError;
-}
-
-export function structureWriterOf(world: World, owner: symbol): StructureWriter {
-    const claim = requireClaim(world, owner);
-    if (claim.finalized || isWorldDisposed(world)) throw new Error("World has already been disposed");
-    return world;
 }
 
 export function allocatorOf(world: World): IAllocator { return allocatorOfWorld(world); }

@@ -17,7 +17,7 @@ import {
     Startup,
     State,
     Update,
-    type WorldView,
+    World,
 } from "@zero-ecs/game";
 
 interface PooledValue { value: number }
@@ -90,7 +90,7 @@ class CounterState extends State {
 }
 
 class CounterService extends Service {
-    @Inject.world() readonly world!: WorldView;
+    @Inject.world() readonly world!: World;
     @Resource.inject(ConfigResource) readonly config!: ConfigResource;
     @State.inject(CounterState) readonly counter!: CounterState;
     initialized = false;
@@ -101,7 +101,7 @@ class CounterService extends Service {
 }
 
 class ConstructedService extends Service {
-    constructor(readonly source: string, readonly builtWorld?: WorldView) { super(); }
+    constructor(readonly source: string, readonly builtWorld?: World) { super(); }
 }
 
 test("GameBuilder accepts Service instances and cold-path factories", () => {
@@ -166,7 +166,7 @@ test("Game separates build, init, start and system updates", () => {
 });
 
 class InvalidState extends State {
-    @Inject.world() world!: WorldView;
+    @Inject.world() world!: World;
 }
 
 test("State cannot inject World", () => {
@@ -176,7 +176,7 @@ test("State cannot inject World", () => {
 });
 
 class RuntimeHelper {
-    @Inject.world() readonly world!: WorldView;
+    @Inject.world() readonly world!: World;
     @Resource.inject(ConfigResource) readonly config!: ConfigResource;
     @State.inject(CounterState) readonly counter!: CounterState;
     @Service.inject(CounterService) readonly service!: CounterService;

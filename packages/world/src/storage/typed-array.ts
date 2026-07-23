@@ -13,7 +13,19 @@ export const Types = Object.freeze({
     /** 以 Uint32 存储、在类型层表示为 Entity 的实体引用。 */
     Entity: 8,
 } as const);
+
 export type Types = (typeof Types)[keyof typeof Types];
+
+export type U8 = typeof Types.U8;
+export type I8 = typeof Types.I8;
+export type U8C = typeof Types.U8C;
+export type U16 = typeof Types.U16;
+export type I16 = typeof Types.I16;
+export type U32 = typeof Types.U32;
+export type I32 = typeof Types.I32;
+export type F32 = typeof Types.F32;
+export type E32 = typeof Types.Entity;
+
 const BYTES: { [K in Types]: number } = [1, 1, 1, 2, 2, 4, 4, 4, 4] as const;
 // 对应每个类型的元素字节数
 type TypedArrayCtor = new (buffer: ArrayBuffer, offset: number, length: number) => TypedArray;
