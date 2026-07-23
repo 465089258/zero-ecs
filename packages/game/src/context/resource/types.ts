@@ -1,7 +1,4 @@
-
 import { ClassType } from "../container";
-import { createInjectDecorator } from "../injection/metadata";
-import { ResourceContainer } from "./container";
 
 declare const ResourceBrand: unique symbol;
 /**
@@ -11,8 +8,6 @@ declare const ResourceBrand: unique symbol;
  */
 export abstract class Resource {
     protected declare readonly [ResourceBrand]: void;
-    /** 声明一个 Resource 属性注入。 */
-    static readonly inject = ResourceContainer.inject;
 }
 
 /** Resource 子类的构造类型。 */

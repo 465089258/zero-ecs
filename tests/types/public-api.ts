@@ -172,7 +172,17 @@ function createInitialEntity(commands: Commands): void {
 
 class WorldHelper {
     @Inject.world() readonly world!: World;
+    @Inject.resource(ConfigResource) readonly config!: ConfigResource;
+    @Inject.state(CounterState) readonly counter!: CounterState;
+    @Inject.service(AbstractToolService) readonly tool!: AbstractToolService;
 }
+
+// @ts-expect-error 属性注入只从统一的 Inject 入口声明。
+Resource.inject(ConfigResource);
+// @ts-expect-error 属性注入只从统一的 Inject 入口声明。
+State.inject(CounterState);
+// @ts-expect-error 属性注入只从统一的 Inject 入口声明。
+Service.inject(ToolService);
 
 const builder = new GameBuilder()
     .addResource(ConfigResource, new ConfigResource())

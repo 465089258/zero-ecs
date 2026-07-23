@@ -1,6 +1,6 @@
 import {
     Commands,
-    Resource,
+    Inject,
     Service,
 } from "@zero-ecs/game";
 import { RandomService } from "@zero-ecs/game/random";
@@ -22,9 +22,9 @@ import {
 import { GameConfigResource } from "../resources";
 
 export class SpawnService extends Service {
-    @Service.inject(Commands) private readonly commands!: Commands;
-    @Service.inject(RandomService) private readonly random!: RandomService;
-    @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
+    @Inject.service(Commands) private readonly commands!: Commands;
+    @Inject.service(RandomService) private readonly random!: RandomService;
+    @Inject.resource(GameConfigResource) private readonly config!: GameConfigResource;
 
     spawnGame(): void {
         this.spawnPaddle();

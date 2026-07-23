@@ -1,12 +1,11 @@
-
 import { Container } from "../container";
-import { createInjectDecorator } from "../injection/metadata";
-import type { State, StateType } from "./types";
-const StateSymob = Symbol("StateMetadata");
+import { InjectionKeys } from "../injection/metadata";
+import type { State } from "./types";
+
 /** 创建并保存 State，按注入依赖顺序管理其生命周期。 */
 export class StateContainer extends Container<State> {
     constructor() {
-        super(StateSymob);
+        super(InjectionKeys.state);
     }
     protected doInit(order: State[]): void {
         for (const value of order) {
@@ -20,8 +19,5 @@ export class StateContainer extends Container<State> {
             catch (error) { firstError ??= error; }
         }
         if (firstError !== undefined) throw firstError;
-    }
-    static inject<T extends State>(type: StateType<T>) {
-        return createInjectDecorator(StateSymob, type);
     }
 }

@@ -1,4 +1,5 @@
 import { ErrorHandlerService } from "../../context/error-handler-service";
+import { Inject } from "../../context/injection/injection";
 import { Service } from "../../context/service";
 import { State } from "../../context/state";
 import type { Mut } from "../../runtime/system";
@@ -120,9 +121,9 @@ export class EventPoolService extends Service {
 
 /** 管理事件对象池、监听器与延迟分发队列。 */
 export class EventService extends Service implements IEventService {
-    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
-    @Service.inject(EventPoolService) private readonly _pool!: EventPoolService;
-    @State.inject(EventState) private readonly _state!: Mut<EventState>;
+    @Inject.service(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
+    @Inject.service(EventPoolService) private readonly _pool!: EventPoolService;
+    @Inject.state(EventState) private readonly _state!: Mut<EventState>;
     private readonly _boundPost = (args: EventArgs): void => { this.boundPost(args); };
 
     /** 获取可修改的事件参数实例；调用方设置字段后必须显式 `post()`。 */

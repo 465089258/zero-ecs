@@ -1,4 +1,4 @@
-import { Resource } from "@zero-ecs/game";
+import { Inject } from "@zero-ecs/game";
 import { GameConfigResource } from "../../common";
 import { GameViewResource } from "../../host";
 import {
@@ -18,8 +18,8 @@ const FONT_FAMILIES = ["monospace", "sans-serif"] as const;
 
 /** RenderService 的 Canvas 2D 后端；领域渲染系统不会直接接触本类型。 */
 export class CanvasRenderService extends RenderService {
-    @Resource.inject(GameViewResource) private readonly view!: GameViewResource;
-    @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
+    @Inject.resource(GameViewResource) private readonly view!: GameViewResource;
+    @Inject.resource(GameConfigResource) private readonly config!: GameConfigResource;
 
     private readonly colorStyles = new Map<Color32, string>();
     private readonly gradientStyles = new WeakMap<Readonly<LinearGradientStyle>, CanvasGradient>();

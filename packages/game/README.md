@@ -3,6 +3,9 @@
 World 与 Scheduler 的组合运行时，提供 Resource、State、Service、依赖注入、Module、
 标准阶段、Commands、Event、Time、Timer、Random 与通用对象池。
 
+World、Resource、State 与 Service 的属性依赖统一通过根入口的
+`Inject.world/resource/state/service` 声明。
+
 `DefaultCoreModule` 可一次安装 Commands、Time、Timer、Event 与 Random；需要裁剪能力时，
 仍可分别注册各功能 Module。
 

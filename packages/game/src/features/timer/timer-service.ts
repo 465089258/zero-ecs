@@ -1,4 +1,4 @@
-import { Resource, Service, State } from "../../context";
+import { Inject, Resource, Service, State } from "../../context";
 import { ErrorHandlerService } from "../../context/error-handler-service";
 import { FixedTimeResource } from "../time/fixed-time-resource";
 import { TimeState } from "../time/time-state";
@@ -76,7 +76,7 @@ export class TimerState extends State {
 
 /** @internal 当前 World 的定时任务包装对象池；不属于可恢复模拟状态。 */
 export class TimerPoolService extends Service {
-    @Resource.inject(TimerConfigResource) private readonly _config!: TimerConfigResource;
+    @Inject.resource(TimerConfigResource) private readonly _config!: TimerConfigResource;
     private readonly _tasks: InnerTask[] = [];
 
     acquire(): InnerTask {
@@ -111,12 +111,12 @@ export class TimerPoolService extends Service {
 
 /** 基于固定 Tick 的分层时间轮定时器。 */
 export class TimerService extends Service implements ITimer {
-    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
-    @Service.inject(TimerPoolService) private readonly _pool!: TimerPoolService;
-    @Resource.inject(FixedTimeResource) private readonly _fixed!: FixedTimeResource;
-    @Resource.inject(TimerConfigResource) private readonly _config!: TimerConfigResource;
-    @State.inject(TimeState) private readonly _time!: TimeState;
-    @State.inject(TimerState) private readonly _state!: Mut<TimerState>;
+    @Inject.service(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
+    @Inject.service(TimerPoolService) private readonly _pool!: TimerPoolService;
+    @Inject.resource(FixedTimeResource) private readonly _fixed!: FixedTimeResource;
+    @Inject.resource(TimerConfigResource) private readonly _config!: TimerConfigResource;
+    @Inject.state(TimeState) private readonly _time!: TimeState;
+    @Inject.state(TimerState) private readonly _state!: Mut<TimerState>;
 
     /** 根据当前 TimeState 初始化时间轮。 */
     init() {

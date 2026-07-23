@@ -36,9 +36,9 @@ export interface ICommands {
  * 实现，World 只执行即时底层修改。所有缓存均是 Service 私有运行时字段。
  */
 export class Commands extends Service implements ICommands {
-    @Service.inject(InjectionService) private readonly _injection!: InjectionService;
-    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
-    @Service.inject(Migrations) private readonly _migrations!: Migrations;
+    @Inject.service(InjectionService) private readonly _injection!: InjectionService;
+    @Inject.service(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
+    @Inject.service(Migrations) private readonly _migrations!: Migrations;
     @Inject.world() private readonly _world!: World;
 
     private readonly _commandPools = new Map<CommandType, Command[]>();
@@ -208,7 +208,7 @@ export class Commands extends Service implements ICommands {
  * 内部组合 Game EntityTransaction，复用普通 Command 的提交队列与生命周期。
  */
 export class EntityCommand extends Command implements EntityMutator {
-    @Service.inject(Commands) private readonly _commands!: Commands;
+    @Inject.service(Commands) private readonly _commands!: Commands;
     private _transaction: EntityTransaction | undefined;
 
     /** 当前目标实体；命令执行并回收后不可再读取。 */

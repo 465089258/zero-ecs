@@ -1,4 +1,4 @@
-import { Service, State, type Mut } from "@zero-ecs/game";
+import { Inject, Service, State, type Mut } from "@zero-ecs/game";
 
 /** 每个宿主显示帧更新一次的短生命周期表现状态。 */
 export class RenderFrameState extends State {
@@ -11,7 +11,7 @@ export class RenderFrameState extends State {
 
 /** 宿主写入帧输入的窄入口。 */
 export class RenderFrameService extends Service {
-    @State.inject(RenderFrameState) private readonly state!: Mut<RenderFrameState>;
+    @Inject.state(RenderFrameState) private readonly state!: Mut<RenderFrameState>;
 
     begin(now: number, delta: number, interpolation: number): void {
         this.state.now = now;

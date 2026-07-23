@@ -1,6 +1,6 @@
 import { Container } from "../container";
 import type { InjectionContext } from "../injection/injection";
-import { createInjectDecorator } from "../injection/metadata";
+import { InjectionKeys } from "../injection/metadata";
 import type { Resource, ResourceType } from "../resource";
 import type { State, StateType } from "../state";
 import type {
@@ -10,8 +10,6 @@ import type {
     ServiceToken,
 } from "./types";
 
-
-const ServiceSymob = Symbol("ServiceMetadata");
 /** 创建并保存 Service，按注入依赖顺序管理其生命周期。 */
 export class ServiceContainer extends Container<Service> {
     private context: InjectionContext | undefined;
@@ -20,7 +18,7 @@ export class ServiceContainer extends Container<Service> {
     private servicesInitialized = false;
 
     constructor() {
-        super(ServiceSymob);
+        super(InjectionKeys.service);
     }
     /** @internal 绑定仅供当前 Game 使用的容器上下文。 */
     bind(context: InjectionContext): void {
@@ -109,9 +107,6 @@ export class ServiceContainer extends Container<Service> {
     override dispose(): void {
         try { super.dispose(); }
         finally { this.servicesInitialized = false; }
-    }
-    static inject<T extends Service>(type: ServiceToken<T>) {
-        return createInjectDecorator(ServiceSymob, type);
     }
 }
 

@@ -11,7 +11,7 @@ import { EntityTransaction } from "./entity-transaction";
  * World 只负责立即执行 migrate/set/despawn，不感知事务、命令或提交阶段。
  */
 export class Migrations extends Service {
-    @Service.inject(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
+    @Inject.service(ErrorHandlerService) private readonly _errors!: ErrorHandlerService;
     @Inject.world() private readonly _world!: World;
 
     private readonly _pool: EntityTransaction[] = [];

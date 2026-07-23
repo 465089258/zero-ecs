@@ -1,4 +1,4 @@
-import { Commands, Resource, Service, State } from "@zero-ecs/game";
+import { Commands, Inject, Service } from "@zero-ecs/game";
 import { RandomService } from "@zero-ecs/game/random";
 import { Health, HealthType } from "../attribute";
 import { Float2, GameConfigResource, GameEntityType, PositionType, VelocityType } from "../common";
@@ -14,10 +14,10 @@ import { ProjectileDamagePayload, ProjectileDamagePayloadType } from "./componen
  * 这里集中保存“本游戏的僵尸有生命值、子弹携带伤害”等不可避免的组合规则。
  */
 export class GameContentService extends Service {
-    @Service.inject(Commands) private readonly commands!: Commands;
-    @Service.inject(RandomService) private readonly random!: RandomService;
-    @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
-    @State.inject(ProgressionState) private readonly progression!: ProgressionState;
+    @Inject.service(Commands) private readonly commands!: Commands;
+    @Inject.service(RandomService) private readonly random!: RandomService;
+    @Inject.resource(GameConfigResource) private readonly config!: GameConfigResource;
+    @Inject.state(ProgressionState) private readonly progression!: ProgressionState;
 
     spawnGame(): void {
         this.spawnShooter();

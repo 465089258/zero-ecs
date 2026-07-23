@@ -121,7 +121,7 @@ new GameBuilder().setWorld(world);            // 接管 World 的释放，不接
 
 ```ts
 class RuntimeCacheService extends Service {
-    @Service.inject(AllocatorService)
+    @Inject.service(AllocatorService)
     private readonly memory!: AllocatorService;
 
     init(): void {

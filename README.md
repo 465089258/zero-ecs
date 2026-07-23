@@ -15,6 +15,7 @@ import {
     Commands,
     DefaultCoreModule,
     GameBuilder,
+    Inject,
     INVALID_ENTITY,
     QueryType,
     Resource,
@@ -152,19 +153,20 @@ game.dispose();
 
 ```ts
 class GameplayService extends Service {
-    @Resource.inject(SimulationConfig)
+    @Inject.resource(SimulationConfig)
     private readonly config!: SimulationConfig;
 
-    @State.inject(MovementState)
+    @Inject.state(MovementState)
     private readonly movementState!: MovementState;
 
-    @Service.inject(MovementService)
+    @Inject.service(MovementService)
     private readonly movement!: MovementService;
 }
 ```
 
-属性注入用于对象之间相对稳定的生命周期依赖；逐帧 System 更推荐使用显式参数列表，让所需
-依赖和 State 读写权限直接体现在系统定义中。
+`Inject` 是 World、Resource、State 和 Service 属性依赖的统一声明入口。属性注入用于对象
+之间相对稳定的生命周期依赖；逐帧 System 更推荐使用显式参数列表，让所需依赖和 State
+读写权限直接体现在系统定义中。
 
 ### 为什么使用 const enum 定义组件字段
 

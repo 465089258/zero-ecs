@@ -1,9 +1,9 @@
-import { Resource, Service } from "@zero-ecs/game";
+import { Inject, Service } from "@zero-ecs/game";
 import { GameConfigResource, GameViewResource } from "../resources";
 
 export class InputService extends Service {
-    @Resource.inject(GameViewResource) private readonly view!: GameViewResource;
-    @Resource.inject(GameConfigResource) private readonly config!: GameConfigResource;
+    @Inject.resource(GameViewResource) private readonly view!: GameViewResource;
+    @Inject.resource(GameConfigResource) private readonly config!: GameConfigResource;
 
     private left = false;
     private right = false;

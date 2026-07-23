@@ -1,9 +1,9 @@
-import { Resource, Service } from "@zero-ecs/game";
+import { Inject, Service } from "@zero-ecs/game";
 import { GameViewResource } from "./resources";
 
 /** 把 DOM 输入适配为 GameplayIntegration 可消费的窄方法。 */
 export class InputService extends Service {
-    @Resource.inject(GameViewResource) private readonly view!: GameViewResource;
+    @Inject.resource(GameViewResource) private readonly view!: GameViewResource;
 
     private restartRequests = 0;
     private upgradeChoice = -1;
@@ -39,4 +39,3 @@ export class InputService extends Service {
         this.view.restartButton.removeEventListener("click", this.requestRestart);
     }
 }
-

@@ -7,6 +7,7 @@ import {
     DefaultCoreModule,
     GameBuilder,
     ErrorHandlerService,
+    Inject,
     Service,
     Types,
 } from "@zero-ecs/game";
@@ -27,7 +28,7 @@ class PingEvent extends EventArgs {
 }
 
 class EmitPingCommand extends Command {
-    @Service.inject(EventService) private readonly events!: EventService;
+    @Inject.service(EventService) private readonly events!: EventService;
     value = 0;
 
     set(value: number): this { this.assertMutable(); this.value = value; return this; }
@@ -37,7 +38,7 @@ class EmitPingCommand extends Command {
 
 let reentrantCommandCalls = 0;
 class ReentrantCommand extends Command {
-    @Service.inject(Commands) private readonly commands!: Commands;
+    @Inject.service(Commands) private readonly commands!: Commands;
     private remaining = 0;
 
     set(remaining: number): this { this.assertMutable(); this.remaining = remaining; return this; }

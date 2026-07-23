@@ -1,5 +1,4 @@
 import { ClassType } from "../container";
-import { StateContainer } from "./container";
 /** State 子类的无参构造类型。 */
 export type StateType<T extends State = State> = ClassType<T>;
 
@@ -13,8 +12,6 @@ declare const StateBrand: unique symbol;
  */
 export abstract class State {
     protected declare readonly [StateBrand]: void;
-    /** 声明一个 State 属性注入。 */
-    static readonly inject = StateContainer.inject;
     /** 可选初始化钩子；按 State 注入依赖的拓扑顺序调用。 */
     init?(): void;
     /** 可选释放钩子；按初始化逆序调用。 */

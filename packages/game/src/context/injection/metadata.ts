@@ -1,4 +1,10 @@
-
+/** @internal Game 属性注入类别对应的共享元数据键。 */
+export const InjectionKeys = Object.freeze({
+    world: Symbol("WorldMetadata"),
+    resource: Symbol("ResourceMetadata"),
+    state: Symbol("StateMetadata"),
+    service: Symbol("ServiceMetadata"),
+});
 /** @internal 单个属性的注入元数据。 */
 export interface InjectionEntry {
     readonly property: string | symbol;

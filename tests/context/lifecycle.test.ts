@@ -82,7 +82,7 @@ class ConfigResource extends Resource {
 const lifecycle: string[] = [];
 
 class CounterState extends State {
-    @Resource.inject(ConfigResource) readonly config!: ConfigResource;
+    @Inject.resource(ConfigResource) readonly config!: ConfigResource;
     readonly count: number = 0;
     init(): void {
         (this as Mut<CounterState>).count = this.config.value;
@@ -92,8 +92,8 @@ class CounterState extends State {
 
 class CounterService extends Service {
     @Inject.world() readonly world!: World;
-    @Resource.inject(ConfigResource) readonly config!: ConfigResource;
-    @State.inject(CounterState) readonly counter!: CounterState;
+    @Inject.resource(ConfigResource) readonly config!: ConfigResource;
+    @Inject.state(CounterState) readonly counter!: CounterState;
     initialized = false;
     init(): void {
         this.initialized = true;
@@ -178,9 +178,9 @@ test("State cannot inject World", () => {
 
 class RuntimeHelper {
     @Inject.world() readonly world!: World;
-    @Resource.inject(ConfigResource) readonly config!: ConfigResource;
-    @State.inject(CounterState) readonly counter!: CounterState;
-    @Service.inject(CounterService) readonly service!: CounterService;
+    @Inject.resource(ConfigResource) readonly config!: ConfigResource;
+    @Inject.state(CounterState) readonly counter!: CounterState;
+    @Inject.service(CounterService) readonly service!: CounterService;
 }
 
 function buildInjectionTestGame(value: number) {
@@ -228,7 +228,7 @@ class CustomErrorHandlerService extends ErrorHandlerService {
 }
 
 class ErrorHandlerConsumerService extends Service {
-    @Service.inject(ErrorHandlerService) readonly errors!: ErrorHandlerService;
+    @Inject.service(ErrorHandlerService) readonly errors!: ErrorHandlerService;
 
     init(): void {
         expect(this.errors).toBeInstanceOf(CustomErrorHandlerService);
@@ -259,7 +259,7 @@ class CanvasRenderService extends AbstractRenderService {
 }
 
 class RenderConsumerService extends Service {
-    @Service.inject(AbstractRenderService)
+    @Inject.service(AbstractRenderService)
     readonly renderer!: AbstractRenderService;
 }
 
@@ -314,7 +314,7 @@ class DependencyService extends Service {
 }
 
 class DependentService extends Service {
-    @Service.inject(DependencyService) readonly dependency!: DependencyService;
+    @Inject.service(DependencyService) readonly dependency!: DependencyService;
     init(): void { dependencyLifecycle.push("dependent:init"); }
     dispose(): void { dependencyLifecycle.push("dependent:dispose"); }
 }

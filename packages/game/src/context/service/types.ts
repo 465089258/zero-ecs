@@ -1,7 +1,6 @@
 import { AbsClassType, ClassType } from "../container";
 import type { Resource, ResourceType } from "../resource";
 import type { State, StateType } from "../state";
-import { ServiceContainer } from "./container";
 
 /** 可用于查找和声明依赖的 Service token；允许抽象领域父类。 */
 export type ServiceToken<T extends Service = Service> = AbsClassType<T>;
@@ -32,8 +31,6 @@ export interface ServiceActivateContext extends ServiceInitContext {
  */
 export abstract class Service {
     protected declare readonly [ServiceBrand]: void;
-    /** 声明一个 Service 属性注入。 */
-    static readonly inject = ServiceContainer.inject;
     /** 初始化自身；此阶段不调用其他 Service。 */
     init?(context: ServiceInitContext): void;
     /** 所有 Service 完成 init 后建立跨 Service 连接。 */

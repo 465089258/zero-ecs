@@ -1,10 +1,10 @@
-import { Resource } from "@zero-ecs/game";
+import { Inject } from "@zero-ecs/game";
 import { GameViewResource } from "../../host";
 import { HudMetric, HudService } from "./hud-service";
 
 /** HudService 的浏览器 DOM 实现。 */
 export class DomHudService extends HudService {
-    @Resource.inject(GameViewResource) private readonly view!: GameViewResource;
+    @Inject.resource(GameViewResource) private readonly view!: GameViewResource;
 
     setMetric(metric: HudMetric, value: string): void {
         const telemetry = this.view.telemetry;

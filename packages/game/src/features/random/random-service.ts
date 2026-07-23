@@ -1,3 +1,4 @@
+import { Inject } from "../../context/injection/injection";
 import { Service } from "../../context/service";
 import { State } from "../../context/state";
 import type { Mut } from "../../runtime/system";
@@ -12,7 +13,7 @@ export class RandomState extends State {
 
 /** 基于 sfc32、可通过种子复现结果的伪随机服务。 */
 export class RandomService extends Service {
-    @State.inject(RandomState) private readonly _state!: Mut<RandomState>;
+    @Inject.state(RandomState) private readonly _state!: Mut<RandomState>;
 
     init(): void { this.seed(0); }
 
