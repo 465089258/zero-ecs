@@ -82,7 +82,7 @@
 
 ### 阶段记录
 
-- 2026-07-21：完成阶段 1。Game 通过 game-bridge 的非虚内核入口最终释放 World；Builder
+- 2026-07-21：完成阶段 1。Game 按 World 的公开生命周期契约释放内核；Builder
   注册或 build 失败后不可复用，且未增加部分注册回滚。修正注入标记提交时点、Listener
   派发期增删、Event/Timer fatal 收尾、Commands 安全上限保留策略、Timer 大跨度层级选择、
   ObjectPool 异常清理和 Allocator Block ID 重置。`npm run typecheck` 与 `npm test` 通过，

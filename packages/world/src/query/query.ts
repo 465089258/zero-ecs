@@ -306,6 +306,8 @@ export class Query<Components extends readonly (object | undefined)[]> {
 
     private writeEntry(archetypeEntry: QueryArchetypeEntry<Components>, chunkIdx: number): void {
         const archetype = archetypeEntry.archetype;
+        const chunk = archetype.chunkAt(chunkIdx);
+        if (!chunk) throw new Error(`Archetype Chunk ${chunkIdx} is missing`);
         let entry = archetypeEntry.chunks[chunkIdx];
         if (!entry) {
             const current: unknown[] = new Array(2 + this._selections.length);
@@ -316,8 +318,8 @@ export class Query<Components extends readonly (object | undefined)[]> {
         }
         const current = entry.current as unknown[];
         current[0] = archetype.chunkRowCount(chunkIdx);
-        current[1] = archetype.entities[chunkIdx];
-        const views = archetype.views[chunkIdx];
+        current[1] = chunk.entities;
+        const views = chunk.views;
         for (let i = 0; i < this._selections.length; i++) {
             const selection = this._selections[i];
             const columns = views[selection.meta.id];

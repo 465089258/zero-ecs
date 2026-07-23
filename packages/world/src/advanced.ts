@@ -1,10 +1,18 @@
 /** 不稳定的 World 存储、诊断和显式底层能力。 */
 export * from "./index";
 export * from "./storage";
-export { Archetype, ENTITY_COLUMN } from "./archetype/archetype";
-export type { ArchetypeRow, ComponentViews } from "./archetype/archetype";
+export { Archetype } from "./archetype/archetype";
+export type { ArchetypeRow } from "./archetype/archetype";
+export {
+    ArchetypeChunk,
+    ArchetypeChunks,
+    ENTITY_COLUMN,
+} from "./archetype/archetype-chunk";
+export type {
+    ArchetypeColumns,
+    ComponentViews,
+} from "./archetype/archetype-chunk";
 export { Mask } from "./component/mask";
 export type { ComponentId, ComponentMeta } from "./component/component";
-export { defineComponentMeta, getComponentMeta } from "./component/advanced";
 export type { IArchetypeSource, IComponentResolver } from "./query/query";
-export { archetypesOfWorld } from "./world";
+export { entityIndexOf } from "./entity/entity-format";

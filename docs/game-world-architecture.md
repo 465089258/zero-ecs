@@ -156,11 +156,13 @@ Query 迭代期间执行即时迁移或 despawn；普通业务修改优先通过
 稳定组件入口位于 World：
 
 ```ts
-world.component(Position);
+const position = world.component(Position);
+world.findComponent(Position);
+world.componentById(position.id);
 ```
 
-advanced 的 `defineComponentMeta(world, Type)` 与 `getComponentMeta(world, Type)`
-用于取得 World-local ComponentId 和 Mask。
+`component(type)` 使用即注册并直接返回完整的 World-local `ComponentMeta`；
+`findComponent(type)` 只查询不注册。World 是底层入口，因此不再隐藏 ComponentId 和 Mask。
 
 实体方法直接在 World 上执行，不经过 Service：
 
@@ -169,15 +171,14 @@ const entity = world.spawn();
 world.valid(entity);
 world.has(entity, Position);
 world.get(entity, Position, PositionField.x);
-world.ref(entity); // 低频只读便利对象；每次调用都会分配
 world.despawn(entity);
 ```
 
 `spawn()` 只分配有效句柄，不物化 Archetype 行。Command 提交的组件集合仍在
-`Update.post` 中通过 MigrationPlan 物化或迁移。`view()`、`getTypes()` 与
+`Update.post` 中通过 Game Migrations 物化或迁移。`view()`、`getTypes()` 与
 `getCompLocation()` 是完整 World 的 advanced/诊断便利能力；后两者成功时会分配结果对象或数组。
-`World.ref()` 同样属于明确分配的低频边界；返回的 EntityRef 不缓存
-Archetype/chunkIdx/row，也不提供结构写能力。
+Game Migrations 使用调用者复用的 `EntityAccess` 通过 `World.resolve()` 一次解析实体位置，
+随后直接访问 Archetype 列；结构变更后必须重新解析。
 
 `World.query(type)` 直接构造 Query，并把 World 私有 ComponentRegistry 与
 ArchetypeStore 作为 `IComponentResolver` / `IArchetypeSource`。QueryIter/current tuple
@@ -193,14 +194,13 @@ Command、Event 和 Timer 仍是 Game Service/State/System 功能，不进入 Wo
 Commands.spawn
 → World.spawn                             句柄立即有效
 → flushCommandSystem                     Update.post
-→ EntityMigrationService.record
-→ flushEntityMigrationSystem             after flushCommandSystem
-→ MigrationPlan.flush(World)             实际物化/迁移
+→ Migrations.collect                     按 Entity 合并
+→ Migrations.apply                       Structure 阶段
+→ World.migrate/set/despawn              即时底层修改
 ```
 
-内建 Command、EntityCommand、EntityMigrationService 和 MigrationPlan 通过
-`@Inject.world()` 取得完整 World。`InternalStructureAccess` 只是编译期 Pick 接口，
-实际对象就是 World；没有 token、capability 对象、wrapper 或额外热路径转发。
+EntityCommand、EntityTransaction 和 Migrations 全部位于 Game。Migrations 通过
+`@Inject.world()` 取得完整 World，World 不再拥有事务、合并、命令池或提交阶段。
 
 ## 8. Game 生命周期
 

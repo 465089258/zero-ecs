@@ -11,6 +11,7 @@ export interface ColumnLayout {
 
 /** 一个固定大小 Table Buffer 的容量与列布局。 */
 export interface TableLayout {
+    readonly byteLength: number;
     readonly capacity: number;
     readonly columns: readonly ColumnLayout[];
     readonly usedBytes: number;

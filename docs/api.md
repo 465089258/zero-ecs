@@ -80,8 +80,8 @@ commands.entity(target);
 ```
 
 它的物理存储仍是 `Uint32Array`，不会产生包装或运行时转换；区别只存在于 TypeScript
-类型层。`World.get()`、`EntityRef.get()`、Query 组件列以及 EntityCommand 的 `get/set`
-都会把该字段推导为 `Entity`。`Types.U32` 继续表示普通无符号整数。需要表达“无实体”时使用
+类型层。`World.get()`、Query 组件列以及 EntityCommand 的 `get/set` 都会把该字段推导为
+`Entity`。`Types.U32` 继续表示普通无符号整数。需要表达“无实体”时使用
 `INVALID_ENTITY`，不要在业务代码中写 `0 as Entity`。
 
 advanced 代码需要直接遍历 Archetype 时，使用连续 `chunkIdx`，而不是保存 Table 或
@@ -103,18 +103,19 @@ Table 的 `push/pop`，Table 本身不提供行分配、删除、计数或版本
 
 ```ts
 class World {
-    component<T>(type: ComponentType<T>): ComponentDefinition<T>;
+    component<T>(type: ComponentType<T>): ComponentMeta<T>;
+    findComponent<T>(type: ComponentType<T>): ComponentMeta<T> | undefined;
+    componentById(id: ComponentId): ComponentMeta | undefined;
     query<T>(type: QueryType<T>): Query<T>;
 
     spawn(): Entity;
-    ref(entity: Entity): EntityRef;
     valid(entity: Entity): boolean;
+    resolve(entity: Entity, out: EntityAccess): boolean;
     get(entity, component, field): ComponentFieldValue<Component, Field> | null;
     has(entity, component): boolean;
     set(entity, component, field, value): boolean;
+    migrate(entity, mask, types, callback, ctx?): boolean;
     despawn(entity: Entity): boolean;
-    createEntityCommand(entity: Entity): EntityCommand;
-    applyEntityCommand(command: EntityCommand): boolean;
 }
 ```
 
@@ -122,40 +123,12 @@ class World {
 等即时结构 API 时，调用方必须确认当前没有冲突 Query 迭代。Game 业务代码通常通过
 Service 与延迟 Commands 操作实体；`game.world` 保留为扩展底层能力的显式入口。
 
-`component(type)` 是“使用即注册”，重复调用返回同一个 World-local 定义。
+`component(type)` 是“使用即注册”，重复调用返回同一个 World-local `ComponentMeta`；
+`findComponent(type)` 只查询，不触发注册。`resolve(entity, out)` 使用调用者复用的
+`EntityAccess` 一次返回 Archetype 与 ArchetypeRow；任何结构变更后都必须重新解析。
 `getTypes()` 和 `getCompLocation()` 是会分配的诊断 API；后者返回 `{ chunkIdx, row }`。
 
-### EntityRef
-
-`world.ref(entity)` 每次创建一个低频只读便利对象：
-
-```ts
-const player = world.ref(playerEntity);
-if (player.valid && player.has(HealthType)) {
-    const health = player.get(HealthType, Health.value);
-}
-```
-
-EntityRef 只保存 `World + Entity`，不缓存 Archetype、Chunk、row 或组件列，也不会
-钉住实体。实体销毁后既有引用的 `valid` 变为 `false`，`has()` 返回 `false`，`get()`
-返回 `null`；所属 World 释放后再访问则抛出 disposed 错误。`equals()` 同时比较 World
-身份与带版本 Entity 句柄。
-
-EntityRef 是明确允许分配的低频 API，不应在 Query 的逐实体循环中创建；它不提供
-`set/add/remove/despawn`。结构修改继续使用 Game Commands 或底层 World。
-
-### EntityCommand
-
-```ts
-const entity = world.spawn();
-const command = world.createEntityCommand(entity);
-command
-    .add(PositionType)
-    .set(PositionType, Position.x, 10);
-world.applyEntityCommand(command);
-```
-
-命令应用后不可修改或重复应用。它没有 `.submit()`；延迟提交属于 Game Commands。
+World 不提供 EntityCommand。事务记录、合并、对象池和提交阶段全部属于 Game。
 
 ## @zero-ecs/scheduler
 

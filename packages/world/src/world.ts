@@ -4,7 +4,6 @@ import { Types, U16, U32 } from "./storage/typed-array";
 import { Archetype, type ArchetypeRow } from "./archetype/archetype";
 import {
     type ComponentColumns,
-    type ComponentDefinition,
     type ComponentFieldValue,
     type ComponentFields,
     type ComponentId,
@@ -14,7 +13,6 @@ import {
 import { ComponentRegistry } from "./component/component-registry";
 import { Mask } from "./component/mask";
 import type { Entity } from "./entity/entity";
-import { EntityRef } from "./entity/entity-ref";
 import {
     ENTITY_INDEX_BITS,
     ENTITY_INDEX_MASK,
@@ -23,16 +21,16 @@ import {
 } from "./entity/entity-format";
 import { Query } from "./query/query";
 import type { QueryType } from "./query/query-type";
-import type { QueryProjection } from "./query/query-data";
-import {
-    applyEntityCommand as applyWorldEntityCommand,
-    createEntityCommand as createWorldEntityCommand,
-    type EntityCommand,
-} from "./command/entity-command";
 import { Disposable } from "./storage/disposable";
 
 /** 实体在 Archetype Chunk 中的位置。 */
 export interface EntityLocation { readonly chunkIdx: number; readonly row: number }
+
+/** 调用者持有并复用的零分配实体物理位置解析结果。 */
+export interface EntityAccess {
+    archetype: Archetype | null;
+    row: ArchetypeRow;
+}
 
 const enum SlotColumn {
     VersionState,
@@ -76,7 +74,7 @@ export class World extends Disposable {
 
     private readonly _archetypes: Archetype[] = [];
     private readonly _archetypeMaskIndexes: ArchetypeMaskIndex[] = [];
-    private _archetypeVersion = 0;
+    private _version = 0;
     private _layoutVersion = 0;
     private readonly _markLayoutChanged = (): void => { this._layoutVersion++; };
 
@@ -96,8 +94,8 @@ export class World extends Disposable {
 
     /** 在当前 World 中使用并注册组件；重复调用返回同一个定义。 */
     @Disposable.guard
-    component<T extends object>(type: ComponentType<T>): ComponentDefinition<T> {
-        return this._components.def(type);
+    component<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
+        return this._components.defMeta(type);
     }
 
     /** 创建直接绑定当前 World 内核的运行时 Query。 */
@@ -105,10 +103,6 @@ export class World extends Disposable {
     query<Components extends readonly (object | undefined)[]>(type: QueryType<Components>): Query<Components> {
         return new Query(type, this._components, this);
     }
-
-    /** 创建绑定实体的低频只读便利视图；不缓存任何物理存储位置。 */
-    @Disposable.guard
-    ref(entity: Entity): EntityRef { return new EntityRef(this, entity); }
 
     /** 创建有效实体身份；第一次迁移前不属于任何 Archetype。 */
     @Disposable.guard
@@ -146,18 +140,6 @@ export class World extends Disposable {
         }
 
         return (((index << ENTITY_VERSION_BITS) | version) >>> 0) as Entity;
-    }
-
-    /** 为有效实体创建一个全新的 World-local 局部事务。 */
-    @Disposable.guard
-    createEntityCommand(entity: Entity): EntityCommand {
-        return createWorldEntityCommand(this, entity);
-    }
-
-    /** 原子应用一个由当前 World 创建的实体事务。 */
-    @Disposable.guard
-    applyEntityCommand(command: EntityCommand): boolean {
-        return applyWorldEntityCommand(this, command);
     }
 
     /** 销毁实体并回收句柄槽位；实体无效时返回 false。 */
@@ -268,6 +250,37 @@ export class World extends Disposable {
         return (state & SLOT_ALIVE) !== 0 && (state & ENTITY_VERSION_MASK) === version;
     }
 
+    /**
+     * 一次校验实体并解析当前 ArchetypeRow。
+     *
+     * 返回 `false` 表示实体无效；返回 `true` 且 `out.archetype === null` 表示实体有效但
+     * 尚未迁移。调用者负责在结构变更后重新解析，不得长期缓存结果。
+     */
+    @Disposable.guard
+    resolve(entity: Entity, out: EntityAccess): boolean {
+        const location = this.readEntityLocation(entity);
+        if (location === INVALID_LOCATION) {
+            out.archetype = null;
+            out.row = 0 as ArchetypeRow;
+            return false;
+        }
+        const archetypeIdx = archetypeOf(location);
+        if (archetypeIdx === SLOT_ARCHETYPE_NONE) {
+            out.archetype = null;
+            out.row = 0 as ArchetypeRow;
+            return true;
+        }
+        const archetype = this._archetypes[archetypeIdx];
+        if (!archetype) {
+            out.archetype = null;
+            out.row = 0 as ArchetypeRow;
+            return false;
+        }
+        out.archetype = archetype;
+        out.row = rowOf(location);
+        return true;
+    }
+
     /** 获取实体存储位置；诊断便利接口会分配结果对象。 */
     @Disposable.guard
     getCompLocation(entity: Entity): EntityLocation | null {
@@ -284,64 +297,32 @@ export class World extends Disposable {
         };
     }
 
-    /** @internal 当前 World 使用的原始分配器。 */
+    /** 当前 World 借用的原始分配器；其所有权仍属于构造方。 */
     get allocator(): IAllocator { return this._allocator; }
 
-    /** @internal 当前全部 Archetype 的诊断视图与 Query 数据源。 */
+    /** 当前全部 Archetype 的只读诊断视图与 Query 数据源。 */
     get archetypes(): readonly Archetype[] { return this._archetypes; }
     /** @internal Archetype 集合版本。 */
-    get version(): number { return this._archetypeVersion; }
+    get version(): number { return this._version; }
     /** @internal 任一 Archetype 的 Chunk 布局版本。 */
     get layoutVersion(): number { return this._layoutVersion; }
 
-    /** @internal 定义组件并取得存储元数据。 */
+    /** 查询组件存储元数据，不触发注册。 */
     @Disposable.guard
-    defineComponentMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> {
-        return this._components.defMeta(type);
-    }
-
-    /** @internal 查询组件存储元数据。 */
-    @Disposable.guard
-    getComponentMeta<T extends object>(type: ComponentType<T>): ComponentMeta<T> | undefined {
+    findComponent<T extends object>(type: ComponentType<T>): ComponentMeta<T> | undefined {
         return this._components.getMeta(type);
     }
 
-    /** @internal 按组件编号查询存储元数据。 */
+    /** 按当前 World 的紧凑组件编号查询存储元数据。 */
     @Disposable.guard
-    getComponentMetaById(id: ComponentId): ComponentMeta | undefined {
+    componentById(id: ComponentId): ComponentMeta | undefined {
         return this._components.getById(id);
     }
-
-    /** @internal 为组合层注册只读 Query 投影的隐藏存储组件。 */
-    @Disposable.guard
-    registerQueryProjection<T extends object>(
-        projection: QueryProjection<T>,
-        storage: ComponentType<T>,
-    ): void {
-        this._components.registerProjection(projection, storage);
-    }
-
-    /** @internal 按内部索引取得 Archetype。 */
-    @Disposable.guard
-    getArchetypeAt(idx: number): Archetype | undefined { return this._archetypes[idx]; }
 
     /** @internal 按掩码取得或创建 Archetype。 */
     @Disposable.guard
     getOrCreateArchetype(mask: Mask, types: readonly ComponentMeta[]): Archetype {
         return this._archetypes[this.getOrCreateArchetypeIndex(mask, types)];
-    }
-
-    /** @internal 获取实体句柄中的原始索引。 */
-    @Disposable.guard
-    getRawIndex(entity: Entity): number { return entity >>> ENTITY_VERSION_BITS; }
-
-    /** @internal 获取实体当前 Archetype 索引。 */
-    @Disposable.guard
-    getArchIdx(entity: Entity): number {
-        const location = this.readEntityLocation(entity);
-        if (location === INVALID_LOCATION) return -1;
-        const archetypeIdx = archetypeOf(location);
-        return archetypeIdx === SLOT_ARCHETYPE_NONE ? -1 : archetypeIdx;
     }
 
     migrate(entity: Entity, mask: Mask, types: readonly ComponentMeta[], callback: (archetype: Archetype, row: ArchetypeRow) => void): boolean;
@@ -386,34 +367,6 @@ export class World extends Disposable {
         return true;
     }
 
-    /** @internal 在不创建组件列数组的情况下校验字段直写。 */
-    @Disposable.guard
-    canSetComponentFieldById(entity: Entity, componentId: ComponentId, field: number): boolean {
-        const component = this._components.getById(componentId);
-        if (!component || field < 0 || field >= component.layout.length) return false;
-        const location = this.readEntityLocation(entity);
-        if (location === INVALID_LOCATION) return false;
-        const archetypeIdx = archetypeOf(location);
-        const archetype = archetypeIdx === SLOT_ARCHETYPE_NONE
-            ? undefined
-            : this._archetypes[archetypeIdx];
-        return archetype !== undefined && archetype.mask.has(component.mask);
-    }
-
-    /** @internal 在不分配组件列数组的情况下写入单个字段。 */
-    @Disposable.guard
-    setComponentFieldById(entity: Entity, componentId: ComponentId, field: number, value: number): boolean {
-        const component = this._components.getById(componentId);
-        if (!component || field < 0 || field >= component.layout.length) return false;
-        const location = this.readEntityLocation(entity);
-        if (location === INVALID_LOCATION) return false;
-        const archetypeIdx = archetypeOf(location);
-        if (archetypeIdx === SLOT_ARCHETYPE_NONE) return false;
-        const archetype = this._archetypes[archetypeIdx];
-        if (!archetype || !archetype.mask.has(component.mask)) return false;
-        return archetype.setField(rowOf(location), component.id, field, value);
-    }
-
     /** 释放 World 持有的全部实体数据并归还 Buffer，不清空构造方拥有的 IAllocator。 */
     protected doDispose(): void {
         let firstError: unknown;
@@ -425,7 +378,7 @@ export class World extends Disposable {
         }
         this._archetypes.length = 0;
         this._archetypeMaskIndexes.length = 0;
-        this._archetypeVersion++;
+        this._version++;
         this._entityCount = 0;
         this._freeEntityHead = 0;
         this._quarantinedEntityHead = 0;
@@ -498,7 +451,7 @@ export class World extends Disposable {
             else high = mid;
         }
         indexes.splice(low, 0, { mask: archetype.mask, idx });
-        this._archetypeVersion++;
+        this._version++;
         return idx;
     }
 
@@ -528,21 +481,4 @@ function archetypeOf(location: number): number {
 
 function rowOf(location: number): ArchetypeRow {
     return (location & SLOT_ROW_MASK) as ArchetypeRow;
-}
-
-/** advanced 诊断入口；返回值会随结构变更失效。 */
-export function archetypesOfWorld(world: World): readonly Archetype[] { return world.archetypes; }
-
-/** game-bridge 冷路径入口：取得构造 World 时借用的分配器。 */
-export function allocatorOfWorld(world: World): IAllocator { return world.allocator; }
-
-/** game-bridge 冷路径入口：判断 World 是否已经释放。 */
-export function isWorldDisposed(world: World): boolean { return world.disposed; }
-
-/**
- * game-bridge 冷路径入口：绕过子类 override，确保 World 内核一定完成终结。
- * 该入口不属于普通 World 公共 API。
- */
-export function finalizeWorldKernel(world: World): void {
-    World.prototype.dispose.call(world);
 }

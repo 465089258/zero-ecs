@@ -31,6 +31,7 @@ export { Command } from "./command/command";
 export type { ICommand } from "./command/command";
 export { Commands } from "./command/command-service";
 export type { EntityCommand, ICommands } from "./command/command-service";
+export type { EntityMutator } from "./migration/entity-transaction";
 export { CommandModule } from "./command/module";
 
 export { GameSystemSet, ManualStage, Shutdown, Startup, Update } from "./runtime/stage";

@@ -299,7 +299,8 @@ Update.post
 - 下一次结构发布时替换上一份结果。
 - 同一查询可以重复迭代，不采用消费即清空语义。
 
-独立 World 的高级调用方必须在完成一批即时结构操作后显式发布。具体公开或 game-bridge API 名称在实施前评审；World 不引入 Game、Stage 或 Scheduler 概念。
+独立 World 的高级调用方必须在完成一批即时结构操作后显式发布。底层能力直接由 World
+提供；World 不引入 Game、Stage 或 Scheduler 概念。
 
 ## 10. 统一类型与内部计划
 

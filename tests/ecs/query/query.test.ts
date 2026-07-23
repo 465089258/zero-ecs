@@ -5,7 +5,6 @@ import {
     Any,
     type Component,
     type ComponentMeta,
-    defineComponentMeta,
     GameBuilder,
     type IArchetypeSource,
     type IComponentResolver,
@@ -37,9 +36,9 @@ describe("QueryType and QueryIter", () => {
     test("returns optional component columns as a table-level undefined", () => {
         const ecs = setup();
         const world = ecs.world;
-        const position = defineComponentMeta(world, PositionType);
-        const player = defineComponentMeta(world, PlayerType);
-        const death = defineComponentMeta(world, DeathTagType);
+        const position = world.component(PositionType);
+        const player = world.component(PlayerType);
+        const death = world.component(DeathTagType);
 
         const queryType = QueryType.from(All(
             With(PositionType),
@@ -79,8 +78,8 @@ describe("QueryType and QueryIter", () => {
     test("skips empty tables while advancing the reused current field", () => {
         const ecs = setup();
         const world = ecs.world;
-        const position = defineComponentMeta(world, PositionType);
-        const player = defineComponentMeta(world, PlayerType);
+        const position = world.component(PositionType);
+        const player = world.component(PlayerType);
 
         const emptyArchetype = world.getOrCreateArchetype(position.mask, [position]);
         const emptyRow = emptyArchetype.insert(1 as never);
@@ -99,7 +98,7 @@ describe("QueryType and QueryIter", () => {
     test("keeps the stable iter path independent of matched Archetype count", () => {
         const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
         const world = new World(allocator);
-        const position = defineComponentMeta(world, PositionType);
+        const position = world.component(PositionType);
         const archetype = world.getOrCreateArchetype(position.mask, [position]);
         archetype.insert(1 as never);
 
@@ -138,7 +137,7 @@ describe("QueryType and QueryIter", () => {
     test("incrementally releases and reuses Query Chunk entries", () => {
         const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
         const world = new World(allocator);
-        const position = defineComponentMeta(world, PositionType);
+        const position = world.component(PositionType);
         const archetype = world.getOrCreateArchetype(position.mask, [position]);
         const capacity = archetype.chunkCapacity;
         let count = 0;

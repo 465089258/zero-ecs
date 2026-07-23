@@ -30,21 +30,21 @@ test("World requires its owner to provide an Allocator", () => {
     expect(() => new World(undefined as never)).toThrow(/requires an IAllocator/);
 });
 
-test("World applies standalone EntityCommands and rejects cross-World reuse", () => {
+test("World immediately migrates and writes entities without a transaction layer", () => {
     const firstAllocator = new Allocator();
     const secondAllocator = new Allocator();
     const first = new World(firstAllocator);
     const second = new World(secondAllocator);
     const entity = first.spawn();
-    const command = first.createEntityCommand(entity)
-        .set(PositionType, Position.x, 12);
+    const position = first.component(PositionType);
 
-    expect(command.get(PositionType, Position.x)).toBe(12);
-    expect(() => second.applyEntityCommand(command)).toThrow(/another World/);
-    expect(first.applyEntityCommand(command)).toBe(true);
+    expect(first.migrate(entity, position.mask, [position], (archetype, row) => {
+        archetype.setField(row, position.id, Position.x, 12);
+    })).toBe(true);
     expect(first.get(entity, PositionType, Position.x)).toBe(12);
-    expect(() => command.set(PositionType, Position.x, 13)).toThrow(/already been applied/);
-    expect(() => first.applyEntityCommand(command)).toThrow(/already been applied/);
+    expect(first.set(entity, PositionType, Position.x, 13)).toBe(true);
+    expect(first.get(entity, PositionType, Position.x)).toBe(13);
+    expect(second.set(entity, PositionType, Position.x, 14)).toBe(false);
 
     first.dispose();
     second.dispose();
@@ -167,12 +167,13 @@ class ThrowingDisposeWorld extends World {
     hookCalls = 0;
 
     override dispose(): void {
+        super.dispose();
         this.hookCalls++;
         throw new Error("custom World dispose failed");
     }
 }
 
-test("Game finalizes the World kernel even when an override throws without calling super", () => {
+test("Game follows the World dispose contract and preserves extension errors", () => {
     const allocator = new Allocator();
     const world = new ThrowingDisposeWorld(allocator);
     const game = new GameBuilder().setWorld(world).build();

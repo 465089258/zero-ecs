@@ -152,11 +152,15 @@ describe("DataSet", () => {
         });
         const data = new DataSet(allocator, [Types.U32, Types.F32] as const);
         expect(data.layout).toEqual(createTableLayout([Types.U32, Types.F32], 1024));
+        expect(data.layout.byteLength).toBe(1024);
+        expect(data.allocatedBytes).toBe(0);
         data.push();
         data.push();
         expect(data.tables).toHaveLength(2);
         expect(data.tables[0].byteLength).toBe(1024);
+        expect(data.allocatedBytes).toBe(2048);
         data.dispose();
+        expect(data.allocatedBytes).toBe(0);
         allocator.trim();
         allocator.clear();
     });

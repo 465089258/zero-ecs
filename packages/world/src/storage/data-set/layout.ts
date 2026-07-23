@@ -47,5 +47,11 @@ export function createTableLayout(types: readonly Types[], bufferByteLength: num
         columns.push({ index, type, byteOffset: offset, byteLength, bytesPerElement });
         offset += byteLength;
     }
-    return { capacity, columns, usedBytes: offset, unusedBytes: bufferByteLength - offset };
+    return {
+        byteLength: bufferByteLength,
+        capacity,
+        columns,
+        usedBytes: offset,
+        unusedBytes: bufferByteLength - offset,
+    };
 }

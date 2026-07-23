@@ -1,46 +1,24 @@
 import { Types } from "../storage/typed-array";
 import {
     type ComponentId,
-    type ComponentDefinition,
     type ComponentMeta,
     type ComponentType,
 } from "./component";
 import { Mask } from "./mask";
-import type { QueryDataType, QueryProjection } from "../query/query-data";
+import {
+    storageOfQueryProjection,
+    type QueryDataType,
+} from "../query/query-data";
 
 /** @internal World 内核持有的组件注册表。 */
 export class ComponentRegistry {
     private readonly _metas: ComponentMeta[] = [];
     private readonly _byType = new WeakMap<ComponentType, ComponentMeta>();
-    private readonly _projectionTypes = new WeakMap<QueryProjection, ComponentType>();
-
-    /** @internal 将只读 Query 投影绑定到当前 World 的隐藏存储组件。 */
-    registerProjection<T extends object>(projection: QueryProjection<T>, storage: ComponentType<T>): void {
-        const existing = this._projectionTypes.get(projection);
-        if (existing && existing !== storage) {
-            throw new Error(`Query projection ${projection.name} is already registered`);
-        }
-        this._projectionTypes.set(projection, storage);
-        this.defMeta(storage);
-    }
 
     /** @internal 定义 Query 数据并返回实际存储组件元数据。 */
     defQueryMeta<T extends object>(type: QueryDataType<T>): ComponentMeta<T> {
         if (typeof type === "function") return this.defMeta(type);
-        const storage = this._projectionTypes.get(type);
-        if (!storage) {
-            throw new Error(`Query projection ${type.name} is not registered in this World`);
-        }
-        return this.defMeta(storage as ComponentType<T>);
-    }
-
-    /**
-     * 在当前 World 中定义组件；已定义时直接返回原定义。
-     *
-     * 组件字段必须是从 `0` 开始连续递增的数字键。
-     */
-    def<T extends object>(type: ComponentType<T>): ComponentDefinition<T> {
-        return this.defMeta(type);
+        return this.defMeta(storageOfQueryProjection(type));
     }
 
     /** @internal 定义组件并返回当前 World 的存储元数据。 */

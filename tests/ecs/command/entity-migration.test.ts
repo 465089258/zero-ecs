@@ -8,7 +8,6 @@ import {
     Types,
     World,
 } from "@zero-ecs/game";
-import { getComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -197,7 +196,7 @@ describe("Game EntityCommand batching", () => {
         const command = commands.entity(entity)
             .set(PositionType, Position.x, 10)
             .set(VelocityType, Velocity.x, 20);
-        const position = getComponentMeta(entities, PositionType)!;
+        const position = entities.findComponent(PositionType)!;
         entities.migrate(entity, position.mask, [position], () => {});
         const errors: unknown[] = [];
         ecs.service(ErrorHandlerService).setHandler((error, source) => {

@@ -15,7 +15,7 @@ const hierarchy = await import("@zero-ecs/game/hierarchy");
 const pool = await import("@zero-ecs/game/pool");
 
 assert.equal(typeof world.World, "function");
-assert.equal(typeof world.EntityRef, "function");
+assert.equal("EntityRef" in world, false);
 assert.equal(typeof world.Allocator, "function");
 assert.equal(typeof world.QueryType, "function");
 assert.equal("Service" in world, false);
@@ -36,7 +36,7 @@ assert.equal("Service" in scheduler, false);
 assert.equal("Update" in scheduler, false);
 
 assert.equal(game.World, world.World);
-assert.equal(game.EntityRef, world.EntityRef);
+assert.equal("EntityRef" in game, false);
 assert.equal(game.Stage, scheduler.Stage);
 assert.equal(typeof game.Game, "function");
 assert.equal(typeof game.GameBuilder, "function");
@@ -73,17 +73,24 @@ assert.throws(() => new game.Game(), /Game must be created by GameBuilder/);
 
 const allocator = new world.Allocator();
 const standalone = new world.World(allocator);
+assert.equal("createEntityCommand" in standalone, false);
+assert.equal("applyEntityCommand" in standalone, false);
 const entityId = standalone.spawn();
-const entityRef = standalone.ref(entityId);
-assert.equal(entityRef instanceof world.EntityRef, true);
+assert.equal("ref" in standalone, false);
 assert.equal(standalone.valid(entityId), true);
-assert.equal(entityRef.valid, true);
 standalone.dispose();
-assert.throws(() => entityRef.valid, /disposed/);
 allocator.clear();
 
 await assert.rejects(
     import("@zero-ecs/game/dist/runtime/game.js"),
+    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+);
+await assert.rejects(
+    import("@zero-ecs/world/game-bridge"),
+    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+);
+await assert.rejects(
+    import("@zero-ecs/game/dist/migration/migration-service.js"),
     error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
 );
 

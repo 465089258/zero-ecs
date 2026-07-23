@@ -19,7 +19,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 固定工作集且相关池、数组、缓存和 Table 容量不发生收缩与再次增长时，不创建源码可见的 object、array、closure、iterator、tuple/result wrapper、Error、TypedArray 或 Buffer。
 - 不依赖 JIT 内联、逃逸分析或临时对象消除来宣称零分配。
 - 执行性能优先于 GC 数字；只有经过基准证明，才允许用对象池、高水位缓存和更复杂的复用结构换取收益。
-- 达到新的 Entity、Command、MigrationPlan、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Archetype 当前保留一个额外空 Chunk，并释放更远的连续空尾 Chunk；再次增长超过保留容量时会重新创建 Buffer 租约、Table 和 TypedArray views，因此不能只凭历史实体峰值声明结构迁移零分配。
+- 达到新的 Entity、Command、EntityTransaction、Archetype 或 Query 缓存峰值时允许扩容；未被主动/自动裁剪的复用结构在工作集稳定后必须恢复到无显式分配路径。Archetype 当前保留一个额外空 Chunk，并释放更远的连续空尾 Chunk；再次增长超过保留容量时会重新创建 Buffer 租约、Table 和 TypedArray views，因此不能只凭历史实体峰值声明结构迁移零分配。
 - 热路径中的复用对象必须具有稳定 shape，并避免 Proxy、临时闭包、逐项 capability/context 和不必要的多态转发。
 - 不为已经由 SystemParam 类型映射或接口能力分层排除的操作增加第二套运行时权限判断。
 
@@ -35,7 +35,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - 不得仅为减少少量低频分配而引入对象池、高水位缓存、复杂 reset 协议、全局 registry、额外 owner token 状态机或跨 Game 强引用缓存。
 - 不池化错误、诊断结果、拓扑排序临时数组、一次性 prepare context 或 Builder 中间对象，除非独立数据证明它们已经成为实际瓶颈。
 - `World.getTypes()` 和 `getCompLocation()` 是诊断/便利接口：前者成功时创建类型数组，后者成功时创建位置对象；它们不属于稳定 Tick 零显式分配 API。
-- `World.ref()` 每次创建一个 EntityRef；它是编辑器、UI、脚本和零散单实体访问使用的低频便利 API，不进入 Query 或逐实体热循环。
+- `World.resolve(entity, out)` 复用调用者提供的 `EntityAccess`，用于底层批量操作只校验并解析一次实体位置；结构变更后不得继续使用旧结果。
 - 非热路径 GC 优化只接受实现同样简单的改写，或者有明确 CPU、内存、暂停时间数据支持的方案。
 - “尽量减少分配”也包括及时释放长期引用；为避免年轻代短命对象而制造更多 old-generation 常驻对象不是有效优化。
 
@@ -73,7 +73,7 @@ GC 优化不能反过来支配执行路径。对象池、缓存、writer、数�
 - **固定起始状态的真实批量结构场景**每 round 处理 16,384 个实体，materialize、migrate 和 despawn 分开报告；只允许把一次性构造初始 World 排除在计时外。每个场景必须在 baseline 前定义逻辑起始状态 `S0`、目标子段 `T: S0 → S1` 和恢复子段 `R: S1 → S0`，一个完整 round 严格执行 `t0 → T → t1 → R → t2`。materialize 的恢复包括 despawn 并重新 reserve 下一轮句柄，migrate 的恢复是反向迁移和独立 flush，despawn 的恢复包括 reserve/materialize 替代实体；若实体身份不能保持，恢复必须在预分配输入缓冲中更新下一轮句柄，并把该工作计入 R。不得在计时外恢复 World、Table、池或输入数组。
 - 真实批量结构场景同时报告目标子段 `(t1 - t0) / targetOperationCount`、恢复子段 `(t2 - t1) / entityCount`（命名为 `ns/entity-recovery`）和完整 cycle `(t2 - t0) / entityCount`。完整 cycle 是正式防隐藏成本指标；目标子段只用于定位操作差异，不能单独作为策略通过依据。T/R 引起的 Table 创建、释放、分配和 GC 都属于工作量；中间时钟读取是所有候选相同的固定成本，并纳入 A/A 校准。
 - **已有容量内的内核场景**预先建立足够的源/目标 Table 容量，每 round 同样处理 16,384 个实体；目标与恢复组成完整 A→B→A cycle，被测过程不得创建、释放或改变 Table 身份/容量，用于单独观察结构迁移内核成本。preflight 和 round 后检查必须验证 Table 计数、身份、容量与版本符合该前提。
-- 另设循环 churn 场景：固定 16,384 个实体和历史峰值，每个被测循环必须严格执行 `record A→B → flush → record B→A → flush`。两段操作不能在同一次 `Update.post` 提交前记录，否则同一 Entity 的 MigrationPlan 可能合并回 A 而不发生真实迁移。两次 record/flush 以及当前 Chunk 尾部释放、保留和再次创建都属于真实工作量，不能排除在计时、分配记录或 GC 诊断之外。
+- 另设循环 churn 场景：固定 16,384 个实体和历史峰值，每个被测循环必须严格执行 `record A→B → flush → record B→A → flush`。两段操作不能在同一次 `Update.post` 提交前记录，否则同一 Entity 的 EntityTransaction 可能合并回 A 而不发生真实迁移。两次 record/flush 以及当前 Chunk 尾部释放、保留和再次创建都属于真实工作量，不能排除在计时、分配记录或 GC 诊断之外。
 - churn 在正式计时前执行带完整 instrumentation 的正确性/诊断 preflight：每个 cycle 的 delta 必须满足 `appliedMigrationCount === entityCount * 2`、`flushCount === 2`，且全部实体最终位于 A。不能只检查最终 mask；必须使用 Archetype 版本、Chunk 数和诊断计数证明两次 flush 都真实执行。当前策略还必须验证每个 Archetype 最多保留一个额外空 Chunk，释放只发生在连续尾部，随后 `push` 复用相同的连续 `chunkIdx`。
 - churn 正式计时主要报告 `ns/entity-cycle`，一个 op 表示单个实体完整经历 A→B→A，分母为 `entityCount`；同时报告 `ns/applied-migration`，分母固定为 `entityCount * 2`。两项都包含 record 和 flush 的全部成本；配套诊断结果保存实际 `appliedMigrationCount` 并证明该固定分母成立，不得让候选自行选择更有利的分母。
 - 正确性/诊断运行与正式计时运行必须使用独立构建。诊断运行允许在被测逻辑中更新迁移和 Chunk/Table 生命周期计数，但只比较每轮 delta，并在计时段外重置；这些运行不产生正式 ns/op。正式计时构建必须从产物中完全移除非生产计数器的字段、分支和写入，并通过产物审计确认，只保留 baseline/candidate 完全相同的时钟调用、操作序列和计时外 O(1) 状态校验。除 instrumentation 外，两种构建使用同一提交、生产优化配置和实验参数；完整状态、两次 flush 和 Chunk 身份先由诊断构建证明，正式构建在 round 后使用公开状态做一致的最终状态校验。

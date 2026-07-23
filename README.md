@@ -54,9 +54,8 @@ import { Allocator, World } from "@zero-ecs/world";
 const allocator = new Allocator();
 const world = new World(allocator);
 const entity = world.spawn();
-const ref = world.ref(entity); // 低频只读便利对象
-const command = world.createEntityCommand(entity);
-world.applyEntityCommand(command);
+world.valid(entity);
+world.despawn(entity);
 world.dispose();
 allocator.clear();
 ```
@@ -68,5 +67,5 @@ allocator.clear();
 - `npm run build`：按 world → scheduler → game 生成三个包；
 - `npm run verify:release`：运行类型、行为、声明、包边界、no-JIT 与示例验证。
 
-架构说明见 [三库架构](./docs/three-library-architecture.md)，公共 API 见
-[API 参考](./docs/api.md)。
+长期职责与评审准则见 [架构宪法](./docs/architecture-constitution.md)，当前实现见
+[三库架构](./docs/three-library-architecture.md)，公共 API 见 [API 参考](./docs/api.md)。

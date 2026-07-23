@@ -2,8 +2,9 @@ import { expect, test } from "@rstest/core";
 import {
     Allocator,
     AllocatorService,
+    ArchetypeChunk,
     type Component,
-    defineComponentMeta,
+    entityIndexOf,
     GameBuilder,
     type Entity,
     QueryType,
@@ -27,8 +28,8 @@ test("World entities and Archetypes share DataSet-backed Buffer memory", () => {
     const ecs = new GameBuilder().build();
     ecs.init();
     const entities = ecs.world;
-    const position = defineComponentMeta(entities, PositionType);
-    const health = defineComponentMeta(entities, HealthType);
+    const position = entities.component(PositionType);
+    const health = entities.component(HealthType);
     const positionId = position.id;
     const healthId = health.id;
     const first = entities.spawn();
@@ -69,7 +70,7 @@ test("World entities and Archetypes share DataSet-backed Buffer memory", () => {
 test("Archetype owns continuous Chunk rows and exposes cached component views", () => {
     const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
     const world = new World(allocator);
-    const position = defineComponentMeta(world, PositionType);
+    const position = world.component(PositionType);
     const archetype = world.getOrCreateArchetype(position.mask, [position]);
     const entities: Entity[] = [];
 
@@ -82,22 +83,26 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
     }
 
     expect(archetype.chunks).toBe(2);
-    expect(archetype.views).toHaveLength(2);
-    expect(archetype.entities).toHaveLength(2);
+    expect(archetype.allocatedChunkCount).toBe(2);
     expect(archetype.chunkRowCount(0)).toBe(archetype.chunkCapacity);
     expect(archetype.chunkRowCount(1)).toBe(1);
-    expect(archetype.views[1][position.id]?.[Position.x][0]).toBe(archetype.chunkCapacity + 0.5);
-    expect(archetype.entities[1][0]).toBe(entities[entities.length - 1]);
+    const secondChunk = archetype.chunkAt(1)!;
+    expect(secondChunk).toBeInstanceOf(ArchetypeChunk);
+    expect(secondChunk.entities).toBe(secondChunk.columns[0]);
+    expect(secondChunk.views[position.id]?.[Position.x]).toBe(secondChunk.columns[1]);
+    expect(secondChunk.views[position.id]?.[Position.y]).toBe(secondChunk.columns[2]);
+    expect(secondChunk.views[position.id]?.[Position.x][0]).toBe(archetype.chunkCapacity + 0.5);
+    expect(secondChunk.entities[0]).toBe(entities[entities.length - 1]);
 
     expect(world.despawn(entities.pop()!)).toBe(true);
     expect(archetype.chunks).toBe(1);
-    expect(archetype.views).toHaveLength(2);
+    expect(archetype.allocatedChunkCount).toBe(2);
 
     const query = world.query(QueryType.from(With(PositionType)));
     let iter = query.iter();
     expect(iter.next()).toBe(true);
     expect(iter.current[0]).toBe(archetype.chunkCapacity);
-    expect(iter.current[2]).toBe(archetype.views[0][position.id]);
+    expect(iter.current[2]).toBe(archetype.chunkAt(0)?.views[position.id]);
     expect(iter.next()).toBe(false);
 
     const reused = world.spawn();
@@ -115,7 +120,7 @@ test("Archetype owns continuous Chunk rows and exposes cached component views", 
 test("Archetype releases and recreates only continuous tail Chunks", () => {
     const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
     const world = new World(allocator);
-    const position = defineComponentMeta(world, PositionType);
+    const position = world.component(PositionType);
     const archetype = world.getOrCreateArchetype(position.mask, [position]);
     const entities: Entity[] = [];
     const capacity = archetype.chunkCapacity;
@@ -126,14 +131,14 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
         entities.push(entity);
     }
     expect(archetype.chunks).toBe(3);
-    expect(archetype.views).toHaveLength(3);
+    expect(archetype.allocatedChunkCount).toBe(3);
 
     for (let i = 0; i < capacity * 2; i++) {
         expect(world.despawn(entities.pop()!)).toBe(true);
     }
     expect(archetype.chunks).toBe(1);
-    expect(archetype.views).toHaveLength(2);
-    const retained = archetype.views[1];
+    expect(archetype.allocatedChunkCount).toBe(2);
+    const retained = archetype.chunkAt(1);
 
     for (let i = 0; i < capacity; i++) {
         const entity = world.spawn();
@@ -141,14 +146,14 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
         entities.push(entity);
     }
     expect(archetype.chunks).toBe(2);
-    expect(archetype.views).toHaveLength(2);
-    expect(archetype.views[1]).toBe(retained);
+    expect(archetype.allocatedChunkCount).toBe(2);
+    expect(archetype.chunkAt(1)).toBe(retained);
 
     const overflow = world.spawn();
     world.migrate(overflow, position.mask, [position], () => {});
     entities.push(overflow);
     expect(archetype.chunks).toBe(3);
-    expect(archetype.views).toHaveLength(3);
+    expect(archetype.allocatedChunkCount).toBe(3);
 
     let count = 0;
     const iter = world.query(QueryType.from(With(PositionType))).iter();
@@ -163,7 +168,7 @@ test("Archetype releases and recreates only continuous tail Chunks", () => {
 test("Archetype reuses removed row data without clearing component fields", () => {
     const allocator = new Allocator({ bufferByteLength: 64, blockByteLength: 256 });
     const world = new World(allocator);
-    const position = defineComponentMeta(world, PositionType);
+    const position = world.component(PositionType);
     const first = world.spawn();
 
     world.migrate(first, position.mask, [position], (target, row) => {
@@ -205,7 +210,7 @@ test("quarantines an Entity slot before its generation can wrap", () => {
 
     expect(entities.valid(stale)).toBe(false);
     expect(current).not.toBe(stale);
-    expect(entities.getRawIndex(current)).not.toBe(entities.getRawIndex(stale));
+    expect(entityIndexOf(current)).not.toBe(entityIndexOf(stale));
     ecs.dispose();
 });
 

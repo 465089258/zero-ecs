@@ -6,8 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./advanced": { "types": "./dist/advanced.d.ts", "import": "./dist/advanced.js" },
-    "./game-bridge": { "types": "./dist/game-bridge.d.ts", "import": "./dist/game-bridge.js" }
+    "./advanced": { "types": "./dist/advanced.d.ts", "import": "./dist/advanced.js" }
   },
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md"],

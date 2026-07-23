@@ -1,11 +1,8 @@
 import {
     Allocator,
-    type ComponentType,
     type IAllocator,
-    type QueryProjection,
     World,
 } from "@zero-ecs/world";
-import { registerQueryProjection } from "@zero-ecs/world/game-bridge";
 import { ErrorHandlerService } from "../context/error-handler-service";
 import { injectAll, type InjectionContext } from "../context/injection/injection";
 import { InjectionService } from "../context/injection/service";
@@ -50,7 +47,6 @@ export class GameBuilder {
     private readonly _resources = new Map<ResourceType, Resource>();
     private readonly _states = new Set<StateType>();
     private readonly _services = new Map<ServiceToken, ServiceRegistration>();
-    private readonly _queryProjections = new Map<QueryProjection, ComponentType>();
     private readonly _schedule = new ScheduleBuilder<SystemParam>();
     private readonly _modules: Module[] = [];
     private _world: World | undefined;
@@ -72,21 +68,6 @@ export class GameBuilder {
         return this.modify(() => {
             if (this._world) throw new Error("Cannot configure an allocator after setting a World");
             this._allocator = allocator;
-            return this;
-        });
-    }
-
-    /** 将只读 Query 投影绑定到只在组合层可见的实际存储组件。 */
-    addQueryProjection<T extends object>(
-        projection: QueryProjection<T>,
-        storage: ComponentType<T>,
-    ): this {
-        return this.modify(() => {
-            const existing = this._queryProjections.get(projection);
-            if (existing && existing !== storage) {
-                throw new Error(`Query projection already registered: ${projection.name}`);
-            }
-            this._queryProjections.set(projection, storage);
             return this;
         });
     }
@@ -217,9 +198,6 @@ export class GameBuilder {
         const owner = Symbol("GameWorldOwner");
         claimWorld(world, owner);
         try {
-            for (const [projection, storage] of this._queryProjections) {
-                registerQueryProjection(world, projection, storage);
-            }
             const resources = new ResourceContainer();
             const states = new StateContainer();
             const services = new ServiceContainer();

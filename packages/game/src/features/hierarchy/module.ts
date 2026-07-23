@@ -1,8 +1,6 @@
 import type { GameBuilder } from "../../runtime/game-builder";
 import type { Module } from "../../runtime/module";
 import { HierarchyService } from "./hierarchy-service";
-import { ChildOf, ParentOf } from "./relations";
-import { ChildOfStorage, ParentOfStorage } from "./storage-components";
 
 /**
  * 安装可选父子树能力。
@@ -11,12 +9,9 @@ import { ChildOfStorage, ParentOfStorage } from "./storage-components";
  */
 export class HierarchyModule implements Module {
     build(builder: GameBuilder): void {
-        builder.addQueryProjection(ChildOf, ChildOfStorage);
-        builder.addQueryProjection(ParentOf, ParentOfStorage);
         builder.setServiceFactory(
             HierarchyService,
             ({ worldAllocator }) => new HierarchyService(worldAllocator),
         );
     }
 }
-

@@ -1,8 +1,7 @@
 import type { ComponentTag } from "@zero-ecs/world";
 
-/** @internal 只由 HierarchyModule 注册；不从任何公共入口导出。 */
+/** @internal ChildOf 投影与 HierarchyService 共用的隐藏存储组件。 */
 export class ChildOfStorage implements ComponentTag {}
 
-/** @internal 只由 HierarchyModule 注册；不从任何公共入口导出。 */
+/** @internal ParentOf 投影与 HierarchyService 共用的隐藏存储组件。 */
 export class ParentOfStorage implements ComponentTag {}
-

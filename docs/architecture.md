@@ -1,5 +1,8 @@
 # 当前架构
 
+> 本文描述当前实现。长期职责和架构评审门禁见
+> [Zero ECS 架构宪法](./architecture-constitution.md)。
+
 仓库由三个锁步版本的 npm workspace 包组成：
 
 ```text
@@ -36,7 +39,7 @@ World
 ├─ component/query
 ├─ spawn/valid/has/get/set
 ├─ migrate/despawn
-└─ ref 与诊断、扩展底层 API
+└─ findComponent/componentById/resolve 与诊断、扩展底层 API
 ```
 
 `component(type)` 使用即注册，不存在独立 `defineComponent()`。`spawn()` 立即创建有效
@@ -46,8 +49,8 @@ Archetype 删除行后不清理旧数据，目标行复用时也不自动清零�
 World 不提供业务层结构修改时序保证。直接访问它等同于使用底层不安全能力：调用方必须
 自行避免在活跃 Query 迭代期间迁移或销毁相关实体。框架不为此增加热路径权限检查。
 
-`EntityRef` 是绑定 `World + Entity` 的低频只读便利对象，不缓存物理位置、不参与 Query，
-数字 Entity 仍是存储和热路径中的唯一实体值。
+数字 Entity 是存储和热路径中的唯一实体值。需要物理位置的底层扩展通过调用者复用的
+`EntityAccess` 调用 `World.resolve()`；结构变更后必须重新解析。
 
 ## Query
 
@@ -83,8 +86,11 @@ ServiceToken             -> Service
 
 重复的 QueryType 参数按声明位置解析为独立 Query；重复的其他参数仍拒绝。
 
-`Commands` 是 Game Service。Game EntityCommand 进入统一队列，在 `Update.post` 合并同一
-Entity 的修改并延迟应用结构变化。直接 World 修改不会自动获得 Hierarchy 等 Game 模块语义。
+`Commands` 是 Game Service，`Migrations` 是 Game 内部迁移 Service。Game EntityCommand
+持有局部 EntityTransaction；Commands 执行普通命令和扩展后，Migrations 按 Entity 合并
+事务，并在 `Update.post` 的 Structure 阶段对每个实体最多调用一次 `World.migrate()`。
+World 不知道命令、事务、池或提交阶段。直接 World 修改不会自动获得 Hierarchy 等 Game
+模块语义。
 
 ## 生命周期
 

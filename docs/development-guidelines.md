@@ -89,7 +89,8 @@ builder.addSystem(advanceExampleSystem);
    `Readonly<T>` 只是浅只读类型，数组、Map、TypedArray 和嵌套对象不会被运行时隔离。
 8. `[World]` 的函数参数声明为 `World`。普通 System 的结构变更优先使用 Commands；
 直接调用 World 即时结构 API 属于调用方主动选择的底层入口，必须自行保证迭代时序安全。
-9. `EntityRef` 只绑定 `World + Entity`，不得缓存 Archetype、Chunk、row 或组件列，也不得提供结构写方法。它属于编辑器、UI、脚本和重要单实体引用等低频场景；Query 逐实体循环继续使用数字 Entity 与批量列。
+9. 底层扩展可以复用 `EntityAccess` 调用 `World.resolve()`，但不得跨结构变更缓存其中的
+   Archetype、row 或组件列；Query 逐实体循环继续使用数字 Entity 与批量列。
 10. Query 热循环必须在取得 `iter.current` 后、进入逐行 `for` 前缓存本 Chunk 使用的列引用；循环内只按行索引访问列，不重复执行 `components[Field][row]` 两级查找。即使当前 JIT 可能消除部分重复访问，示例和框架代码也必须保持对 no-JIT 与其他宿主同样清楚的列式写法：
 
 ```ts
@@ -119,12 +120,15 @@ World 必须显式接收构造方提供的 IAllocator，并且只借用、不拥
 
 World 内核的存储所有权必须继续保持以下边界：
 
-1. DataSet 只管理布局相同、ID 连续的 Table 数组；结构修改只有尾部 `push/pop`。
+1. DataSet 只管理布局相同、ID 连续的 Table 数组；结构修改只有尾部 `push/pop`。子类可在
+   `createTable()` 中绑定 Chunk 级语义视图，但不得接管逻辑行、版本或保留策略。
 2. Table 只管理固定容量 TypedArray 列的 `get/set/clear/copy`，不记录逻辑行数、空闲行、版本或删除语义。
 3. Archetype 自己管理组件实体的密集行、Chunk 创建释放、swap-remove 和结构版本；DataSet 不替它推断行状态。
 4. EntitySlots 自己管理 Entity 版本和 `Archetype/chunkIdx/row`，不向 World 或 advanced 入口暴露底层 DataSet。
-5. Archetype 的公开 advanced 缓存固定为 `views[chunkIdx][componentId][fieldId]` 与 `entities[chunkIdx]`；Query 直接借用这些列，不增加 DenseRows、WeakMap 或组件列适配层。
-6. Archetype 外部按 `chunkCount` 和 `chunkRowCount(chunkIdx)` 遍历有效 Chunk；不得依赖或长期保存其私有 DataSet/Table 集合。
+5. Archetype 只维护一条 `ArchetypeChunk` 序列；Chunk 的 `entities` 和
+   `views[componentId][fieldId]` 都是其稠密 `columns` 的别名，Query 直接借用这些列。
+6. Archetype 外部按 `chunks` 和 `chunkRowCount(chunkIdx)` 遍历有效 Chunk，通过
+   `chunkAt(chunkIdx)` 取得可能失效的底层视图；不得长期保存 Chunk 或依赖私有 DataSet。
 
 ## 5. Resource 规则
 

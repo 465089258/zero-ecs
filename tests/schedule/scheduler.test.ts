@@ -224,12 +224,13 @@ describe("system registration and scheduling", () => {
         builder.addSystem(defSystem(Update.fixed, querySystem, [queryType, queryType]));
         const game = builder.build();
         const world = game.world;
+        const position = world.component(PositionType);
         const entityCount = 24;
         for (let i = 0; i < entityCount; i++) {
             const entity = world.spawn();
-            expect(world.applyEntityCommand(
-                world.createEntityCommand(entity).add(PositionType).set(PositionType, Position.x, i),
-            )).toBe(true);
+            expect(world.migrate(entity, position.mask, [position], (archetype, row) => {
+                archetype.setField(row, position.id, Position.x, i);
+            })).toBe(true);
         }
 
         game.init();

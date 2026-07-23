@@ -9,10 +9,9 @@ export type {
 } from "./storage/memory";
 
 export { World } from "./world";
-export type { EntityLocation } from "./world";
+export type { EntityAccess, EntityLocation } from "./world";
 export { INVALID_ENTITY } from "./entity/entity";
 export type { Entity } from "./entity/entity";
-export { EntityRef } from "./entity/entity-ref";
 export type {
     Component,
     ComponentTag,
@@ -52,4 +51,3 @@ export type {
 export { QueryType } from "./query/query-type";
 export { Query, QueryIter } from "./query/query";
 export type { QueryComponentView, QueryCurrent, QueryOf } from "./query/query";
-export type { EntityCommand, EntityMutator } from "./command/entity-command";

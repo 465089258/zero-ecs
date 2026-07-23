@@ -1,34 +1,31 @@
-import { DataSet, type Table } from "../storage/data-set";
 import type { IAllocator } from "../storage/memory";
-import { E32, type TypedArray, Types } from "../storage/typed-array";
+import { type TypedArray, Types } from "../storage/typed-array";
 import { type ComponentId, type ComponentMeta } from "../component/component";
 import { Mask } from "../component/mask";
-import type { Entity, EntitySet } from "../entity/entity";
+import type { Entity } from "../entity/entity";
 import { ENTITY_INDEX_MASK } from "../entity/entity-format";
+import {
+    ArchetypeChunk,
+    ArchetypeChunks,
+} from "./archetype-chunk";
 
-/** Archetype Table 中保存实体句柄的列索引。 */
-export const ENTITY_COLUMN = 0;
+export { ENTITY_COLUMN } from "./archetype-chunk";
+export type { ComponentViews } from "./archetype-chunk";
 
 declare const ARCHETYPE_ROW_BRAND: unique symbol;
 
 /** Archetype 中无分配的 U32 Chunk 行位置。 */
 export type ArchetypeRow = number & { readonly [ARCHETYPE_ROW_BRAND]: true };
 
-/** 一个 Chunk 按 ComponentId 稀疏索引的组件字段列。 */
-export type ComponentViews = ReadonlyArray<readonly TypedArray[] | undefined>;
-
 /** 单个 Archetype 不可能包含超过 World 实体索引容量的行。 */
 const MAX_ARCHETYPE_ROW = ENTITY_INDEX_MASK - 1;
 const RETAIN_EMPTY_CHUNKS = 1;
-type SlotColumns<T extends Types[] = Types[]> = [E32, ...T];
 /** 组件集合相同的实体密集存储；行和 Chunk 状态由 Archetype 自己拥有。 */
 export class Archetype {
     readonly mask: Mask;
     readonly name: string;
-    readonly types: ComponentMeta[];
-    readonly data: DataSet<SlotColumns>;
-    readonly views: ComponentViews[] = [];
-    readonly entities: EntitySet[] = [];
+    readonly types: readonly ComponentMeta[];
+    private readonly _chunks: ArchetypeChunks;
     private readonly maxChunkIdx: number;
     /** 每个 Chunk 的固定行容量。 */
     readonly chunkCapacity: number;
@@ -40,15 +37,12 @@ export class Archetype {
     /** 当前包含有效行的 Chunk 数量；可能小于 `views.length`。 */
     get chunks(): number { return Math.ceil(this.count / this.chunkCapacity); }
     /** 当前全部已分配 Chunk 占用的 Buffer 字节数。 */
-    get allocatedBytes(): number {
-        const first = this.data.tables[0];
-        return first ? first.byteLength * this.data.length : 0;
-    }
+    get allocatedBytes(): number { return this._chunks.allocatedBytes; }
 
     /** 按组件编号排序的组件元数据。 */
 
     /** @internal 当前已分配（包含保留空 Chunk）的数量。 */
-    get allocatedChunkCount(): number { return this.data.length; }
+    get allocatedChunkCount(): number { return this._chunks.length; }
 
     /** 创建指定组件掩码对应的 Archetype。 */
     constructor(
@@ -59,16 +53,20 @@ export class Archetype {
     ) {
         this.mask = mask.clone();
         this.types = types === undefined ? [] : [...types].sort((a, b) => a.id - b.id);
-        const layout: SlotColumns = [Types.Entity];
+        const columns: [typeof Types.Entity, ...Types[]] = [Types.Entity];
         const names: string[] = [];
         for (let i = 0; i < this.types.length; i++) {
             const comp = this.types[i];
-            for (const fieldType of comp.layout) layout.push(fieldType);
+            for (const fieldType of comp.layout) columns.push(fieldType);
             names.push(comp.name);
         }
         this.name = names.join(";");
-        this.data = new DataSet(allocator, layout);
-        this.chunkCapacity = this.data.layout.capacity;
+        this._chunks = new ArchetypeChunks(
+            allocator,
+            columns,
+            this.types,
+        );
+        this.chunkCapacity = this._chunks.layout.capacity;
         this.maxChunkIdx = Math.floor(MAX_ARCHETYPE_ROW / this.chunkCapacity);
     }
 
@@ -88,7 +86,7 @@ export class Archetype {
         const chunkIdx = Math.floor(ordinal / chunkCapacity);
         const row = ordinal - chunkIdx * chunkCapacity;
         this.ensureChunk(chunkIdx);
-        this.data.tables[chunkIdx].columns[0][row] = entity;
+        this._chunks.tables[chunkIdx].entities[row] = entity;
         this.count++;
         return this.locationAt(chunkIdx, row);
     }
@@ -105,11 +103,11 @@ export class Archetype {
         const same = chunkIdx === lastChunkIdx && row === lastRow;
         let moved: Entity | undefined;
         if (!same) {
-            const lastTable = this.data.tables[lastChunkIdx];
-            moved = lastTable.columns[0][lastRow]!;
-            lastTable.copyRowTo(
+            const lastChunk = this._chunks.tables[lastChunkIdx];
+            moved = lastChunk.entities[lastRow]!;
+            lastChunk.copyRowTo(
                 lastRow,
-                this.data.tables[chunkIdx],
+                this._chunks.tables[chunkIdx],
                 row,
             );
         }
@@ -151,14 +149,23 @@ export class Archetype {
     /** 获取指定位置的实体句柄；位置无效时返回 `undefined`。 */
     getEntity(location: ArchetypeRow): Entity | undefined {
         if (!this.valid(location)) return undefined;
-        return this.entities[this.chunkIdxOf(location)][this.rowIdxOf(location)];
+        return this._chunks.tables[this.chunkIdxOf(location)].entities[this.rowIdxOf(location)];
+    }
+
+    /**
+     * 按连续下标返回已分配 Chunk。
+     *
+     * 返回值是可能随结构变更失效的底层数据视图；调用者不得跨结构变更长期缓存。
+     */
+    chunkAt(chunkIdx: number): ArchetypeChunk | undefined {
+        return this._chunks.tables[chunkIdx];
     }
 
     /** 读取组件字段；位置、组件或字段无效时返回 `null`。 */
     getField(location: ArchetypeRow, compId: ComponentId, fieldId: number): number | null {
         if (!this.valid(location)) return null;
         const chunkIdx = this.chunkIdxOf(location);
-        const column = this.views[chunkIdx]?.[compId]?.[fieldId];
+        const column = this._chunks.tables[chunkIdx]?.views[compId]?.[fieldId];
         return column === undefined ? null : column[this.rowIdxOf(location)];
     }
 
@@ -166,7 +173,7 @@ export class Archetype {
     setField(location: ArchetypeRow, compId: ComponentId, fieldId: number, value: number): boolean {
         if (!this.valid(location)) return false;
         const chunkIdx = this.chunkIdxOf(location);
-        const column = this.views[chunkIdx]?.[compId]?.[fieldId];
+        const column = this._chunks.tables[chunkIdx]?.views[compId]?.[fieldId];
         if (column === undefined) return false;
         column[this.rowIdxOf(location)] = value;
         return true;
@@ -175,7 +182,7 @@ export class Archetype {
     /** 使用 Chunk 下标和行索引直接写入组件字段。 */
     setFieldAt(chunkIdx: number, row: number, compId: ComponentId, fieldId: number, value: number): boolean {
         if (!this.validAt(chunkIdx, row)) return false;
-        const column = this.views[chunkIdx]?.[compId]?.[fieldId];
+        const column = this._chunks.tables[chunkIdx]?.views[compId]?.[fieldId];
         if (column === undefined) return false;
         column[row] = value;
         return true;
@@ -184,7 +191,7 @@ export class Archetype {
     /** 返回实体所在 Chunk 的组件列视图；组件不存在时返回 `null`。 */
     getComp(location: ArchetypeRow, compId: ComponentId): TypedArray[] | null {
         if (!this.valid(location)) return null;
-        const fields = this.views[this.chunkIdxOf(location)]?.[compId];
+        const fields = this._chunks.tables[this.chunkIdxOf(location)].views[compId];
         return fields === undefined ? null : fields as TypedArray[];
     }
 
@@ -193,8 +200,8 @@ export class Archetype {
         if (!this.valid(source) || !target.valid(targetRow)) {
             throw new RangeError("Cannot copy invalid Archetype row");
         }
-        const sourceViews = this.views[this.chunkIdxOf(source)];
-        const targetViews = target.views[target.chunkIdxOf(targetRow)];
+        const sourceViews = this._chunks.tables[this.chunkIdxOf(source)].views;
+        const targetViews = target._chunks.tables[target.chunkIdxOf(targetRow)].views;
         const sourceRow = this.rowIdxOf(source);
         const targetRowIdx = target.rowIdxOf(targetRow);
         const types = target.types;
@@ -213,62 +220,34 @@ export class Archetype {
     dispose(): void {
         if (this._disposed) return;
         this._disposed = true;
-        const hadChunks = this.data.length > 0;
-        this.data.dispose();
-        this.views.length = 0;
-        this.entities.length = 0;
+        const hadChunks = this._chunks.length > 0;
+        this._chunks.dispose();
         this.count = 0;
         if (hadChunks) this.markLayoutChanged();
     }
 
     private ensureChunk(chunkIdx: number): void {
-        if (chunkIdx < this.data.length) return;
-        if (chunkIdx !== this.data.length) {
+        if (chunkIdx < this._chunks.length) return;
+        if (chunkIdx !== this._chunks.length) {
             throw new Error("Archetype Chunk sequence is not continuous");
         }
         if (chunkIdx > this.maxChunkIdx) {
             throw new RangeError(`Archetype Chunk capacity exceeded: ${this.maxChunkIdx + 1}`);
         }
-        const entities = this.entities;
-        const views = this.views;
-        const table = this.data.push();
-        const previousViewCount = views.length;
-        const previousEntityCount = entities.length;
+        this._chunks.push();
         try {
-            views.push(this.createViews(table));
-            entities.push(table.columns[ENTITY_COLUMN] as unknown as EntitySet);
             this.markLayoutChanged();
         } catch (error) {
-            this.views.length = previousViewCount;
-            entities.length = previousEntityCount;
-            this.data.pop();
+            this._chunks.pop();
             throw error;
         }
     }
 
-    private createViews(table: Table): ComponentViews {
-        const types = this.types;
-        const count = types.length === 0 ? 0 : types[types.length - 1].id + 1;
-        const views: Array<readonly TypedArray[] | undefined> = [];
-        views.length = count;
-        let columnIdx = ENTITY_COLUMN + 1;
-        for (const component of this.types) {
-            const fields = new Array<TypedArray>(component.layout.length);
-            for (let fieldIdx = 0; fieldIdx < fields.length; fieldIdx++) {
-                fields[fieldIdx] = table.columns[columnIdx++];
-            }
-            views[component.id] = fields;
-        }
-        return views;
-    }
-
     private releaseUnusedChunks(): void {
         const keep = this.chunks + RETAIN_EMPTY_CHUNKS;
-        while (this.data.length > keep) {
-            this.views.pop();
-            this.entities.pop();
+        while (this._chunks.length > keep) {
             this.markLayoutChanged();
-            this.data.pop();
+            this._chunks.pop();
         }
     }
 

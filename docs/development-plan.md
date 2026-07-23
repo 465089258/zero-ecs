@@ -611,7 +611,8 @@ src/
 
 完成记录：
 
-- `ComponentService.def/get` 只返回不含 World-local ID/Mask 的 `ComponentDefinition`；底层 `ComponentMeta` 通过 advanced 的 `defineComponentMeta/getComponentMeta` 明确取得。
+- 后续 World 收敛中，`component(type)` 已改为直接返回 World-local `ComponentMeta`，
+  `findComponent(type)` 提供不触发注册的查询；World 作为底层入口不再隐藏 ID/Mask。
 - `Ecs` 的容器和 Scheduler 改为内部所有权，构造入口只供 `EcsBuilder` 使用；稳定根入口不再导出 Scheduler、EntityCommand 构造器及底层系统定义类型。
 - 内部 bind、flush、reset/recycle、Entity migration/raw index 等成员使用 `@internal` 配合 `stripInternal` 从声明文件移除；删除过时的 `IQuery` 与 `getCompRow`。
 - EventService 的 Listener Map 改为私有，外部只能通过 `on/one/off` 修改监听关系。

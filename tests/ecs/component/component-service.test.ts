@@ -5,7 +5,6 @@ import {
     Types,
     World,
 } from "@zero-ecs/game";
-import { defineComponentMeta, getComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -43,10 +42,10 @@ describe("World component registry", () => {
         const first = components();
         const second = components();
 
-        expect(defineComponentMeta(first, PositionType).id).toBe(0);
-        expect(defineComponentMeta(first, HealthType).id).toBe(1);
-        expect(defineComponentMeta(second, HealthType).id).toBe(0);
-        expect(getComponentMeta(second, PositionType)).toBeUndefined();
+        expect(first.component(PositionType).id).toBe(0);
+        expect(first.component(HealthType).id).toBe(1);
+        expect(second.component(HealthType).id).toBe(0);
+        expect(second.findComponent(PositionType)).toBeUndefined();
     });
 
     test("rejects non-consecutive runtime fields", () => {

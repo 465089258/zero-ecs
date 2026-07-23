@@ -1,9 +1,4 @@
 import { type IAllocator, World } from "@zero-ecs/world";
-import {
-    allocatorOfWorld,
-    finalizeWorldKernel,
-    isWorldDisposed,
-} from "@zero-ecs/world/game-bridge";
 
 interface WorldClaim {
     readonly owner: symbol;
@@ -14,7 +9,7 @@ interface WorldClaim {
 const claims = new WeakMap<World, WorldClaim>();
 
 export function claimWorld(world: World, owner: symbol): void {
-    if (isWorldDisposed(world)) throw new Error("World has already been disposed");
+    if (world.disposed) throw new Error("World has already been disposed");
     const claim = claims.get(world);
     if (claim && claim.owner !== owner) throw new Error("World belongs to another Game");
     if (!claim) claims.set(world, { owner, finalized: false });
@@ -23,16 +18,11 @@ export function claimWorld(world: World, owner: symbol): void {
 export function finalizeWorld(world: World, owner: symbol): void {
     const claim = requireClaim(world, owner);
     if (claim.finalized) return;
-    let firstError: unknown;
     try { world.dispose(); }
-    catch (error) { firstError = error; }
-    try { finalizeWorldKernel(world); }
-    catch (error) { firstError ??= error; }
-    claim.finalized = true;
-    if (firstError !== undefined) throw firstError;
+    finally { claim.finalized = true; }
 }
 
-export function allocatorOf(world: World): IAllocator { return allocatorOfWorld(world); }
+export function allocatorOf(world: World): IAllocator { return world.allocator; }
 
 function requireClaim(world: World, owner: symbol): WorldClaim {
     const claim = claims.get(world);

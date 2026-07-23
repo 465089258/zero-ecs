@@ -5,7 +5,7 @@ import {
     type EntityArray,
     type IAllocator,
 } from "@zero-ecs/world";
-import { entityIndexOf } from "@zero-ecs/world/game-bridge";
+import { entityIndexOf } from "@zero-ecs/world/advanced";
 
 const COLUMN_COUNT = 6;
 const BYTES_PER_ENTITY = COLUMN_COUNT * Uint32Array.BYTES_PER_ELEMENT;
@@ -206,4 +206,3 @@ interface HierarchyEntry {
     readonly page: HierarchyPage;
     readonly offset: number;
 }
-

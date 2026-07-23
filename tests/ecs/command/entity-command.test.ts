@@ -11,7 +11,6 @@ import {
     Types,
     World,
 } from "@zero-ecs/game";
-import { getComponentMeta } from "@zero-ecs/game/advanced";
 
 const enum Position { x, y }
 class PositionType implements Component<Position> {
@@ -132,7 +131,7 @@ describe("unified Commands", () => {
         const entity = command.entity;
 
         expect(entities.valid(entity)).toBe(true);
-        expect(getComponentMeta(entities, PositionType)).toBeUndefined();
+        expect(entities.findComponent(PositionType)).toBeUndefined();
         command
             .add(PositionType)
             .set(PositionType, Position.x, 10)
@@ -220,7 +219,7 @@ describe("unified Commands", () => {
         expect(entities.has(entity, PositionType)).toBe(false);
         expect(entities.get(entity, PositionType, Position.x)).toBeNull();
         expect(entities.view(entity, PositionType)).toBeNull();
-        expect(getComponentMeta(entities, PositionType)).toBeUndefined();
+        expect(entities.findComponent(PositionType)).toBeUndefined();
     });
 
     test("uses idempotent Add/Remove and Set implicitly adds a zeroed component", () => {
@@ -240,7 +239,7 @@ describe("unified Commands", () => {
 
         expect(entities.get(entity, PositionType, Position.x)).toBe(12);
         expect(entities.get(entity, PositionType, Position.y)).toBe(0);
-        expect(getComponentMeta(entities, PlayerTagType)).toBeUndefined();
+        expect(entities.findComponent(PlayerTagType)).toBeUndefined();
 
         const update = commands.entity(entity)
             .add(PositionType)

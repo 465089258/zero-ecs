@@ -6,7 +6,6 @@ import {
     defaultAllocatorConfig,
     DefaultCoreModule,
     defSystem,
-    EntityRef,
     ErrorHandlerService,
     Game,
     GameBuilder,
@@ -45,12 +44,7 @@ import {
 } from "@zero-ecs/game";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
-import {
-    defineComponentMeta,
-    getComponentMeta,
-} from "@zero-ecs/game/advanced";
 import { Scheduler } from "@zero-ecs/scheduler";
-import type { EntityCommand as RawEntityCommand } from "@zero-ecs/world";
 
 const enum Position { x, y }
 
@@ -146,26 +140,18 @@ linkColumns[Link.target][0] = entity;
 linkColumns[Link.target][0] = rawNumber;
 const worldLinkedEntity = componentWorld.get(entity, LinkType, Link.target);
 type WorldEntityFieldIsBranded = Assert<Equal<typeof worldLinkedEntity, Entity | null>>;
-componentWorld.createEntityCommand(entity).set(LinkType, Link.target, entity);
-// @ts-expect-error Entity reference fields reject unbranded numbers in command writes.
-componentWorld.createEntityCommand(entity).set(LinkType, Link.target, rawNumber);
+componentWorld.set(entity, LinkType, Link.target, entity);
+// @ts-expect-error Entity reference fields reject unbranded numbers in direct writes.
+componentWorld.set(entity, LinkType, Link.target, rawNumber);
 const invalidEntity: Entity = INVALID_ENTITY;
 function worldSystem(world: World): void {
     world.valid(entity);
-    const ref: EntityRef = world.ref(entity);
-    ref.valid;
-    ref.has(PositionType);
-    ref.get(PositionType, Position.x);
-    // @ts-expect-error EntityRef intentionally excludes immediate structure changes.
-    ref.despawn();
-    // @ts-expect-error EntityRef intentionally excludes component writes.
-    ref.set(PositionType, Position.x, 1);
+    world.component(PositionType).id;
+    world.findComponent(PositionType)?.mask;
     world.despawn(entity);
     // @ts-expect-error World no longer exposes Game dependency injection.
     world.service(ToolService);
 }
-
-new EntityRef(componentWorld, entity);
 
 class WorldHelper {
     @Inject.world() readonly world!: World;
@@ -223,6 +209,7 @@ game.runStage(ManualRender);
 // @ts-expect-error Standard lifecycle stages cannot be invoked through the manual-stage API.
 game.runStage(Update.fixed);
 game.world.spawn();
+// @ts-expect-error Entity transactions belong to Game Commands, not World.
 game.world.createEntityCommand(entity);
 game.world.query(QueryType.from(With(PositionType)));
 game.service(AllocatorService).alloc;
@@ -259,16 +246,9 @@ entityCommand.add(ChildOf);
 entityCommand.set(LinkType, Link.target, rawNumber);
 game.service(TimerService).once(1, entityCommand);
 entityCommand.submit();
-declare const rawEntityCommand: RawEntityCommand;
-// @ts-expect-error Timer depends only on the submit task protocol, not RawEntityCommand.
-game.service(TimerService).once(1, rawEntityCommand);
-// @ts-expect-error World EntityCommand has no Game submit callback.
-rawEntityCommand.submit();
 void Scheduler;
 void linkedEntity;
 void invalidEntity;
-void defineComponentMeta;
-void getComponentMeta;
 void IncompletePositionType;
 void LifecycleService;
 void WorldHelper;
@@ -281,6 +261,5 @@ void runtimeErrorHandler;
 void optionalDependencySystem;
 void optionalPostSystem;
 void entityCommand;
-void rawEntityCommand;
 void childProjection;
 void HierarchyService;

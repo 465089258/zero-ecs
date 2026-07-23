@@ -1,6 +1,5 @@
 import { Game } from "../runtime/game";
 import { Scheduler, type Stage } from "@zero-ecs/scheduler";
-import { archetypesOfWorld } from "@zero-ecs/world/advanced";
 
 function padRight(value: string, length: number): string {
     return value.length >= length ? value : value + " ".repeat(length - value.length);
@@ -33,7 +32,7 @@ export class DevProfiler {
             padRight("ID", 6) + padRight("Components", 64) + padRight("Entities", 12) + "Memory",
             "---------------------------------------------------------------",
         ];
-        const archetypes = archetypesOfWorld(this.game.world);
+        const archetypes = this.game.world.archetypes;
         for (let i = 0; i < archetypes.length; i++) {
             const archetype = archetypes[i];
             const memory = archetype.allocatedBytes;

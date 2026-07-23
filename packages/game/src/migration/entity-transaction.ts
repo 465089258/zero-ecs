@@ -1,22 +1,33 @@
-import type { Archetype, ArchetypeRow } from "../archetype/archetype";
 import {
     type ComponentFieldValue,
     type ComponentFields,
+    type ComponentType,
+    type Entity,
+    type EntityAccess,
+    World,
+} from "@zero-ecs/world";
+import {
+    type Archetype,
+    type ArchetypeRow,
     type ComponentId,
     type ComponentMeta,
-    type ComponentType,
-} from "../component/component";
-import { Mask } from "../component/mask";
-import type { Entity } from "../entity/entity";
-import type { World } from "../world";
-import { ENTITY_INSTRUCTION_SIZE, EntityInstruction } from "./entity-instruction";
+    Mask,
+} from "@zero-ecs/world/advanced";
 
-const enum EntityCommandFlags {
+const enum EntityInstruction {
+    Add = 1,
+    Remove = 2,
+    Set = 3,
+}
+
+const ENTITY_INSTRUCTION_SIZE = 4;
+
+const enum EntityTransactionFlags {
     Despawn = 1 << 0,
     Structural = 1 << 1,
 }
 
-const enum EntityCommandPhase {
+const enum EntityTransactionPhase {
     Mutable,
     Sealed,
     Applied,
@@ -27,7 +38,7 @@ const enum AddInstructionFlags {
     CreatedLocalInstance = 1 << 0,
 }
 
-/** 单个实体的局部组件事务接口。 */
+/** Game 单帧内的局部实体修改接口。 */
 export interface EntityMutator {
     readonly entity: Entity;
     has<T extends object>(type: ComponentType<T>): boolean;
@@ -44,49 +55,10 @@ export interface EntityMutator {
     ): this;
 }
 
-/**
- * World-local 单实体事务。
- *
- * 它没有提交回调、队列或依赖注入；独立 World 通过 `applyEntityCommand()` 应用，
- * Game 则通过内部 bridge 封存、合并和池化同一个实际对象。
- */
-export interface EntityCommand extends EntityMutator {
-    despawn(): this;
-}
-
-/** 只供匹配版本 Game 使用的编译期 bridge；运行时不创建 wrapper。 */
-export interface InternalEntityCommand extends EntityCommand {
-    reset(entity: Entity): void;
-    _seal(): void;
-    _willDespawn(): boolean;
-    _merge(source: InternalEntityCommand): void;
-    _release(): void;
-}
-
-/** @internal World 工厂入口。 */
-export function createEntityCommand(world: World, entity: Entity): EntityCommand {
-    const command = new EntityCommandImplementation(world);
-    command.reset(entity);
-    return command;
-}
-
-/** @internal World 应用入口。 */
-export function applyEntityCommand(world: World, command: EntityCommand): boolean {
-    if (!(command instanceof EntityCommandImplementation)) {
-        throw new TypeError("EntityCommand was not created by a World");
-    }
-    return command.applyTo(world);
-}
-
-/** Game bridge 提交边界的零 wrapper 归属校验。 */
-export function ownsEntityCommand(world: World, command: EntityCommand): boolean {
-    return command instanceof EntityCommandImplementation && command.belongsTo(world);
-}
-
-/** World 包私有的实际命令对象。 */
-class EntityCommandImplementation implements InternalEntityCommand {
+/** Game 内部可池化、可合并的单实体迁移事务。 */
+export class EntityTransaction implements EntityMutator {
     private _entity = 0 as Entity;
-    private _phase = EntityCommandPhase.Recycled;
+    private _phase = EntityTransactionPhase.Recycled;
     private _flags = 0;
     private readonly _targetMask = Mask.empty();
     private readonly _types: ComponentMeta[] = [];
@@ -99,6 +71,10 @@ class EntityCommandImplementation implements InternalEntityCommand {
     private readonly _writeFields: number[] = [];
     private readonly _writeValues: number[] = [];
     private _writeUsed = 0;
+    private readonly _access: EntityAccess = {
+        archetype: null,
+        row: 0 as ArchetypeRow,
+    };
 
     constructor(private readonly world: World) {}
 
@@ -108,7 +84,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
 
     has<T extends object>(type: ComponentType<T>): boolean {
         this.assertMutable();
-        const component = this.world.getComponentMeta(type);
+        const component = this.world.findComponent(type);
         return component !== undefined && this._targetMask.has(component.mask);
     }
 
@@ -117,7 +93,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         field: Field,
     ): ComponentFieldValue<T, Field> | null {
         this.assertMutable();
-        const component = this.world.getComponentMeta(type);
+        const component = this.world.findComponent(type);
         if (!component || !this._targetMask.has(component.mask)) return null;
         this.validateField(component, field);
         for (let i = this._used - ENTITY_INSTRUCTION_SIZE; i >= 0; i -= ENTITY_INSTRUCTION_SIZE) {
@@ -139,13 +115,13 @@ class EntityCommandImplementation implements InternalEntityCommand {
 
     add<T extends object>(type: ComponentType<T>): this {
         this.assertMutable();
-        this.recordAdd(this.world.defineComponentMeta(type));
+        this.recordAdd(this.world.component(type));
         return this;
     }
 
     remove<T extends object>(type: ComponentType<T>): this {
         this.assertMutable();
-        const component = this.world.getComponentMeta(type);
+        const component = this.world.findComponent(type);
         if (component) this.recordRemove(component);
         return this;
     }
@@ -156,7 +132,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
         value: ComponentFieldValue<T, Field>,
     ): this {
         this.assertMutable();
-        const component = this.world.defineComponentMeta(type);
+        const component = this.world.component(type);
         this.validateField(component, field);
         this.recordSet(component, field, value);
         return this;
@@ -169,72 +145,86 @@ class EntityCommandImplementation implements InternalEntityCommand {
     }
 
     reset(entity: Entity): void {
-        if (this._phase !== EntityCommandPhase.Recycled) {
-            throw new Error("EntityCommand cannot be reset before it is recycled");
+        if (this._phase !== EntityTransactionPhase.Recycled) {
+            throw new Error("EntityTransaction cannot be reset before it is recycled");
         }
-        if (!this.world.valid(entity)) throw new RangeError(`Invalid entity ${entity}`);
+        if (!this.world.resolve(entity, this._access)) {
+            throw new RangeError(`Invalid entity ${entity}`);
+        }
         this._entity = entity;
-        this._phase = EntityCommandPhase.Mutable;
+        this._phase = EntityTransactionPhase.Mutable;
         this._flags = 0;
         this._used = 0;
         this._resetUsed = 0;
         this._writeUsed = 0;
         this._types.length = 0;
         this._targetMask.toZero();
-        const archetype = this.world.getArchetypeAt(this.world.getArchIdx(entity));
+        const archetype = this._access.archetype;
         if (!archetype) return;
         archetype.mask.copyTo(this._targetMask);
         for (let i = 0; i < archetype.types.length; i++) this._types.push(archetype.types[i]);
     }
 
-    _seal(): void {
-        if (this._phase !== EntityCommandPhase.Mutable) {
-            throw new Error("EntityCommand can only be sealed once while mutable");
+    seal(): void {
+        if (this._phase !== EntityTransactionPhase.Mutable) {
+            throw new Error("EntityTransaction can only be sealed once while mutable");
         }
-        this._phase = EntityCommandPhase.Sealed;
+        this._phase = EntityTransactionPhase.Sealed;
     }
 
     /** @internal 只供 Game 提交扩展在合并前观察终止事务。 */
-    _willDespawn(): boolean {
-        return (this._flags & EntityCommandFlags.Despawn) !== 0;
+    willDespawn(): boolean {
+        return (this._flags & EntityTransactionFlags.Despawn) !== 0;
     }
 
-    _merge(source: InternalEntityCommand): void {
-        if (!(source instanceof EntityCommandImplementation) || source.world !== this.world) {
-            throw new Error("Cannot merge EntityCommands from different Worlds");
+    merge(source: EntityTransaction): void {
+        if (!(source instanceof EntityTransaction) || source.world !== this.world) {
+            throw new Error("Cannot merge EntityTransactions from different Worlds");
         }
-        if (source === this) throw new Error("EntityCommand cannot merge itself");
-        if (this._phase !== EntityCommandPhase.Sealed || source._phase !== EntityCommandPhase.Sealed) {
-            throw new Error("Only sealed EntityCommands can be merged");
+        if (source === this) throw new Error("EntityTransaction cannot merge itself");
+        if (this._phase !== EntityTransactionPhase.Sealed || source._phase !== EntityTransactionPhase.Sealed) {
+            throw new Error("Only sealed EntityTransactions can be merged");
         }
         if (source._entity !== this._entity) {
-            throw new Error("Cannot merge EntityCommands for different entities");
+            throw new Error("Cannot merge EntityTransactions for different entities");
         }
-        if ((this._flags & EntityCommandFlags.Despawn) !== 0) {
+        if ((this._flags & EntityTransactionFlags.Despawn) !== 0) {
             // 批次中的 despawn 是该实体的最终结果；后续独立事务不再改变它。
             return;
         }
-        if ((source._flags & EntityCommandFlags.Despawn) !== 0) {
+        if ((source._flags & EntityTransactionFlags.Despawn) !== 0) {
             this.recordDespawn();
             return;
         }
         for (let i = 0; i < source._used; i += ENTITY_INSTRUCTION_SIZE) {
             const operation = source._instructions[i];
             const componentId = source._instructions[i + 1] as ComponentId;
-            const component = this.world.getComponentMetaById(componentId);
+            const component = this.world.componentById(componentId);
             if (!component) throw new RangeError(`Unknown component id ${componentId}`);
             if (operation === EntityInstruction.Add) this.recordAdd(component);
             else if (operation === EntityInstruction.Remove) this.recordRemove(component);
             else if (operation === EntityInstruction.Set) {
                 this.recordSet(component, source._instructions[i + 2], source._instructions[i + 3]);
-            } else throw new RangeError(`Unknown EntityCommand instruction ${operation}`);
+            } else throw new RangeError(`Unknown EntityTransaction instruction ${operation}`);
         }
     }
 
-    _release(): void {
-        if (this._phase !== EntityCommandPhase.Applied && this._phase !== EntityCommandPhase.Sealed) {
-            throw new Error("Only applied or merged EntityCommands can be released");
+    release(): void {
+        if (this._phase !== EntityTransactionPhase.Applied && this._phase !== EntityTransactionPhase.Sealed) {
+            throw new Error("Only applied or merged EntityTransactions can be released");
         }
+        this.recycle();
+    }
+
+    /** 回收尚未进入迁移队列的事务。 */
+    cancel(): void {
+        if (this._phase !== EntityTransactionPhase.Mutable) {
+            throw new Error("Only mutable EntityTransactions can be cancelled");
+        }
+        this.recycle();
+    }
+
+    private recycle(): void {
         this._entity = 0 as Entity;
         this._flags = 0;
         this._used = 0;
@@ -242,33 +232,33 @@ class EntityCommandImplementation implements InternalEntityCommand {
         this._writeUsed = 0;
         this._types.length = 0;
         this._targetMask.toZero();
-        this._phase = EntityCommandPhase.Recycled;
+        this._phase = EntityTransactionPhase.Recycled;
     }
 
-    applyTo(world: World): boolean {
-        if (world !== this.world) throw new Error("EntityCommand belongs to another World");
-        if (this._phase === EntityCommandPhase.Mutable) this._seal();
-        if (this._phase !== EntityCommandPhase.Sealed) {
-            throw new Error("EntityCommand has already been applied or recycled");
+    apply(): boolean {
+        const world = this.world;
+        if (this._phase === EntityTransactionPhase.Mutable) this.seal();
+        if (this._phase !== EntityTransactionPhase.Sealed) {
+            throw new Error("EntityTransaction has already been applied or recycled");
         }
         try {
             if (!world.valid(this._entity)) return false;
-            if ((this._flags & EntityCommandFlags.Despawn) !== 0) return world.despawn(this._entity);
+            if ((this._flags & EntityTransactionFlags.Despawn) !== 0) return world.despawn(this._entity);
             if (this._used === 0) return true;
-            if ((this._flags & EntityCommandFlags.Structural) !== 0) {
+            if ((this._flags & EntityTransactionFlags.Structural) !== 0) {
                 return world.migrate(this._entity, this._targetMask, this._types, this.applyFields, this);
             }
             return this.writeFieldsDirect();
         } finally {
-            this._phase = EntityCommandPhase.Applied;
+            this._phase = EntityTransactionPhase.Applied;
         }
     }
 
     private assertMutable(): void {
-        if (this._phase === EntityCommandPhase.Sealed) throw new Error("EntityCommand has already been sealed");
-        if (this._phase === EntityCommandPhase.Applied) throw new Error("EntityCommand has already been applied");
-        if (this._phase === EntityCommandPhase.Recycled) throw new Error("EntityCommand has already been recycled");
-        if ((this._flags & EntityCommandFlags.Despawn) !== 0) {
+        if (this._phase === EntityTransactionPhase.Sealed) throw new Error("EntityCommand has already been submitted");
+        if (this._phase === EntityTransactionPhase.Applied) throw new Error("EntityCommand has already been applied");
+        if (this._phase === EntityTransactionPhase.Recycled) throw new Error("EntityCommand has already been recycled");
+        if ((this._flags & EntityTransactionFlags.Despawn) !== 0) {
             throw new Error(`EntityCommand for ${this._entity} is already marked for despawn`);
         }
     }
@@ -280,7 +270,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
             this._types.push(component);
             this.removeWrites(component.id);
             this.addReset(component.id);
-            this._flags |= EntityCommandFlags.Structural;
+            this._flags |= EntityTransactionFlags.Structural;
         }
         this.writeInstruction(
             EntityInstruction.Add,
@@ -301,7 +291,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
             }
             this.removeReset(component.id);
             this.removeWrites(component.id);
-            this._flags |= EntityCommandFlags.Structural;
+            this._flags |= EntityTransactionFlags.Structural;
         }
         this.writeInstruction(EntityInstruction.Remove, component.id, 0, 0);
     }
@@ -322,7 +312,7 @@ class EntityCommandImplementation implements InternalEntityCommand {
     }
 
     private recordDespawn(): void {
-        this._flags |= EntityCommandFlags.Despawn;
+        this._flags |= EntityTransactionFlags.Despawn;
         this._used = 0;
         this._resetUsed = 0;
         this._writeUsed = 0;
@@ -383,38 +373,36 @@ class EntityCommandImplementation implements InternalEntityCommand {
     }
 
     private applyFields(archetype: Archetype, row: ArchetypeRow): void {
+        const chunk = archetype.chunkAt(archetype.chunkIdxOf(row))!.views;
+        const rowIdx = archetype.rowIdxOf(row);
         for (let i = 0; i < this._resetUsed; i++) {
             const componentId = this._resetComponents[i];
-            const component = this.world.getComponentMetaById(componentId)!;
+            const component = this.world.componentById(componentId)!;
+            const fields = chunk[componentId]!;
             for (let field = 0; field < component.layout.length; field++) {
-                archetype.setField(row, componentId, field, 0);
+                fields[field][rowIdx] = 0;
             }
         }
         for (let i = 0; i < this._writeUsed; i++) {
-            archetype.setField(
-                row,
-                this._writeComponents[i],
-                this._writeFields[i],
-                this._writeValues[i],
-            );
+            chunk[this._writeComponents[i]]![this._writeFields[i]][rowIdx] =
+                this._writeValues[i];
         }
     }
 
     private writeFieldsDirect(): boolean {
+        if (!this.world.resolve(this._entity, this._access)) return false;
+        const archetype = this._access.archetype;
+        if (!archetype) return false;
+        const row = this._access.row;
+        const chunk = archetype.chunkAt(archetype.chunkIdxOf(row))!.views;
+        const rowIdx = archetype.rowIdxOf(row);
         for (let i = 0; i < this._writeUsed; i++) {
-            if (!this.world.canSetComponentFieldById(
-                this._entity,
-                this._writeComponents[i],
-                this._writeFields[i],
-            )) return false;
+            const fields = chunk[this._writeComponents[i]];
+            if (!fields || fields[this._writeFields[i]] === undefined) return false;
         }
         for (let i = 0; i < this._writeUsed; i++) {
-            if (!this.world.setComponentFieldById(
-                this._entity,
-                this._writeComponents[i],
-                this._writeFields[i],
-                this._writeValues[i],
-            )) return false;
+            chunk[this._writeComponents[i]]![this._writeFields[i]][rowIdx] =
+                this._writeValues[i];
         }
         return true;
     }
