@@ -9,6 +9,7 @@ dist/
 dist-example/
 storybook-static
 doc_build/
+tmp/
 
 # IDE
 .vscode/*

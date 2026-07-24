@@ -1,0 +1,124 @@
+:root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    background: #05090a;
+    color: #d9f7ee;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-width: 760px;
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 40% 0%, rgba(28, 91, 82, 0.22), transparent 42rem),
+        #05090a;
+}
+
+.shell {
+    width: min(1240px, calc(100vw - 48px));
+    margin: 0 auto;
+    padding: 28px 0 36px;
+}
+
+header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 18px;
+}
+
+h1,
+p {
+    margin: 0;
+}
+
+h1 {
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 500;
+    letter-spacing: 0.12em;
+}
+
+.eyebrow,
+.label {
+    color: #65ddbf;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.eyebrow {
+    margin-bottom: 5px;
+}
+
+.legend {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: end;
+}
+
+.legend span {
+    border: 1px solid rgba(101, 221, 191, 0.25);
+    border-radius: 999px;
+    padding: 7px 11px;
+    color: #a9c9c1;
+    background: rgba(8, 22, 22, 0.7);
+    font-size: 12px;
+}
+
+.stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 220px;
+    overflow: hidden;
+    border: 1px solid rgba(119, 221, 195, 0.2);
+    border-radius: 16px;
+    background: rgba(5, 13, 14, 0.94);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    cursor: crosshair;
+}
+
+aside {
+    padding: 22px 18px;
+    border-left: 1px solid rgba(119, 221, 195, 0.14);
+    background: linear-gradient(180deg, rgba(17, 39, 38, 0.58), rgba(5, 13, 14, 0.7));
+}
+
+pre {
+    min-height: 170px;
+    margin: 14px 0 18px;
+    color: #cce8e1;
+    font: 12px/1.65 "Cascadia Mono", "SFMono-Regular", monospace;
+    white-space: pre-wrap;
+}
+
+.note {
+    padding-top: 14px;
+    border-top: 1px solid rgba(119, 221, 195, 0.14);
+    color: #6f928a;
+    font-size: 11px;
+    line-height: 1.7;
+}
+
+@media (max-width: 900px) {
+    .stage {
+        grid-template-columns: 1fr;
+    }
+
+    aside {
+        border-top: 1px solid rgba(119, 221, 195, 0.14);
+        border-left: 0;
+    }
+}

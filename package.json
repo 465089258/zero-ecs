@@ -7,12 +7,14 @@
   "workspaces": [
     "packages/world",
     "packages/scheduler",
-    "packages/game"
+    "packages/game",
+    "packages/math",
+    "packages/flying-sword"
   ],
   "scripts": {
-    "build": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && npm run build -w @zero-ecs/game",
+    "build": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && npm run build -w @zero-ecs/game && npm run build -w @zero-ecs/math && npm run build -w @zero-ecs/flying-sword",
     "dev": "npm run dev --workspaces --if-present",
-    "typecheck": "npm run typecheck -w @zero-ecs/world && npm run typecheck -w @zero-ecs/scheduler && npm run typecheck -w @zero-ecs/game",
+    "typecheck": "npm run typecheck -w @zero-ecs/world && npm run typecheck -w @zero-ecs/scheduler && npm run typecheck -w @zero-ecs/game && npm run typecheck -w @zero-ecs/math && npm run typecheck -w @zero-ecs/flying-sword",
     "test": "rstest",
     "test:watch": "rstest --watch",
     "test:types": "npm run build && tsc -p tests/types/tsconfig.json",
@@ -26,9 +28,12 @@
     "example:shooter-zombie": "npm run build && rsbuild dev --config examples/shooter-zombie/rsbuild.config.ts",
     "example:shooter-zombie:build": "npm run build && rsbuild build --config examples/shooter-zombie/rsbuild.config.ts",
     "example:shooter-zombie:typecheck": "npm run build && tsc -p examples/shooter-zombie/tsconfig.json",
+    "example:flying-sword": "npm run build && rsbuild dev --config examples/flying-sword/rsbuild.config.ts",
+    "example:flying-sword:build": "npm run build && rsbuild build --config examples/flying-sword/rsbuild.config.ts",
+    "example:flying-sword:typecheck": "npm run build && tsc -p examples/flying-sword/tsconfig.json",
     "example:shooter-zombie-oop": "rsbuild dev --config examples/oop-shooter-zombie/rsbuild.config.ts",
     "example:shooter-zombie-oop:build": "rsbuild build --config examples/oop-shooter-zombie/rsbuild.config.ts",
-    "verify:release": "npm run typecheck && npm test && npm run build && npm run test:no-jit && tsc -p tests/types/tsconfig.json && node tests/package-boundary.mjs && tsc -p examples/breakout/tsconfig.json && tsc -p examples/shooter-zombie/tsconfig.json",
+    "verify:release": "npm run typecheck && npm test && npm run build && npm run test:no-jit && tsc -p tests/types/tsconfig.json && node tests/package-boundary.mjs && tsc -p examples/breakout/tsconfig.json && tsc -p examples/shooter-zombie/tsconfig.json && tsc -p examples/flying-sword/tsconfig.json",
     "prepack": "npm run verify:release"
   },
   "devDependencies": {

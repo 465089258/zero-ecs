@@ -1,0 +1,25 @@
+{
+  "name": "@zero-ecs/flying-sword",
+  "version": "0.1.0",
+  "description": "Renderer-agnostic flying sword gameplay extension for Zero ECS.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./integration": { "types": "./dist/integration.d.ts", "import": "./dist/integration.js" },
+    "./presentation": { "types": "./dist/presentation.d.ts", "import": "./dist/presentation.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "peerDependencies": {
+    "@zero-ecs/game": "^0.1.0"
+  },
+  "devDependencies": {
+    "@zero-ecs/game": "0.1.0"
+  },
+  "scripts": {
+    "build": "rslib --config rslib.config.ts",
+    "typecheck": "npm run build -w @zero-ecs/game && tsc -p tsconfig.json --noEmit"
+  }
+}

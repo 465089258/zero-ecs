@@ -1,12 +1,16 @@
 # Zero ECS
 
-Zero ECS 是一个面向游戏数据层的 TypeScript ECS workspace，由三个可独立安装的库组成：
+Zero ECS 是一个面向游戏数据层的 TypeScript ECS workspace，核心由三个可独立安装的库组成：
 
 - `@zero-ecs/world`：实体、组件、Archetype、Table、Query 与即时底层数据操作；
 - `@zero-ecs/scheduler`：不知道 ECS 的通用静态调度器；
 - `@zero-ecs/game`：组合 World、Scheduler、依赖注入、延迟结构变更、生命周期与标准功能模块。
 
 依赖方向固定为 `game -> world + scheduler`，World 与 Scheduler 之间互不依赖。
+
+仓库还包含 ECS 原生数学扩展 `@zero-ecs/math` 和可选领域扩展
+`@zero-ecs/flying-sword`。它们只依赖 Game 公共能力，不构成新的核心层；核心三包不会
+反向导入或重导出它们。
 
 ## 快速开始
 
@@ -34,13 +38,13 @@ import {
 } from "@zero-ecs/game";
 
 // enum 成员值同时是组件字段编号和 Query 返回列的下标。
-const enum Position { x, y }
+enum Position { x, y }
 class PositionType implements Component<Position> {
     readonly [Position.x] = Types.F32;
     readonly [Position.y] = Types.F32;
 }
 
-const enum Velocity { x, y }
+enum Velocity { x, y }
 class VelocityType implements Component<Velocity> {
     readonly [Velocity.x] = Types.F32;
     readonly [Velocity.y] = Types.F32;
@@ -168,13 +172,13 @@ class GameplayService extends Service {
 之间相对稳定的生命周期依赖；逐帧 System 更推荐使用显式参数列表，让所需依赖和 State
 读写权限直接体现在系统定义中。
 
-### 为什么使用 const enum 定义组件字段
+### 为什么使用数字 enum 定义组件字段
 
 World 将一个组件的每个字段保存为独立 TypedArray 列，因此字段在运行时必须是从 `0` 开始
 连续递增的数字下标：
 
 ```ts
-const enum Position { x, y }
+enum Position { x, y }
 
 class PositionType implements Component<Position> {
     readonly [Position.x] = Types.F32;
@@ -190,15 +194,16 @@ xs[row] += 1;
 game.world.get(entity, PositionType, Position.x);
 ```
 
-使用 `const enum` 有三个目的：
+使用普通数字 `enum` 有三个目的：
 
 - 用 `Position.x` 代替容易写错的裸数字，同时由 `Component<Position>` 检查字段是否完整；
-- 在当前 Rslib/Rsbuild 构建配置下，成员会直接内联为 `0`、`1` 等数字，不保留普通
-  enum 的运行时对象和反向映射；
+- 普通 `enum` 可以安全跨越 Rslib/SWC、`isolatedModules` 和 npm 包边界，并保留可用于
+  调试与运行时检查的公共字段身份；
 - Schema 字段编号与热路径列下标天然一致，不需要字符串查找或额外字段映射。
 
-`const enum` 决定的是字段编号；字段真正使用 `Float32Array`、`Uint32Array` 还是其他物理
-存储，仍由对应的 `Types.*` 声明决定。
+枚举成员不手动使用 `=` 指定编号，让编译器自然生成从 0 开始的连续值。业务代码必须使用
+枚举成员访问字段，不能把 `0/1/2` 等裸数字当作稳定协议。字段真正使用 `Float32Array`、
+`Uint32Array` 还是其他物理存储，仍由对应的 `Types.*` 声明决定。
 
 `DefaultCoreModule` 一次安装 Commands、Time、Timer、Event 与 Random。需要减小运行时组成时，
 仍可只注册 `CommandModule`、`TimeModule` 等独立模块；Event、Time、Timer、Random、
@@ -223,9 +228,10 @@ allocator.clear();
 
 ## 开发命令
 
-- `npm run typecheck`：分别检查三个包；
+- `npm run typecheck`：检查三个核心包、数学扩展和飞剑领域扩展；
 - `npm test`：运行源码行为测试；
-- `npm run build`：按 world → scheduler → game 生成三个包；
+- `npm run build`：按 world → scheduler → game → math → flying-sword 生成全部包；
+- `npm run example:flying-sword`：运行飞剑 3D 数据与俯视角投影示例；
 - `npm run verify:release`：运行类型、行为、声明、包边界、no-JIT 与示例验证。
 
 完整阅读入口见 [文档索引](./docs/000-导航-文档索引.md)。长期职责与评审准则见

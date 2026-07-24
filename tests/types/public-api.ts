@@ -44,6 +44,43 @@ import {
     HierarchyService,
 } from "@zero-ecs/game/hierarchy";
 import { TimerConfigResource, TimerService } from "@zero-ecs/game/timer";
+import {
+    FlyingSwordModule,
+    FlyingSwordQuery,
+    FlyingSwordService,
+    FlyingSwordView,
+    type FlyingSwordViewData,
+    type Vector3Out,
+} from "@zero-ecs/flying-sword";
+import {
+    FlyingSwordSpatialService,
+} from "@zero-ecs/flying-sword/integration";
+import {
+    DepthRenderQueue,
+    TopDownOrthographicCamera,
+    degreesToRadians,
+} from "@zero-ecs/flying-sword/presentation";
+import {
+    Float2,
+    Position2Type as MathPosition2Type,
+    type Float2Columns,
+} from "@zero-ecs/math/2d";
+import {
+    Float3,
+    Position3Type as MathPosition3Type,
+    type Float3Columns,
+} from "@zero-ecs/math/3d";
+import {
+    ActiveCameraTag,
+    CameraBasis3Type,
+    CameraWorldAabb3Type,
+    OrthographicCameraType,
+    Projected2Type,
+    ProjectionBounds3Type,
+    TopDownCamera3Type,
+    defineOrthographicProjectionSystem,
+    orthographicProjectionSystem,
+} from "@zero-ecs/math/projection";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
 // @ts-expect-error Optional Timer APIs are available only from the timer subpath.
@@ -109,6 +146,48 @@ type WorldParamIsWorld = Assert<Equal<SystemParamValue<typeof World>, World>>;
 const childProjection: QueryProjection = ChildOf;
 componentWorld.query(QueryType.from(With(ChildOf)));
 new GameBuilder().addModule(new HierarchyModule());
+const flyingSwordProjection: QueryProjection<FlyingSwordViewData> = FlyingSwordView;
+componentWorld.query(FlyingSwordQuery);
+new GameBuilder().addModule(new FlyingSwordModule());
+componentWorld.component(MathPosition2Type);
+componentWorld.component(MathPosition3Type);
+componentWorld.component(TopDownCamera3Type);
+componentWorld.component(OrthographicCameraType);
+componentWorld.component(CameraBasis3Type);
+componentWorld.component(CameraWorldAabb3Type);
+componentWorld.component(ActiveCameraTag);
+componentWorld.component(ProjectionBounds3Type);
+componentWorld.component(Projected2Type);
+declare const mathPosition2Columns: ComponentColumns<MathPosition2Type>;
+declare const mathPosition3Columns: ComponentColumns<MathPosition3Type>;
+const float2Columns: Float2Columns = mathPosition2Columns;
+const float3Columns: Float3Columns = mathPosition3Columns;
+float2Columns[Float2.X];
+float3Columns[Float3.Z];
+
+class TestFlyingSwordSpatialService extends FlyingSwordSpatialService {
+    readPosition(_entity: Entity, out: Vector3Out): boolean {
+        out.x = 0;
+        out.y = 0;
+        out.z = 0;
+        return true;
+    }
+}
+
+new GameBuilder().addService(TestFlyingSwordSpatialService);
+// @ts-expect-error Spatial adapter token is abstract and requires a concrete host implementation.
+new GameBuilder().addService(FlyingSwordSpatialService);
+const flyingSwordCamera = new TopDownOrthographicCamera({
+    viewportWidth: 960,
+    viewportHeight: 640,
+    elevation: degreesToRadians(50),
+});
+const flyingSwordRenderQueue = new DepthRenderQueue(() => ({
+    layer: 0,
+    depth: 0,
+    subOrder: 0,
+    stableId: 0,
+}));
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {
@@ -216,6 +295,8 @@ builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem
 builder.addSystem(optionalDependencySystem);
 const ManualRender = new ManualStage("render", 10);
 builder.addSystem(defSystem(ManualRender, () => {}, []));
+builder.addSystem(defineOrthographicProjectionSystem(ManualRender));
+new GameBuilder().addSystem(orthographicProjectionSystem);
 builder.addSystem(defSystem(Update.fixed, (_world: World) => {}, [World]));
 // @ts-expect-error Only functions returned by defSystem can be registered.
 builder.addSystem(plainSystem);
@@ -275,6 +356,8 @@ const entityCommand: EntityCommand = game.service(Commands).spawn();
 entityCommand.set(LinkType, Link.target, entity);
 // @ts-expect-error Hierarchy relations are readonly Query projections, not mutable ComponentType values.
 entityCommand.add(ChildOf);
+// @ts-expect-error Flying sword views are readonly projections, not mutable storage components.
+entityCommand.add(FlyingSwordView);
 // @ts-expect-error Game EntityCommand also rejects unbranded entity reference values.
 entityCommand.set(LinkType, Link.target, rawNumber);
 game.service(TimerService).once(1, entityCommand);
@@ -296,3 +379,9 @@ void optionalPostSystem;
 void entityCommand;
 void childProjection;
 void HierarchyService;
+void flyingSwordProjection;
+void FlyingSwordService;
+void flyingSwordCamera;
+void flyingSwordRenderQueue;
+void float2Columns;
+void float3Columns;

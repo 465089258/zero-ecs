@@ -18,6 +18,13 @@ export default defineConfig({
       "@zero-ecs/game/hierarchy": resolve("packages/game/src/hierarchy.ts"),
       "@zero-ecs/game/pool": resolve("packages/game/src/pool.ts"),
       "@zero-ecs/game": resolve("packages/game/src/index.ts"),
+      "@zero-ecs/math/2d": resolve("packages/math/src/2d.ts"),
+      "@zero-ecs/math/3d": resolve("packages/math/src/3d.ts"),
+      "@zero-ecs/math/projection": resolve("packages/math/src/projection.ts"),
+      "@zero-ecs/math": resolve("packages/math/src/index.ts"),
+      "@zero-ecs/flying-sword/integration": resolve("packages/flying-sword/src/integration.ts"),
+      "@zero-ecs/flying-sword/presentation": resolve("packages/flying-sword/src/presentation.ts"),
+      "@zero-ecs/flying-sword": resolve("packages/flying-sword/src/index.ts"),
     },
   },
 });
