@@ -515,8 +515,8 @@ function skillPhaseName(
     phase: FlyingSwordSkillPhaseValue,
     mode: number,
 ): string {
-    if (phase === FlyingSwordSkillPhase.Gather) return "穿云 · 升空";
-    if (phase === FlyingSwordSkillPhase.Launch) return "穿云 · 俯冲";
+    if (phase === FlyingSwordSkillPhase.Gather) return "穿云 · 聚剑";
+    if (phase === FlyingSwordSkillPhase.Launch) return "穿云 · 弧冲";
     if (phase === FlyingSwordSkillPhase.Strike) return "穿云 · 贯穿";
     if (phase === FlyingSwordSkillPhase.Return) return "穿云 · 归剑";
     if (phase === FlyingSwordSkillPhase.Rejoin) return "穿云 · 入阵";

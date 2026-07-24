@@ -59,4 +59,7 @@ export class FlyingSwordStorage implements FlyingSwordViewData {
     readonly [FlyingSwordField.ActionPhaseStartTick] = Types.U32;
     readonly [FlyingSwordField.ActionRole] = Types.U16;
     readonly [FlyingSwordField.ContactActive] = Types.U8;
+    readonly [FlyingSwordField.TrajectoryStartX] = Types.F32;
+    readonly [FlyingSwordField.TrajectoryStartY] = Types.F32;
+    readonly [FlyingSwordField.TrajectoryStartZ] = Types.F32;
 }

@@ -199,6 +199,9 @@ function guideFlyingSwordSkills(
         const formationGoalXs = data[FlyingSwordField.FormationGoalX];
         const formationGoalYs = data[FlyingSwordField.FormationGoalY];
         const formationGoalZs = data[FlyingSwordField.FormationGoalZ];
+        const xs = data[FlyingSwordField.X];
+        const ys = data[FlyingSwordField.Y];
+        const zs = data[FlyingSwordField.Z];
         const goalXs = data[FlyingSwordField.GoalX];
         const goalYs = data[FlyingSwordField.GoalY];
         const goalZs = data[FlyingSwordField.GoalZ];
@@ -212,6 +215,12 @@ function guideFlyingSwordSkills(
             data[FlyingSwordField.ActionPhaseStartTick];
         const roles = data[FlyingSwordField.ActionRole];
         const contactActive = data[FlyingSwordField.ContactActive];
+        const trajectoryStartXs =
+            data[FlyingSwordField.TrajectoryStartX];
+        const trajectoryStartYs =
+            data[FlyingSwordField.TrajectoryStartY];
+        const trajectoryStartZs =
+            data[FlyingSwordField.TrajectoryStartZ];
 
         let cachedAction = -1;
         let cachedPlan = catalog.require(actions.planIds[0]);
@@ -373,15 +382,39 @@ function guideFlyingSwordSkills(
                     reserved,
                     cachedPlan.strikeSpread,
                 );
-                goalXs[row] = cachedTargetX + rightX * lateral;
-                goalYs[row] = cachedTargetY + cachedPlan.strikeHeight;
-                goalZs[row] = cachedTargetZ + rightZ * lateral;
-                arrivalRadii[row] = SKILL_TARGET_ARRIVAL_RADIUS;
-                speedMultipliers[row] =
-                    cachedPlan.launchSpeedMultiplier;
-                accelerationMultipliers[row] =
-                    cachedPlan.launchSpeedMultiplier;
-                contactActive[row] = 1;
+                if (time.tick === phaseStartTicks[row]) {
+                    trajectoryStartXs[row] = xs[row];
+                    trajectoryStartYs[row] = ys[row];
+                    trajectoryStartZs[row] = zs[row];
+                }
+                writeLaunchCurveGoal(
+                    time.tick - phaseStartTicks[row],
+                    cachedPlan.launchCurveTicks,
+                    cachedPlan.launchLookaheadTicks,
+                    cachedPlan.launchAscentHeight,
+                    cachedPlan.launchTurnDistance,
+                    cachedPlan.strikeHeight,
+                    cachedPlan.launchSpeedMultiplier,
+                    trajectoryStartXs[row],
+                    trajectoryStartYs[row],
+                    trajectoryStartZs[row],
+                    cachedTargetX,
+                    cachedTargetY,
+                    cachedTargetZ,
+                    directionX,
+                    directionZ,
+                    rightX,
+                    rightZ,
+                    lateral,
+                    goalXs,
+                    goalYs,
+                    goalZs,
+                    arrivalRadii,
+                    speedMultipliers,
+                    accelerationMultipliers,
+                    contactActive,
+                    row,
+                );
             } else if (phase === FlyingSwordSkillPhase.Strike) {
                 const lateral = strikeLateral(
                     role,
@@ -514,13 +547,17 @@ function resolveFlyingSwordSkills(
                 phase === FlyingSwordSkillPhase.Launch &&
                 time.tick >= phaseStartTicks[row]
             ) {
-                if (arrived) {
+                const launchElapsed =
+                    time.tick - phaseStartTicks[row];
+                if (
+                    launchElapsed >= plan.launchCurveTicks &&
+                    arrived
+                ) {
                     phase = FlyingSwordSkillPhase.Strike;
                     phases[row] = phase;
                     phaseStartTicks[row] = time.tick;
                 } else if (
-                    time.tick - phaseStartTicks[row] >=
-                    plan.launchTimeoutTicks
+                    launchElapsed >= plan.launchTimeoutTicks
                 ) {
                     phase = FlyingSwordSkillPhase.Return;
                     phases[row] = phase;
@@ -663,6 +700,73 @@ function writeGatherGoal(
     contactActive[row] = 0;
 }
 
+function writeLaunchCurveGoal(
+    elapsedTicks: number,
+    curveTicks: number,
+    lookaheadTicks: number,
+    ascentHeight: number,
+    turnDistance: number,
+    strikeHeight: number,
+    speedMultiplier: number,
+    startX: number,
+    startY: number,
+    startZ: number,
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    directionX: number,
+    directionZ: number,
+    rightX: number,
+    rightZ: number,
+    lateral: number,
+    goalXs: Float32Array,
+    goalYs: Float32Array,
+    goalZs: Float32Array,
+    arrivalRadii: Float32Array,
+    speedMultipliers: Float32Array,
+    accelerationMultipliers: Float32Array,
+    contactActive: Uint8Array,
+    row: number,
+): void {
+    const t = Math.min(
+        1,
+        (elapsedTicks + lookaheadTicks) / curveTicks,
+    );
+    const inverseT = 1 - t;
+    const startWeight = inverseT * inverseT * inverseT;
+    const firstControlWeight = 3 * inverseT * inverseT * t;
+    const secondControlWeight = 3 * inverseT * t * t;
+    const targetWeight = t * t * t;
+    const endX = targetX + rightX * lateral;
+    const endY = targetY + strikeHeight;
+    const endZ = targetZ + rightZ * lateral;
+    const peakY = Math.max(startY, endY) + ascentHeight;
+    const turnX = endX - directionX * turnDistance;
+    const turnZ = endZ - directionZ * turnDistance;
+
+    // 第一控制点只抬高 Y，保证离阵切线朝上；第二控制点位于目标后上方，
+    // 让剑在最高处仍保有水平速度，并连续转入俯冲而不是停在顶点。
+    goalXs[row] =
+        startWeight * startX +
+        firstControlWeight * startX +
+        secondControlWeight * turnX +
+        targetWeight * endX;
+    goalYs[row] =
+        startWeight * startY +
+        firstControlWeight * peakY +
+        secondControlWeight * peakY +
+        targetWeight * endY;
+    goalZs[row] =
+        startWeight * startZ +
+        firstControlWeight * startZ +
+        secondControlWeight * turnZ +
+        targetWeight * endZ;
+    arrivalRadii[row] = SKILL_TARGET_ARRIVAL_RADIUS;
+    speedMultipliers[row] = speedMultiplier;
+    accelerationMultipliers[row] = speedMultiplier;
+    contactActive[row] = t >= LAUNCH_CONTACT_START ? 1 : 0;
+}
+
 function writeReturnGoal(
     formationGoalXs: Float32Array,
     formationGoalYs: Float32Array,
@@ -712,3 +816,4 @@ function strikeLateral(
 }
 
 const SKILL_TARGET_ARRIVAL_RADIUS = 0.62;
+const LAUNCH_CONTACT_START = 0.72;

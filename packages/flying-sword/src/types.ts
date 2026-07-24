@@ -130,6 +130,9 @@ export enum FlyingSwordField {
     ActionPhaseStartTick,
     ActionRole,
     ContactActive,
+    TrajectoryStartX,
+    TrajectoryStartY,
+    TrajectoryStartZ,
 }
 
 /** 飞剑的公开只读数据形状。 */
@@ -166,4 +169,7 @@ export interface FlyingSwordViewData {
     readonly [FlyingSwordField.ActionPhaseStartTick]: typeof Types.U32;
     readonly [FlyingSwordField.ActionRole]: typeof Types.U16;
     readonly [FlyingSwordField.ContactActive]: typeof Types.U8;
+    readonly [FlyingSwordField.TrajectoryStartX]: typeof Types.F32;
+    readonly [FlyingSwordField.TrajectoryStartY]: typeof Types.F32;
+    readonly [FlyingSwordField.TrajectoryStartZ]: typeof Types.F32;
 }

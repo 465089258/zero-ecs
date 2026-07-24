@@ -125,6 +125,9 @@ export class FlyingSwordService extends Service {
             )
             .set(FlyingSwordStorage, FlyingSwordField.ActionRole, 0)
             .set(FlyingSwordStorage, FlyingSwordField.ContactActive, 0)
+            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartX, x)
+            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartY, y)
+            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartZ, z)
             .submit();
         return entity;
     }

@@ -40,6 +40,10 @@ export interface CompiledFlyingSwordSkillPlan {
     readonly gatherSpeedMultiplier: number;
     readonly launchWaveCount: number;
     readonly launchIntervalTicks: number;
+    readonly launchCurveTicks: number;
+    readonly launchLookaheadTicks: number;
+    readonly launchAscentHeight: number;
+    readonly launchTurnDistance: number;
     readonly launchTimeoutTicks: number;
     readonly launchSpeedMultiplier: number;
     readonly strikeHeight: number;
