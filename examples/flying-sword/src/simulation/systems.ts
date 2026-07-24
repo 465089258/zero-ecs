@@ -8,21 +8,34 @@ import {
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
-import { TimeState } from "@zero-ecs/game/time";
+import {
+    Direction3Type,
+    Float3,
+    Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
+} from "@zero-ecs/math/3d";
+import {
+    MotionSystemSet,
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
 import {
     FlyingSwordMode,
     FlyingSwordService,
     FlyingSwordSkillService,
     FlyingSwordSystemSet,
 } from "@zero-ecs/flying-sword";
+import {
+    FlyingSwordVisual,
+    FlyingSwordVisualType,
+} from "../content/components";
 import { DemoRenderService } from "../presentation/render-service";
 import {
-    CultivatorMovementField,
-    CultivatorMovementQuery,
-    CultivatorMovementType,
+    CultivatorControlQuery,
+    CultivatorMoveActiveTag,
     CultivatorTag,
-    Transform3Field,
-    Transform3Type,
+    MovingCultivatorQuery,
 } from "./components";
 import {
     DemoInputAction,
@@ -31,7 +44,8 @@ import {
 } from "./input-service";
 import { DemoSceneState } from "./state";
 
-type MovingCultivators = QueryOf<typeof CultivatorMovementQuery>;
+type Cultivators = QueryOf<typeof CultivatorControlQuery>;
+type MovingCultivators = QueryOf<typeof MovingCultivatorQuery>;
 
 export const setupFlyingSwordDemoSystem = defSystem(
     Startup,
@@ -43,26 +57,41 @@ export const consumeFlyingSwordInputSystem = defSystem(
     Update.fixed,
     consumeFlyingSwordInput,
     [
+        Commands,
         DemoInputService,
         DemoRenderService,
         FlyingSwordService,
         FlyingSwordSkillService,
         Write(DemoSceneState),
-        CultivatorMovementQuery,
+        CultivatorControlQuery,
     ],
 );
 
-export const moveCultivatorsSystem = defSystem(
+export const synchronizeFlyingSwordGroupCenterSystem = defSystem(
     Update.fixed,
-    moveCultivators,
-    [TimeState, CultivatorMovementQuery, Write(DemoSceneState)],
+    synchronizeFlyingSwordGroupCenter,
+    [
+        FlyingSwordService,
+        DemoSceneState,
+        CultivatorControlQuery,
+    ],
+);
+
+export const resolveCultivatorMovementSystem = defSystem(
+    Update.fixed,
+    resolveCultivatorMovement,
+    [Commands, MovingCultivatorQuery, Write(DemoSceneState)],
 );
 
 const DemoSimulationSystemSet = Object.freeze({
     Input: new SystemSet(Update.fixed, "flying-sword-demo:input"),
-    CultivatorMovement: new SystemSet(
+    GroupCenter: new SystemSet(
         Update.fixed,
-        "flying-sword-demo:cultivator-movement",
+        "flying-sword-demo:group-center",
+    ),
+    MovementResult: new SystemSet(
+        Update.fixed,
+        "flying-sword-demo:movement-result",
     ),
 });
 
@@ -71,10 +100,15 @@ export const DemoInputSystemOptions = Object.freeze({
     before: FlyingSwordSystemSet.Request,
 });
 
-export const DemoCultivatorMovementSystemOptions = Object.freeze({
-    inSet: DemoSimulationSystemSet.CultivatorMovement,
+export const DemoGroupCenterSystemOptions = Object.freeze({
+    inSet: DemoSimulationSystemSet.GroupCenter,
     after: DemoSimulationSystemSet.Input,
-    before: FlyingSwordSystemSet.Control,
+    before: FlyingSwordSystemSet.Request,
+});
+
+export const DemoMovementResultSystemOptions = Object.freeze({
+    inSet: DemoSimulationSystemSet.MovementResult,
+    after: MotionSystemSet.Integrate3,
 });
 
 function setupFlyingSwordDemo(
@@ -85,24 +119,30 @@ function setupFlyingSwordDemo(
     const cultivatorCommand = commands.spawn();
     const cultivator = cultivatorCommand.entity;
     cultivatorCommand
-        .add(Transform3Type)
-        .add(CultivatorMovementType)
+        .add(Position3Type)
+        .add(PreviousPosition3Type)
+        .add(Velocity3Type)
+        .add(Direction3Type)
+        .add(MoveTowards3Type)
         .add(CultivatorTag)
-        .set(Transform3Type, Transform3Field.X, 0)
-        .set(Transform3Type, Transform3Field.Y, 0)
-        .set(Transform3Type, Transform3Field.Z, 0)
-        .set(Transform3Type, Transform3Field.PreviousX, 0)
-        .set(Transform3Type, Transform3Field.PreviousY, 0)
-        .set(Transform3Type, Transform3Field.PreviousZ, 0)
-        .set(CultivatorMovementType, CultivatorMovementField.TargetX, 0)
-        .set(CultivatorMovementType, CultivatorMovementField.TargetZ, 0)
-        .set(CultivatorMovementType, CultivatorMovementField.Speed, 5.4)
-        .set(
-            CultivatorMovementType,
-            CultivatorMovementField.StoppingDistance,
-            0.04,
-        )
-        .set(CultivatorMovementType, CultivatorMovementField.Moving, 0)
+        .set(Position3Type, Float3.X, 0)
+        .set(Position3Type, Float3.Y, 0)
+        .set(Position3Type, Float3.Z, 0)
+        .set(PreviousPosition3Type, Float3.X, 0)
+        .set(PreviousPosition3Type, Float3.Y, 0)
+        .set(PreviousPosition3Type, Float3.Z, 0)
+        .set(Velocity3Type, Float3.X, 0)
+        .set(Velocity3Type, Float3.Y, 0)
+        .set(Velocity3Type, Float3.Z, 0)
+        .set(Direction3Type, Float3.X, 0)
+        .set(Direction3Type, Float3.Y, 0)
+        .set(Direction3Type, Float3.Z, 1)
+        .set(MoveTowards3Type, MoveTowards3.TargetX, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+        .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 5.4)
+        .set(MoveTowards3Type, MoveTowards3.Acceleration, 48)
+        .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.04)
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
@@ -116,7 +156,7 @@ function setupFlyingSwordDemo(
         verticalSpeed: 2.7,
     });
     for (let slot = 0; slot < flyingSwordCount; slot++) {
-        flyingSwords.createSword({
+        const sword = flyingSwords.createSword({
             group,
             position: {
                 x: (slot - 3) * 0.16,
@@ -124,10 +164,14 @@ function setupFlyingSwordDemo(
                 z: -0.9,
             },
             slot,
-            visualId: slot,
             maximumSpeed: 13,
             acceleration: 42,
         });
+        commands
+            .entity(sword)
+            .add(FlyingSwordVisualType)
+            .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
+            .submit();
     }
 
     scene.cultivator = cultivator;
@@ -135,10 +179,15 @@ function setupFlyingSwordDemo(
 }
 
 function readFlyingSwordCount(): number {
-    const raw = new URLSearchParams(window.location.search).get("swords");
+    const raw =
+        new URLSearchParams(window.location.search).get("swords");
     if (raw === null) return DEFAULT_FLYING_SWORD_COUNT;
     const count = Number(raw);
-    return Number.isSafeInteger(count) && count >= 1 && count <= MAX_FLYING_SWORD_COUNT
+    return (
+        Number.isSafeInteger(count) &&
+        count >= 1 &&
+        count <= MAX_FLYING_SWORD_COUNT
+    )
         ? count
         : DEFAULT_FLYING_SWORD_COUNT;
 }
@@ -149,26 +198,39 @@ const input: DemoInputOut = {
     clientY: 0,
 };
 const target = { x: 0, y: 0, z: 0 };
+const groupCenter = { x: 0, y: 0, z: 0 };
 const DEFAULT_FLYING_SWORD_COUNT = 81;
 const MAX_FLYING_SWORD_COUNT = 2000;
 
 function consumeFlyingSwordInput(
+    commands: Commands,
     inputService: DemoInputService,
     renderer: DemoRenderService,
     flyingSwords: FlyingSwordService,
     skills: FlyingSwordSkillService,
     scene: Mut<DemoSceneState>,
-    cultivators: MovingCultivators,
+    cultivators: Cultivators,
 ): void {
     if (!inputService.consume(input)) return;
     if (input.action === DemoInputAction.Move) {
-        if (!renderer.clientToGround(input.clientX, input.clientY, target)) return;
-        if (!setCultivatorDestination(
-            cultivators,
-            scene.cultivator,
-            target.x,
-            target.z,
-        )) {
+        if (
+            !renderer.clientToGround(
+                input.clientX,
+                input.clientY,
+                target,
+            )
+        ) {
+            return;
+        }
+        if (
+            !setCultivatorDestination(
+                commands,
+                cultivators,
+                scene.cultivator,
+                target.x,
+                target.z,
+            )
+        ) {
             return;
         }
         scene.moveTargetX = target.x;
@@ -176,7 +238,15 @@ function consumeFlyingSwordInput(
         scene.moveTargetZ = target.z;
         scene.hasMoveTarget = true;
     } else if (input.action === DemoInputAction.Focus) {
-        if (!renderer.clientToGround(input.clientX, input.clientY, target)) return;
+        if (
+            !renderer.clientToGround(
+                input.clientX,
+                input.clientY,
+                target,
+            )
+        ) {
+            return;
+        }
         flyingSwords.orbit(scene.swordGroup);
         skills.cast({
             group: scene.swordGroup,
@@ -198,77 +268,86 @@ function consumeFlyingSwordInput(
 }
 
 function setCultivatorDestination(
-    cultivators: MovingCultivators,
+    commands: Commands,
+    cultivators: Cultivators,
     entity: number,
     x: number,
     z: number,
 ): boolean {
     const iter = cultivators.iter();
     while (iter.next()) {
-        const [count, entities, , movements] = iter.current;
-        const targetXs = movements[CultivatorMovementField.TargetX];
-        const targetZs = movements[CultivatorMovementField.TargetZ];
-        const moving = movements[CultivatorMovementField.Moving];
+        const [count, entities, positions, motion] = iter.current;
+        const ys = positions[Float3.Y];
+        const targetXs = motion[MoveTowards3.TargetX];
+        const targetYs = motion[MoveTowards3.TargetY];
+        const targetZs = motion[MoveTowards3.TargetZ];
         for (let row = 0; row < count; row++) {
             if (entities[row] !== entity) continue;
             targetXs[row] = x;
+            targetYs[row] = ys[row];
             targetZs[row] = z;
-            moving[row] = 1;
+            commands
+                .entity(entities[row])
+                .add(CultivatorMoveActiveTag)
+                .submit();
             return true;
         }
     }
     return false;
 }
 
-function moveCultivators(
-    time: Readonly<TimeState>,
+function synchronizeFlyingSwordGroupCenter(
+    flyingSwords: FlyingSwordService,
+    scene: Readonly<DemoSceneState>,
+    cultivators: Cultivators,
+): void {
+    const iter = cultivators.iter();
+    while (iter.next()) {
+        const [count, entities, positions] = iter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            if (entities[row] !== scene.cultivator) continue;
+            groupCenter.x = xs[row];
+            groupCenter.y = ys[row];
+            groupCenter.z = zs[row];
+            flyingSwords.setCenter(scene.swordGroup, groupCenter);
+            return;
+        }
+    }
+}
+
+function resolveCultivatorMovement(
+    commands: Commands,
     cultivators: MovingCultivators,
     scene: Mut<DemoSceneState>,
 ): void {
     const iter = cultivators.iter();
     while (iter.next()) {
-        const [count, entities, transforms, movements] = iter.current;
-        const xs = transforms[Transform3Field.X];
-        const ys = transforms[Transform3Field.Y];
-        const zs = transforms[Transform3Field.Z];
-        const previousXs = transforms[Transform3Field.PreviousX];
-        const previousYs = transforms[Transform3Field.PreviousY];
-        const previousZs = transforms[Transform3Field.PreviousZ];
-        const targetXs = movements[CultivatorMovementField.TargetX];
-        const targetZs = movements[CultivatorMovementField.TargetZ];
-        const speeds = movements[CultivatorMovementField.Speed];
-        const stoppingDistances =
-            movements[CultivatorMovementField.StoppingDistance];
-        const moving = movements[CultivatorMovementField.Moving];
+        const [count, entities, positions, motion] = iter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        const targetXs = motion[MoveTowards3.TargetX];
+        const targetYs = motion[MoveTowards3.TargetY];
+        const targetZs = motion[MoveTowards3.TargetZ];
+        const arrivalRadii = motion[MoveTowards3.ArrivalRadius];
         for (let row = 0; row < count; row++) {
-            const x = xs[row];
-            const y = ys[row];
-            const z = zs[row];
-            previousXs[row] = x;
-            previousYs[row] = y;
-            previousZs[row] = z;
-            if (moving[row] === 0) continue;
-
-            const dx = targetXs[row] - x;
-            const dz = targetZs[row] - z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maximumStep = speeds[row] * time.delta;
-            if (
-                distance <= stoppingDistances[row] ||
-                distance <= maximumStep
-            ) {
-                xs[row] = targetXs[row];
-                zs[row] = targetZs[row];
-                moving[row] = 0;
-                if (entities[row] === scene.cultivator) {
-                    scene.hasMoveTarget = false;
-                }
+            const dx = targetXs[row] - xs[row];
+            const dy = targetYs[row] - ys[row];
+            const dz = targetZs[row] - zs[row];
+            const radius = arrivalRadii[row];
+            if (dx * dx + dy * dy + dz * dz > radius * radius) {
                 continue;
             }
-
-            const scale = maximumStep / distance;
-            xs[row] = x + dx * scale;
-            zs[row] = z + dz * scale;
+            commands
+                .entity(entities[row])
+                .remove(CultivatorMoveActiveTag)
+                .submit();
+            if (entities[row] === scene.cultivator) {
+                scene.hasMoveTarget = false;
+            }
         }
     }
 }

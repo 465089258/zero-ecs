@@ -6,14 +6,14 @@ import {
     CommandModule,
     GameBuilder,
     INVALID_ENTITY,
-    type Entity,
 } from "@zero-ecs/game";
 import {
     FixedTimeResource,
     TimeModule,
 } from "@zero-ecs/game/time";
 import {
-    FlyingSwordField,
+    FlyingSwordAction,
+    FlyingSwordActionQuery,
     FlyingSwordGroupField,
     FlyingSwordGroupQuery,
     FlyingSwordMode,
@@ -23,23 +23,23 @@ import {
     FlyingSwordService,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
-    type Vector3Out,
 } from "@zero-ecs/flying-sword";
 import {
-    FlyingSwordSpatialService,
-} from "@zero-ecs/flying-sword/integration";
-
-class FixedSpatialService extends FlyingSwordSpatialService {
-    readPosition(_entity: Entity, _out: Vector3Out): boolean {
-        return false;
-    }
-}
+    Float3,
+    Position3Type,
+    Velocity3Type,
+} from "@zero-ecs/math/3d";
+import {
+    Motion3Module,
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
 
 test("flying sword runtime commits entities and advances authoritative XYZ motion", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(0.1)))
-        .addService(FixedSpatialService)
+        .addModule(new Motion3Module())
         .addModule(new FlyingSwordModule())
         .build();
     game.init();
@@ -67,10 +67,11 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
 
     const swordIter = game.world.query(FlyingSwordQuery).iter();
     expect(swordIter.next()).toBe(true);
-    const [count, , swords] = swordIter.current;
+    const [count, , , previousPositions, positions] =
+        swordIter.current;
     expect(count).toBe(1);
-    expect(swords[FlyingSwordField.Y][0]).toBeGreaterThan(0.5);
-    expect(swords[FlyingSwordField.PreviousY][0]).toBe(0.5);
+    expect(positions[Float3.Y][0]).toBeGreaterThan(0.5);
+    expect(previousPositions[Float3.Y][0]).toBe(0.5);
 
     flyingSwords.focus(group, { x: 4, y: 0, z: 5 });
     game.update();
@@ -88,7 +89,7 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
-        .addService(FixedSpatialService)
+        .addModule(new Motion3Module())
         .addModule(new FlyingSwordModule())
         .build();
     game.init();
@@ -133,13 +134,12 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
     expect(observed.has(FlyingSwordSkillPhase.Rejoin)).toBe(true);
     expect(skills.phase(group)).toBe(FlyingSwordSkillPhase.Idle);
 
-    const iter = game.world.query(FlyingSwordQuery).iter();
-    while (iter.next()) {
-        const [count, , swords] = iter.current;
-        for (let row = 0; row < count; row++) {
-            expect(swords[FlyingSwordField.ActionSequence][row]).toBe(0);
-        }
+    const actionIter = game.world.query(FlyingSwordActionQuery).iter();
+    let activeSwordCount = 0;
+    while (actionIter.next()) {
+        activeSwordCount += actionIter.current[0];
     }
+    expect(activeSwordCount).toBe(0);
     game.dispose();
 });
 
@@ -147,7 +147,7 @@ test("Piercing Cloud curves upward from its formation and dives without an apex 
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
-        .addService(FixedSpatialService)
+        .addModule(new Motion3Module())
         .addModule(new FlyingSwordModule())
         .build();
     game.init();
@@ -162,7 +162,7 @@ test("Piercing Cloud curves upward from its formation and dives without an apex 
         orbitRadius: 2,
         orbitHeight: 1.4,
     });
-    flyingSwords.createSword({
+    const sword = flyingSwords.createSword({
         group,
         position: { x: 0, y: 1.4, z: 0 },
         maximumSpeed: 13,
@@ -182,15 +182,33 @@ test("Piercing Cloud curves upward from its formation and dives without an apex 
     let observedDescending = false;
     for (let tick = 0; tick < 180; tick++) {
         game.update();
-        const iter = game.world.query(FlyingSwordQuery).iter();
+        const iter = game.world.query(FlyingSwordActionQuery).iter();
         if (!iter.next()) continue;
-        const [, , swords] = iter.current;
-        const phase = swords[FlyingSwordField.ActionPhase][0];
+        const [, entities, , action] = iter.current;
+        let row = -1;
+        for (
+            let actionRow = 0;
+            actionRow < iter.current[0];
+            actionRow++
+        ) {
+            if (entities[actionRow] === sword) {
+                row = actionRow;
+                break;
+            }
+        }
+        if (row < 0) continue;
+        const phase = action[FlyingSwordAction.Phase][row];
+        const y = game.world.get(sword, Position3Type, Float3.Y);
+        const velocityY =
+            game.world.get(sword, Velocity3Type, Float3.Y);
+        if (y === null || velocityY === null) continue;
         if (phase === FlyingSwordSkillPhase.Gather) {
-            gatherGoalY = swords[FlyingSwordField.GoalY][0];
+            gatherGoalY = game.world.get(
+                sword,
+                MoveTowards3Type,
+                MoveTowards3.TargetY,
+            ) ?? Number.NaN;
         } else if (phase === FlyingSwordSkillPhase.Launch) {
-            const y = swords[FlyingSwordField.Y][0];
-            const velocityY = swords[FlyingSwordField.VelocityY][0];
             if (Number.isNaN(launchStartY)) launchStartY = y;
             peakLaunchY = Math.max(peakLaunchY, y);
             if (velocityY > 0.5) observedRising = true;
@@ -198,7 +216,7 @@ test("Piercing Cloud curves upward from its formation and dives without an apex 
                 observedDescending = true;
             }
         } else if (phase === FlyingSwordSkillPhase.Strike) {
-            strikeStartY = swords[FlyingSwordField.Y][0];
+            strikeStartY = y;
             break;
         }
     }

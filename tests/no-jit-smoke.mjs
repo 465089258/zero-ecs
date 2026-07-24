@@ -7,10 +7,18 @@ import {
 import { Allocator, DataSet } from "@zero-ecs/game/advanced";
 import { FixedTimeResource, TimeState } from "@zero-ecs/game/time";
 import {
+    Direction3Type,
     Float3,
     Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
     normalizeFloat3,
 } from "@zero-ecs/math/3d";
+import {
+    Motion3Module,
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
 import {
     ActiveCameraTag,
     CameraBasis3Type,
@@ -36,7 +44,8 @@ if (typeof Allocator !== "function" || typeof DataSet !== "function") {
 }
 
 const builder = new GameBuilder()
-    .addModule(new DefaultCoreModule(new FixedTimeResource(0.125)));
+    .addModule(new DefaultCoreModule(new FixedTimeResource(0.125)))
+    .addModule(new Motion3Module());
 builder.addSystem(orthographicProjectionSystem);
 const game = builder.build();
 game.init();
@@ -79,6 +88,33 @@ projectable
     .set(Position3Type, Float3.Z, 0)
     .set(ProjectionBounds3Type, ProjectionBounds3.Radius, 0.25)
     .submit();
+const moving = commands.spawn();
+const movingEntity = moving.entity;
+moving
+    .add(Position3Type)
+    .add(PreviousPosition3Type)
+    .add(Velocity3Type)
+    .add(Direction3Type)
+    .add(MoveTowards3Type)
+    .set(Position3Type, Float3.X, 0)
+    .set(Position3Type, Float3.Y, 0)
+    .set(Position3Type, Float3.Z, 0)
+    .set(PreviousPosition3Type, Float3.X, 0)
+    .set(PreviousPosition3Type, Float3.Y, 0)
+    .set(PreviousPosition3Type, Float3.Z, 0)
+    .set(Velocity3Type, Float3.X, 0)
+    .set(Velocity3Type, Float3.Y, 0)
+    .set(Velocity3Type, Float3.Z, 0)
+    .set(Direction3Type, Float3.X, 1)
+    .set(Direction3Type, Float3.Y, 0)
+    .set(Direction3Type, Float3.Z, 0)
+    .set(MoveTowards3Type, MoveTowards3.TargetX, 1)
+    .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+    .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+    .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 2)
+    .set(MoveTowards3Type, MoveTowards3.Acceleration, 20)
+    .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.01)
+    .submit();
 game.update();
 
 if (entities.get(entity, PositionType, 0) !== 4) throw new Error("no-JIT structural write failed");
@@ -91,6 +127,9 @@ if (game.state(TimeState).tick !== 2 || game.state(TimeState).elapsed !== 0.25) 
 }
 if (entities.get(projectableEntity, Projected2Type, Projected2.Visible) !== 1) {
     throw new Error("no-JIT ECS projection failed");
+}
+if (entities.get(movingEntity, Position3Type, Float3.X) <= 0) {
+    throw new Error("no-JIT ECS motion failed");
 }
 
 const vector = [

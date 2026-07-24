@@ -4,14 +4,12 @@ import {
     type QueryOf,
 } from "@zero-ecs/game";
 import {
-    FlyingSwordField,
     FlyingSwordMode,
-    FlyingSwordQuery,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
     type FlyingSwordSkillPhaseValue,
-    type Vector3Out,
 } from "@zero-ecs/flying-sword";
+import { Float3 } from "@zero-ecs/math/3d";
 import {
     DepthRenderQueue,
     type DepthRenderItem,
@@ -28,12 +26,16 @@ import swordFrostUrl from "../assets/swords/sword-frost-render.png";
 import swordJadeUrl from "../assets/swords/sword-jade-render.png";
 import swordThunderUrl from "../assets/swords/sword-thunder-render.png";
 import {
+    FlyingSwordVisual,
+} from "../content/components";
+import {
     CultivatorQuery,
-    Transform3Field,
 } from "../simulation/components";
 import { DemoSceneState } from "../simulation/state";
+import { DemoFlyingSwordRenderQuery } from "./queries";
+import type { Vector3Out } from "./types";
 
-type Swords = QueryOf<typeof FlyingSwordQuery>;
+type Swords = QueryOf<typeof DemoFlyingSwordRenderQuery>;
 type Cultivators = QueryOf<typeof CultivatorQuery>;
 
 const enum RenderKind {
@@ -253,13 +255,14 @@ export class DemoRenderService extends Service {
     ): void {
         const iter = cultivators.iter();
         while (iter.next()) {
-            const [count, entities, transforms] = iter.current;
-            const previousXs = transforms[Transform3Field.PreviousX];
-            const previousYs = transforms[Transform3Field.PreviousY];
-            const previousZs = transforms[Transform3Field.PreviousZ];
-            const xs = transforms[Transform3Field.X];
-            const ys = transforms[Transform3Field.Y];
-            const zs = transforms[Transform3Field.Z];
+            const [count, entities, positions, previousPositions] =
+                iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
             for (let row = 0; row < count; row++) {
                 if (entities[row] !== entity) continue;
                 this.followedX = lerp(previousXs[row], xs[row], interpolation);
@@ -281,13 +284,14 @@ export class DemoRenderService extends Service {
     ): void {
         const iter = cultivators.iter();
         while (iter.next()) {
-            const [count, entities, transforms] = iter.current;
-            const previousXs = transforms[Transform3Field.PreviousX];
-            const previousYs = transforms[Transform3Field.PreviousY];
-            const previousZs = transforms[Transform3Field.PreviousZ];
-            const xs = transforms[Transform3Field.X];
-            const ys = transforms[Transform3Field.Y];
-            const zs = transforms[Transform3Field.Z];
+            const [count, entities, positions, previousPositions] =
+                iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
             for (let row = 0; row < count; row++) {
                 const x = lerp(previousXs[row], xs[row], interpolation);
                 const y = lerp(previousYs[row], ys[row], interpolation);
@@ -313,17 +317,25 @@ export class DemoRenderService extends Service {
     private collectSwords(swords: Swords, interpolation: number): void {
         const iter = swords.iter();
         while (iter.next()) {
-            const [count, entities, data] = iter.current;
-            const previousXs = data[FlyingSwordField.PreviousX];
-            const previousYs = data[FlyingSwordField.PreviousY];
-            const previousZs = data[FlyingSwordField.PreviousZ];
-            const xs = data[FlyingSwordField.X];
-            const ys = data[FlyingSwordField.Y];
-            const zs = data[FlyingSwordField.Z];
-            const forwardXs = data[FlyingSwordField.ForwardX];
-            const forwardYs = data[FlyingSwordField.ForwardY];
-            const forwardZs = data[FlyingSwordField.ForwardZ];
-            const visualIds = data[FlyingSwordField.VisualId];
+            const [
+                count,
+                entities,
+                ,
+                previousPositions,
+                positions,
+                directions,
+                visuals,
+            ] = iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const forwardXs = directions[Float3.X];
+            const forwardYs = directions[Float3.Y];
+            const forwardZs = directions[Float3.Z];
+            const visualIds = visuals[FlyingSwordVisual.Id];
             for (let row = 0; row < count; row++) {
                 const x = lerp(
                     previousXs[row],

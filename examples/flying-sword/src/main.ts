@@ -10,6 +10,7 @@ import {
 import {
     FlyingSwordModule,
 } from "@zero-ecs/flying-sword";
+import { Motion3Module } from "@zero-ecs/motion/3d";
 import { DemoViewResource } from "./app/resources";
 import {
     FlyingSwordDemoPresentationModule,
@@ -36,6 +37,7 @@ const game = new GameBuilder()
     .addResource(DemoViewResource, view)
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
+    .addModule(new Motion3Module())
     .addModule(new FlyingSwordModule())
     .addModule(new FlyingSwordDemoSimulationModule())
     .addModule(new FlyingSwordDemoPresentationModule())

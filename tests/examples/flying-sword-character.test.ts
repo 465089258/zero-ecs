@@ -9,7 +9,6 @@ import {
     Startup,
     Write,
     defSystem,
-    type Entity,
     type Mut,
 } from "@zero-ecs/game";
 import {
@@ -17,29 +16,35 @@ import {
     TimeModule,
 } from "@zero-ecs/game/time";
 import {
-    FlyingSwordField,
+    Direction3Type,
+    Float3,
+    Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
+} from "@zero-ecs/math/3d";
+import {
+    Motion3Module,
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
+import {
+    FlyingSwordActionQuery,
     FlyingSwordMode,
     FlyingSwordModule,
-    FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
-    type Vector3Out,
 } from "@zero-ecs/flying-sword";
 import {
-    FlyingSwordSpatialService,
-} from "@zero-ecs/flying-sword/integration";
-import {
-    CultivatorMovementField,
-    CultivatorMovementQuery,
-    CultivatorMovementType,
+    CultivatorMoveActiveTag,
+    CultivatorQuery,
     CultivatorTag,
-    Transform3Field,
-    Transform3Type,
+    MovingCultivatorQuery,
 } from "../../examples/flying-sword/src/simulation/components";
 import { DemoSceneState } from "../../examples/flying-sword/src/simulation/state";
 import {
-    moveCultivatorsSystem,
+    DemoMovementResultSystemOptions,
+    resolveCultivatorMovementSystem,
 } from "../../examples/flying-sword/src/simulation/systems";
 
 const setupMovingCultivatorSystem = defSystem(
@@ -56,31 +61,32 @@ function setupMovingCultivator(
     scene.cultivator = command.entity;
     scene.hasMoveTarget = true;
     command
-        .add(Transform3Type)
-        .add(CultivatorMovementType)
+        .add(Position3Type)
+        .add(PreviousPosition3Type)
+        .add(Velocity3Type)
+        .add(Direction3Type)
+        .add(MoveTowards3Type)
+        .add(CultivatorMoveActiveTag)
         .add(CultivatorTag)
-        .set(Transform3Type, Transform3Field.X, 0)
-        .set(Transform3Type, Transform3Field.Y, 0)
-        .set(Transform3Type, Transform3Field.Z, 0)
-        .set(Transform3Type, Transform3Field.PreviousX, 0)
-        .set(Transform3Type, Transform3Field.PreviousY, 0)
-        .set(Transform3Type, Transform3Field.PreviousZ, 0)
-        .set(CultivatorMovementType, CultivatorMovementField.TargetX, 1)
-        .set(CultivatorMovementType, CultivatorMovementField.TargetZ, 0)
-        .set(CultivatorMovementType, CultivatorMovementField.Speed, 1)
-        .set(
-            CultivatorMovementType,
-            CultivatorMovementField.StoppingDistance,
-            0.01,
-        )
-        .set(CultivatorMovementType, CultivatorMovementField.Moving, 1)
+        .set(Position3Type, Float3.X, 0)
+        .set(Position3Type, Float3.Y, 0)
+        .set(Position3Type, Float3.Z, 0)
+        .set(PreviousPosition3Type, Float3.X, 0)
+        .set(PreviousPosition3Type, Float3.Y, 0)
+        .set(PreviousPosition3Type, Float3.Z, 0)
+        .set(Velocity3Type, Float3.X, 0)
+        .set(Velocity3Type, Float3.Y, 0)
+        .set(Velocity3Type, Float3.Z, 0)
+        .set(Direction3Type, Float3.X, 1)
+        .set(Direction3Type, Float3.Y, 0)
+        .set(Direction3Type, Float3.Z, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetX, 1)
+        .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+        .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 1)
+        .set(MoveTowards3Type, MoveTowards3.Acceleration, 20)
+        .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.01)
         .submit();
-}
-
-class StaticSpatialService extends FlyingSwordSpatialService {
-    readPosition(_entity: Entity, _out: Vector3Out): boolean {
-        return false;
-    }
 }
 
 const setupSwordCommandSystem = defSystem(
@@ -97,14 +103,14 @@ function setupSwordCommand(
     const cultivator = commands.spawn();
     scene.cultivator = cultivator.entity;
     cultivator
-        .add(Transform3Type)
-        .add(CultivatorTag)
-        .set(Transform3Type, Transform3Field.X, 0)
-        .set(Transform3Type, Transform3Field.Y, 0)
-        .set(Transform3Type, Transform3Field.Z, 0)
-        .set(Transform3Type, Transform3Field.PreviousX, 0)
-        .set(Transform3Type, Transform3Field.PreviousY, 0)
-        .set(Transform3Type, Transform3Field.PreviousZ, 0)
+        .add(Position3Type)
+        .add(PreviousPosition3Type)
+        .set(Position3Type, Float3.X, 0)
+        .set(Position3Type, Float3.Y, 0)
+        .set(Position3Type, Float3.Z, 0)
+        .set(PreviousPosition3Type, Float3.X, 0)
+        .set(PreviousPosition3Type, Float3.Y, 0)
+        .set(PreviousPosition3Type, Float3.Z, 0)
         .submit();
 
     const group = flyingSwords.createGroup({
@@ -127,39 +133,46 @@ function setupSwordCommand(
     scene.mode = FlyingSwordMode.Orbit;
 }
 
-test("cultivator advances on the XZ ground and retains fixed-tick history", () => {
+test("cultivator uses generic Motion and retains fixed-tick history", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(0.1)))
+        .addModule(new Motion3Module())
         .addState(DemoSceneState);
     builder.addSystem(setupMovingCultivatorSystem);
-    builder.addSystem(moveCultivatorsSystem);
+    builder.addSystem(
+        resolveCultivatorMovementSystem,
+        DemoMovementResultSystemOptions,
+    );
     const game = builder.build();
     game.init();
     game.start();
 
-    // 第一个 Tick 提交 Startup 中创建的角色，随后十个 Tick 移动一米。
     game.update();
-    for (let tick = 0; tick < 10; tick++) game.update();
+    for (let tick = 0; tick < 40; tick++) game.update();
 
-    const iter = game.world.query(CultivatorMovementQuery).iter();
+    const iter = game.world.query(CultivatorQuery).iter();
     expect(iter.next()).toBe(true);
-    const [count, , transforms, movements] = iter.current;
+    const [count, , positions, previousPositions] = iter.current;
     expect(count).toBe(1);
-    expect(transforms[Transform3Field.X][0]).toBeCloseTo(1, 5);
-    expect(transforms[Transform3Field.Z][0]).toBe(0);
-    expect(transforms[Transform3Field.PreviousX][0]).toBeLessThanOrEqual(1);
-    expect(movements[CultivatorMovementField.Moving][0]).toBe(0);
+    expect(positions[Float3.X][0]).toBeCloseTo(1, 1);
+    expect(positions[Float3.Z][0]).toBe(0);
+    expect(previousPositions[Float3.X][0]).toBeLessThanOrEqual(1.01);
+    const movingIter =
+        game.world.query(MovingCultivatorQuery).iter();
+    let movingCount = 0;
+    while (movingIter.next()) movingCount += movingIter.current[0];
+    expect(movingCount).toBe(0);
     expect(game.state(DemoSceneState).hasMoveTarget).toBe(false);
 
     game.dispose();
 });
 
-test("Piercing Cloud gathers, strikes, returns, and releases its swords", () => {
+test("Piercing Cloud gathers, strikes, returns, and removes action components", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(0.1)))
-        .addService(StaticSpatialService)
+        .addModule(new Motion3Module())
         .addState(DemoSceneState)
         .addModule(new FlyingSwordModule());
     builder.addSystem(setupSwordCommandSystem);
@@ -167,7 +180,6 @@ test("Piercing Cloud gathers, strikes, returns, and releases its swords", () => 
     game.init();
     game.start();
 
-    // 第一个 Tick 提交实体，之后从正式飞剑技能入口激活穿云。
     game.update();
     const skills = game.service(FlyingSwordSkillService);
     const group = game.state(DemoSceneState).swordGroup;
@@ -190,10 +202,10 @@ test("Piercing Cloud gathers, strikes, returns, and releases its swords", () => 
     expect(observed.has(FlyingSwordSkillPhase.Rejoin)).toBe(true);
     expect(skills.phase(group)).toBe(FlyingSwordSkillPhase.Idle);
 
-    const iter = game.world.query(FlyingSwordQuery).iter();
-    expect(iter.next()).toBe(true);
-    const [, , swords] = iter.current;
-    expect(swords[FlyingSwordField.ActionSequence][0]).toBe(0);
+    const iter = game.world.query(FlyingSwordActionQuery).iter();
+    let activeSwordCount = 0;
+    while (iter.next()) activeSwordCount += iter.current[0];
+    expect(activeSwordCount).toBe(0);
 
     game.dispose();
 });

@@ -1,15 +1,13 @@
 import {
     defSystem,
 } from "@zero-ecs/game";
-import {
-    FlyingSwordQuery,
-} from "@zero-ecs/flying-sword";
 import { CultivatorQuery } from "../simulation/components";
 import { DemoSceneState } from "../simulation/state";
 import {
     DemoRenderFrameState,
 } from "./render-frame";
 import { DemoRenderService } from "./render-service";
+import { DemoFlyingSwordRenderQuery } from "./queries";
 import {
     FlyingSwordRender,
     FlyingSwordRenderSet,
@@ -23,7 +21,7 @@ export const renderFlyingSwordDemoSystem = defSystem(
         DemoRenderFrameState,
         DemoSceneState,
         CultivatorQuery,
-        FlyingSwordQuery,
+        DemoFlyingSwordRenderQuery,
     ],
 );
 

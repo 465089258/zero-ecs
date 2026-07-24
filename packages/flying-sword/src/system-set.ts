@@ -7,7 +7,6 @@ export const FlyingSwordSystemSet = Object.freeze({
     Skill: new SystemSet(Update.fixed, "flying-sword:skill"),
     Formation: new SystemSet(Update.fixed, "flying-sword:formation"),
     Guidance: new SystemSet(Update.fixed, "flying-sword:guidance"),
-    Motion: new SystemSet(Update.fixed, "flying-sword:motion"),
     Contact: new SystemSet(Update.fixed, "flying-sword:contact"),
     Cleanup: new SystemSet(Update.fixed, "flying-sword:cleanup"),
 });

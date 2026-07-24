@@ -18,15 +18,14 @@ import {
     FlyingSwordSystemOptions,
     applyFlyingSwordRequestsSystem,
     formFlyingSwordGoalsSystem,
-    moveFlyingSwordsSystem,
-    synchronizeFlyingSwordGroupsSystem,
+    snapshotFlyingSwordGroupsSystem,
 } from "./runtime/systems";
 
 /**
  * 安装飞剑领域基础运行时。
  *
- * 宿主需要同时安装 CommandModule、TimeModule，并注册
- * FlyingSwordSpatialService 的具体实现。
+ * 宿主需要同时安装 CommandModule、TimeModule 和 Motion3Module。
+ * 控制组中心由宿主 Integration 写入 FlyingSwordService.setCenter。
  */
 export class FlyingSwordModule implements Module {
     constructor(
@@ -52,7 +51,7 @@ export class FlyingSwordModule implements Module {
             FlyingSwordSkillSystemOptions.requests,
         );
         builder.addSystem(
-            synchronizeFlyingSwordGroupsSystem,
+            snapshotFlyingSwordGroupsSystem,
             FlyingSwordSystemOptions.groups,
         );
         builder.addSystem(
@@ -66,10 +65,6 @@ export class FlyingSwordModule implements Module {
         builder.addSystem(
             guideFlyingSwordSkillsSystem,
             FlyingSwordSkillSystemOptions.guidance,
-        );
-        builder.addSystem(
-            moveFlyingSwordsSystem,
-            FlyingSwordSystemOptions.motion,
         );
         builder.addSystem(
             resolveFlyingSwordSkillsSystem,

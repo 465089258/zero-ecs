@@ -3,21 +3,21 @@ import type {
     Module,
 } from "@zero-ecs/game";
 import { DemoInputService } from "./input-service";
-import { DemoFlyingSwordSpatialService } from "./spatial-service";
 import { DemoSceneState } from "./state";
 import {
-    DemoCultivatorMovementSystemOptions,
+    DemoGroupCenterSystemOptions,
     DemoInputSystemOptions,
+    DemoMovementResultSystemOptions,
     consumeFlyingSwordInputSystem,
-    moveCultivatorsSystem,
+    resolveCultivatorMovementSystem,
     setupFlyingSwordDemoSystem,
+    synchronizeFlyingSwordGroupCenterSystem,
 } from "./systems";
 
 export class FlyingSwordDemoSimulationModule implements Module {
     build(builder: GameBuilder): void {
         builder
             .addState(DemoSceneState)
-            .addService(DemoFlyingSwordSpatialService)
             .addService(DemoInputService);
         builder.addSystem(setupFlyingSwordDemoSystem);
         builder.addSystem(
@@ -25,8 +25,12 @@ export class FlyingSwordDemoSimulationModule implements Module {
             DemoInputSystemOptions,
         );
         builder.addSystem(
-            moveCultivatorsSystem,
-            DemoCultivatorMovementSystemOptions,
+            synchronizeFlyingSwordGroupCenterSystem,
+            DemoGroupCenterSystemOptions,
+        );
+        builder.addSystem(
+            resolveCultivatorMovementSystem,
+            DemoMovementResultSystemOptions,
         );
     }
 }

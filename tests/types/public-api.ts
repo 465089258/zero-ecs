@@ -55,12 +55,13 @@ import {
     FlyingSwordView,
     PiercingCloudSkillPlan,
     type CompiledFlyingSwordSkillPlan,
-    type FlyingSwordViewData,
-    type Vector3Out,
+    type FlyingSwordMemberViewData,
 } from "@zero-ecs/flying-sword";
 import {
-    FlyingSwordSpatialService,
-} from "@zero-ecs/flying-sword/integration";
+    Motion3Module,
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
 import {
     Float2,
     Position2Type as MathPosition2Type,
@@ -147,9 +148,20 @@ type WorldParamIsWorld = Assert<Equal<SystemParamValue<typeof World>, World>>;
 const childProjection: QueryProjection = ChildOf;
 componentWorld.query(QueryType.from(With(ChildOf)));
 new GameBuilder().addModule(new HierarchyModule());
-const flyingSwordProjection: QueryProjection<FlyingSwordViewData> = FlyingSwordView;
+const flyingSwordProjection:
+    QueryProjection<FlyingSwordMemberViewData> = FlyingSwordView;
 componentWorld.query(FlyingSwordQuery);
-new GameBuilder().addModule(new FlyingSwordModule());
+function verifyFlyingSwordQueryIsReadonly(): void {
+    const iter = componentWorld.query(FlyingSwordQuery).iter();
+    if (!iter.next()) return;
+    const positions = iter.current[4];
+    positions[Float3.X][0];
+    // @ts-expect-error FlyingSwordQuery exposes Math storage through a readonly projection.
+    positions[Float3.X][0] = 1;
+}
+new GameBuilder()
+    .addModule(new Motion3Module())
+    .addModule(new FlyingSwordModule());
 const customFlyingSwordSkillPlan: CompiledFlyingSwordSkillPlan = {
     ...PiercingCloudSkillPlan,
     id: 2,
@@ -171,6 +183,8 @@ if (flyingSwordSkillPhase === FlyingSwordSkillPhase.Gather) {
 }
 componentWorld.component(MathPosition2Type);
 componentWorld.component(MathPosition3Type);
+componentWorld.component(MoveTowards3Type);
+MoveTowards3.TargetZ;
 componentWorld.component(TopDownCamera3Type);
 componentWorld.component(OrthographicCameraType);
 componentWorld.component(CameraBasis3Type);
@@ -184,19 +198,6 @@ const float2Columns: Float2Columns = mathPosition2Columns;
 const float3Columns: Float3Columns = mathPosition3Columns;
 float2Columns[Float2.X];
 float3Columns[Float3.Z];
-
-class TestFlyingSwordSpatialService extends FlyingSwordSpatialService {
-    readPosition(_entity: Entity, out: Vector3Out): boolean {
-        out.x = 0;
-        out.y = 0;
-        out.z = 0;
-        return true;
-    }
-}
-
-new GameBuilder().addService(TestFlyingSwordSpatialService);
-// @ts-expect-error Spatial adapter token is abstract and requires a concrete host implementation.
-new GameBuilder().addService(FlyingSwordSpatialService);
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {

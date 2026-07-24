@@ -5,18 +5,31 @@ import {
     type Entity,
 } from "@zero-ecs/game";
 import {
-    FlyingSwordField,
+    Direction3Type,
+    Float3,
+    Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
+} from "@zero-ecs/math/3d";
+import {
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
+import {
+    FlyingSwordFlight,
     FlyingSwordGroupField,
+    FlyingSwordMember,
     FlyingSwordMode,
-    FlyingSwordState,
     type CreateFlyingSwordGroupOptions,
     type CreateFlyingSwordOptions,
     type ReadonlyVector3,
 } from "./types";
 import { FlyingSwordRequestState } from "./runtime/request-state";
 import {
+    FlyingSwordFlightStorage,
+    FlyingSwordFormationGoal3Storage,
     FlyingSwordGroupStorage,
-    FlyingSwordStorage,
+    FlyingSwordMemberStorage,
 } from "./runtime/storage";
 
 /**
@@ -76,7 +89,6 @@ export class FlyingSwordService extends Service {
     createSword(options: CreateFlyingSwordOptions): Entity {
         vector("position", options.position);
         const slot = integerInRange("slot", options.slot ?? 0, 0, 0xffff);
-        const visualId = integerInRange("visualId", options.visualId ?? 0, 0, 0xffff);
         const maximumSpeed = positive("maximumSpeed", options.maximumSpeed ?? 12);
         const acceleration = positive("acceleration", options.acceleration ?? 36);
         const { x, y, z } = options.position;
@@ -84,50 +96,63 @@ export class FlyingSwordService extends Service {
         const command = this.commands.spawn();
         const entity = command.entity;
         command
-            .add(FlyingSwordStorage)
-            .set(FlyingSwordStorage, FlyingSwordField.Group, options.group)
-            .set(FlyingSwordStorage, FlyingSwordField.PreviousX, x)
-            .set(FlyingSwordStorage, FlyingSwordField.PreviousY, y)
-            .set(FlyingSwordStorage, FlyingSwordField.PreviousZ, z)
-            .set(FlyingSwordStorage, FlyingSwordField.X, x)
-            .set(FlyingSwordStorage, FlyingSwordField.Y, y)
-            .set(FlyingSwordStorage, FlyingSwordField.Z, z)
-            .set(FlyingSwordStorage, FlyingSwordField.VelocityX, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.VelocityY, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.VelocityZ, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.ForwardX, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.ForwardY, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.ForwardZ, 1)
-            .set(FlyingSwordStorage, FlyingSwordField.MaximumSpeed, maximumSpeed)
-            .set(FlyingSwordStorage, FlyingSwordField.Acceleration, acceleration)
-            .set(FlyingSwordStorage, FlyingSwordField.Slot, slot)
-            .set(FlyingSwordStorage, FlyingSwordField.VisualId, visualId)
-            .set(FlyingSwordStorage, FlyingSwordField.State, FlyingSwordState.Active)
-            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalX, x)
-            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalY, y)
-            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalZ, z)
-            .set(FlyingSwordStorage, FlyingSwordField.GoalX, x)
-            .set(FlyingSwordStorage, FlyingSwordField.GoalY, y)
-            .set(FlyingSwordStorage, FlyingSwordField.GoalZ, z)
-            .set(FlyingSwordStorage, FlyingSwordField.ArrivalRadius, 0.15)
-            .set(FlyingSwordStorage, FlyingSwordField.SpeedMultiplier, 1)
-            .set(FlyingSwordStorage, FlyingSwordField.AccelerationMultiplier, 1)
-            .set(FlyingSwordStorage, FlyingSwordField.ActionSequence, 0)
+            .add(FlyingSwordMemberStorage)
+            .add(FlyingSwordFlightStorage)
+            .add(Position3Type)
+            .add(PreviousPosition3Type)
+            .add(Velocity3Type)
+            .add(Direction3Type)
+            .add(FlyingSwordFormationGoal3Storage)
+            .add(MoveTowards3Type)
             .set(
-                FlyingSwordStorage,
-                FlyingSwordField.ActionPhase,
-                0,
+                FlyingSwordMemberStorage,
+                FlyingSwordMember.Group,
+                options.group,
+            )
+            .set(FlyingSwordMemberStorage, FlyingSwordMember.Slot, slot)
+            .set(
+                FlyingSwordFlightStorage,
+                FlyingSwordFlight.MaximumSpeed,
+                maximumSpeed,
             )
             .set(
-                FlyingSwordStorage,
-                FlyingSwordField.ActionPhaseStartTick,
-                0,
+                FlyingSwordFlightStorage,
+                FlyingSwordFlight.Acceleration,
+                acceleration,
             )
-            .set(FlyingSwordStorage, FlyingSwordField.ActionRole, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.ContactActive, 0)
-            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartX, x)
-            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartY, y)
-            .set(FlyingSwordStorage, FlyingSwordField.TrajectoryStartZ, z)
+            .set(Position3Type, Float3.X, x)
+            .set(Position3Type, Float3.Y, y)
+            .set(Position3Type, Float3.Z, z)
+            .set(PreviousPosition3Type, Float3.X, x)
+            .set(PreviousPosition3Type, Float3.Y, y)
+            .set(PreviousPosition3Type, Float3.Z, z)
+            .set(Velocity3Type, Float3.X, 0)
+            .set(Velocity3Type, Float3.Y, 0)
+            .set(Velocity3Type, Float3.Z, 0)
+            .set(Direction3Type, Float3.X, 0)
+            .set(Direction3Type, Float3.Y, 0)
+            .set(Direction3Type, Float3.Z, 1)
+            .set(FlyingSwordFormationGoal3Storage, Float3.X, x)
+            .set(FlyingSwordFormationGoal3Storage, Float3.Y, y)
+            .set(FlyingSwordFormationGoal3Storage, Float3.Z, z)
+            .set(MoveTowards3Type, MoveTowards3.TargetX, x)
+            .set(MoveTowards3Type, MoveTowards3.TargetY, y)
+            .set(MoveTowards3Type, MoveTowards3.TargetZ, z)
+            .set(
+                MoveTowards3Type,
+                MoveTowards3.MaximumSpeed,
+                maximumSpeed,
+            )
+            .set(
+                MoveTowards3Type,
+                MoveTowards3.Acceleration,
+                acceleration,
+            )
+            .set(
+                MoveTowards3Type,
+                MoveTowards3.ArrivalRadius,
+                DEFAULT_ARRIVAL_RADIUS,
+            )
             .submit();
         return entity;
     }
@@ -153,6 +178,7 @@ export class FlyingSwordService extends Service {
 }
 
 const ZERO_VECTOR: ReadonlyVector3 = Object.freeze({ x: 0, y: 0, z: 0 });
+const DEFAULT_ARRIVAL_RADIUS = 0.15;
 
 function finite(name: string, value: number): number {
     if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);

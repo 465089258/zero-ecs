@@ -7,16 +7,23 @@ export {
 export { FlyingSwordSkillService } from "./skill-service";
 export { FlyingSwordSystemSet } from "./system-set";
 export {
+    FlyingSwordActionQuery,
+    FlyingSwordActionView,
+    FlyingSwordContactQuery,
+    FlyingSwordContactWindow,
+    FlyingSwordDirection3View,
     FlyingSwordGroupQuery,
     FlyingSwordGroupView,
+    FlyingSwordPosition3View,
+    FlyingSwordPreviousPosition3View,
     FlyingSwordQuery,
     FlyingSwordView,
 } from "./views";
 export {
-    FlyingSwordField,
+    FlyingSwordAction,
     FlyingSwordGroupField,
+    FlyingSwordMember,
     FlyingSwordMode,
-    FlyingSwordState,
 } from "./types";
 export {
     FlyingSwordSkillPhase,
@@ -26,9 +33,9 @@ export type {
     CreateFlyingSwordGroupOptions,
     CreateFlyingSwordOptions,
     FlyingSwordGroupViewData,
-    FlyingSwordViewData,
+    FlyingSwordActionViewData,
+    FlyingSwordMemberViewData,
     ReadonlyVector3,
-    Vector3Out,
 } from "./types";
 export type {
     ActivateFlyingSwordSkillOptions,
