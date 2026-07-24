@@ -23,7 +23,6 @@ export default defineConfig({
       "@zero-ecs/math/projection": resolve("packages/math/src/projection.ts"),
       "@zero-ecs/math": resolve("packages/math/src/index.ts"),
       "@zero-ecs/flying-sword/integration": resolve("packages/flying-sword/src/integration.ts"),
-      "@zero-ecs/flying-sword/presentation": resolve("packages/flying-sword/src/presentation.ts"),
       "@zero-ecs/flying-sword": resolve("packages/flying-sword/src/index.ts"),
     },
   },

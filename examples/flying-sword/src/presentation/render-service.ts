@@ -11,12 +11,14 @@ import {
 } from "@zero-ecs/flying-sword";
 import {
     DepthRenderQueue,
-    FlyingSwordRenderLayer,
+    type DepthRenderItem,
+    DemoRenderLayer,
+} from "./render-queue";
+import {
     TopDownOrthographicCamera,
     degreesToRadians,
-    type DepthRenderItem,
     type ProjectedPoint,
-} from "@zero-ecs/flying-sword/presentation";
+} from "./camera";
 import { DemoViewResource } from "../app/resources";
 import swordFlameUrl from "../assets/swords/sword-flame.png";
 import swordFrostUrl from "../assets/swords/sword-frost.png";
@@ -64,7 +66,7 @@ export class DemoRenderService extends Service {
     private readonly queue = new DepthRenderQueue<DemoRenderItem>(() => ({
         kind: RenderKind.Sword,
         sprite: 0,
-        layer: FlyingSwordRenderLayer.World,
+        layer: DemoRenderLayer.World,
         depth: 0,
         subOrder: 0,
         stableId: 0,
@@ -187,7 +189,7 @@ export class DemoRenderService extends Service {
                 const item = this.queue.acquire();
                 item.kind = RenderKind.Cultivator;
                 item.sprite = 0;
-                item.layer = FlyingSwordRenderLayer.World;
+                item.layer = DemoRenderLayer.World;
                 item.depth = this.projected.depth;
                 item.subOrder = 0;
                 item.stableId = entities[row] * 4 + 2;
@@ -252,7 +254,7 @@ export class DemoRenderService extends Service {
                 const shadow = this.queue.acquire();
                 shadow.kind = RenderKind.Shadow;
                 shadow.sprite = spriteIndex;
-                shadow.layer = FlyingSwordRenderLayer.Shadow;
+                shadow.layer = DemoRenderLayer.Shadow;
                 shadow.depth = (this.projected.depth + this.projectedSecond.depth) * 0.5;
                 shadow.subOrder = 0;
                 shadow.stableId = entity * 4;
@@ -278,7 +280,7 @@ export class DemoRenderService extends Service {
                 const sword = this.queue.acquire();
                 sword.kind = RenderKind.Sword;
                 sword.sprite = spriteIndex;
-                sword.layer = FlyingSwordRenderLayer.World;
+                sword.layer = DemoRenderLayer.World;
                 sword.depth = (this.projected.depth + this.projectedSecond.depth) * 0.5;
                 sword.subOrder = 1;
                 sword.stableId = entity * 4 + 1;

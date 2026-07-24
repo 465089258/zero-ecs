@@ -28,8 +28,7 @@
       "@zero-ecs/math/3d": ["./packages/math/src/3d.ts"],
       "@zero-ecs/math/projection": ["./packages/math/src/projection.ts"],
       "@zero-ecs/flying-sword": ["./packages/flying-sword/src/index.ts"],
-      "@zero-ecs/flying-sword/integration": ["./packages/flying-sword/src/integration.ts"],
-      "@zero-ecs/flying-sword/presentation": ["./packages/flying-sword/src/presentation.ts"]
+      "@zero-ecs/flying-sword/integration": ["./packages/flying-sword/src/integration.ts"]
     }
   }
 }

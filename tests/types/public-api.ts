@@ -56,11 +56,6 @@ import {
     FlyingSwordSpatialService,
 } from "@zero-ecs/flying-sword/integration";
 import {
-    DepthRenderQueue,
-    TopDownOrthographicCamera,
-    degreesToRadians,
-} from "@zero-ecs/flying-sword/presentation";
-import {
     Float2,
     Position2Type as MathPosition2Type,
     type Float2Columns,
@@ -177,17 +172,6 @@ class TestFlyingSwordSpatialService extends FlyingSwordSpatialService {
 new GameBuilder().addService(TestFlyingSwordSpatialService);
 // @ts-expect-error Spatial adapter token is abstract and requires a concrete host implementation.
 new GameBuilder().addService(FlyingSwordSpatialService);
-const flyingSwordCamera = new TopDownOrthographicCamera({
-    viewportWidth: 960,
-    viewportHeight: 640,
-    elevation: degreesToRadians(50),
-});
-const flyingSwordRenderQueue = new DepthRenderQueue(() => ({
-    layer: 0,
-    depth: 0,
-    subOrder: 0,
-    stableId: 0,
-}));
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {
@@ -381,7 +365,5 @@ void childProjection;
 void HierarchyService;
 void flyingSwordProjection;
 void FlyingSwordService;
-void flyingSwordCamera;
-void flyingSwordRenderQueue;
 void float2Columns;
 void float3Columns;

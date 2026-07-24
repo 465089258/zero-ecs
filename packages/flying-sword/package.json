@@ -6,8 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./integration": { "types": "./dist/integration.d.ts", "import": "./dist/integration.js" },
-    "./presentation": { "types": "./dist/presentation.d.ts", "import": "./dist/presentation.js" }
+    "./integration": { "types": "./dist/integration.d.ts", "import": "./dist/integration.js" }
   },
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md"],

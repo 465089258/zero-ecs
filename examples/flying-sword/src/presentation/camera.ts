@@ -1,7 +1,7 @@
 import type {
     ReadonlyVector3,
     Vector3Out,
-} from "../types";
+} from "@zero-ecs/flying-sword";
 
 /** 投影后的屏幕坐标和相机空间深度。 */
 export interface ProjectedPoint {

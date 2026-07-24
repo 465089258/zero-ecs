@@ -6,8 +6,8 @@ export interface DepthRenderItem {
     stableId: number;
 }
 
-/** 默认渲染大层；世界对象之间仍应依靠 depth 决定遮挡。 */
-export const FlyingSwordRenderLayer = Object.freeze({
+/** 示例渲染大层；世界对象之间仍依靠相机空间 depth 决定遮挡。 */
+export const DemoRenderLayer = Object.freeze({
     Background: 0,
     Ground: 10,
     Shadow: 20,

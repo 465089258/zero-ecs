@@ -19,7 +19,6 @@ const math3d = await import("@zero-ecs/math/3d");
 const mathProjection = await import("@zero-ecs/math/projection");
 const flyingSword = await import("@zero-ecs/flying-sword");
 const flyingSwordIntegration = await import("@zero-ecs/flying-sword/integration");
-const flyingSwordPresentation = await import("@zero-ecs/flying-sword/presentation");
 
 assert.equal(typeof world.World, "function");
 assert.equal("EntityRef" in world, false);
@@ -108,8 +107,6 @@ assert.equal(typeof flyingSword.FlyingSwordService, "function");
 assert.equal(typeof flyingSword.FlyingSwordQuery, "object");
 assert.equal("FlyingSwordStorage" in flyingSword, false);
 assert.equal(typeof flyingSwordIntegration.FlyingSwordSpatialService, "function");
-assert.equal(typeof flyingSwordPresentation.TopDownOrthographicCamera, "function");
-assert.equal(typeof flyingSwordPresentation.DepthRenderQueue, "function");
 
 assert.equal("Ecs" in game, false);
 assert.equal("EcsBuilder" in game, false);
@@ -150,6 +147,10 @@ await assert.rejects(
     error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
 );
 await assert.rejects(
+    import("@zero-ecs/flying-sword/presentation"),
+    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+);
+await assert.rejects(
     import("@zero-ecs/math/dist/3d/components.js"),
     error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
 );
@@ -182,8 +183,19 @@ for (const file of mathSources) {
     assert.doesNotMatch(imports, /@zero-ecs\/(?:world|scheduler|flying-sword)/, file);
 }
 for (const file of flyingSwordSources) {
-    const imports = importLines(await readFile(file, "utf8"));
+    const source = await readFile(file, "utf8");
+    const imports = importLines(source);
     assert.doesNotMatch(imports, /@zero-ecs\/(?:world|scheduler)/, file);
+    assert.doesNotMatch(
+        imports,
+        /@zero-ecs\/math(?:\/(?:2d|projection))?(?:\n|$)/,
+        file,
+    );
+    assert.doesNotMatch(
+        source,
+        /CanvasRenderingContext2D|HTMLCanvasElement|TopDownOrthographicCamera|ProjectedPoint|DepthRenderQueue/,
+        file,
+    );
 }
 
 const gameManifest = JSON.parse(await readFile("packages/game/package.json", "utf8"));
@@ -195,6 +207,7 @@ const flyingSwordManifest = JSON.parse(
 const mathManifest = JSON.parse(await readFile("packages/math/package.json", "utf8"));
 assert.equal(mathManifest.peerDependencies["@zero-ecs/game"], "^0.1.0");
 assert.equal(flyingSwordManifest.peerDependencies["@zero-ecs/game"], "^0.1.0");
+assert.equal("./presentation" in flyingSwordManifest.exports, false);
 
 async function sourceFiles(directory) {
     const result = [];
