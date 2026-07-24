@@ -132,24 +132,32 @@ function applyFlyingSwordSkillRequests(
     requests: Mut<FlyingSwordSkillRequestState>,
     actions: Mut<FlyingSwordSkillActionState>,
 ): void {
-    for (let request = 0; request < requests.count; request++) {
-        const group = requests.groups[request];
+    const requestCount = requests.count;
+    const kinds = requests.kinds;
+    const groups = requests.groups;
+    const planIds = requests.planIds;
+    const targetXs = requests.targetXs;
+    const targetYs = requests.targetYs;
+    const targetZs = requests.targetZs;
+    const tick = time.tick;
+    for (let request = 0; request < requestCount; request++) {
+        const group = groups[request];
         if (
-            requests.kinds[request] ===
+            kinds[request] ===
             FlyingSwordSkillRequestKind.Activate
         ) {
-            const planId = requests.planIds[request];
+            const planId = planIds[request];
             catalog.require(planId);
             actions.activate(
                 group,
                 planId,
-                requests.targetXs[request],
-                requests.targetYs[request],
-                requests.targetZs[request],
-                time.tick,
+                targetXs[request],
+                targetYs[request],
+                targetZs[request],
+                tick,
             );
         } else {
-            actions.requestReturn(group, time.tick);
+            actions.requestReturn(group, tick);
         }
     }
     requests.clear();
@@ -162,15 +170,25 @@ function acquireFlyingSwordSkills(
     activeSwords: ActiveSwords,
     availableSwords: AvailableSwords,
 ): void {
+    const actionCount = actions.count;
+    const acquired = actions.acquired;
+    const reservedCounts = actions.reservedCounts;
+    const remainingCounts = actions.remainingCounts;
+    const indices = actions.indices;
+    const planIds = actions.planIds;
+    const sequencesByAction = actions.sequences;
+    const startTicks = actions.startTicks;
+    const stages = actions.stages;
+    const displayPhases = actions.displayPhases;
     let pending = 0;
-    for (let action = 0; action < actions.count; action++) {
-        if (actions.acquired[action] === ACQUIRE_PENDING_COMMIT) {
-            actions.acquired[action] = ACQUIRE_READY;
+    for (let action = 0; action < actionCount; action++) {
+        if (acquired[action] === ACQUIRE_PENDING_COMMIT) {
+            acquired[action] = ACQUIRE_READY;
             continue;
         }
-        if (actions.acquired[action] !== ACQUIRE_NONE) continue;
-        actions.reservedCounts[action] = 0;
-        actions.remainingCounts[action] = 0;
+        if (acquired[action] !== ACQUIRE_NONE) continue;
+        reservedCounts[action] = 0;
+        remainingCounts[action] = 0;
         pending++;
     }
     if (pending === 0) return;
@@ -207,15 +225,15 @@ function acquireFlyingSwordSkills(
         const hasContactWindow = contactWindow !== undefined;
 
         for (let row = 0; row < count; row++) {
-            const action = actions.indices.get(groups[row]);
+            const action = indices.get(groups[row]);
             if (
                 action === undefined ||
-                actions.acquired[action] !== ACQUIRE_NONE
+                acquired[action] !== ACQUIRE_NONE
             ) {
                 continue;
             }
-            const plan = catalog.require(actions.planIds[action]);
-            const role = actions.reservedCounts[action];
+            const plan = catalog.require(planIds[action]);
+            const role = reservedCounts[action];
             if (role >= plan.maximumSwords) {
                 removeSkillComponents(
                     commands,
@@ -224,9 +242,9 @@ function acquireFlyingSwordSkills(
                 );
                 continue;
             }
-            sequences[row] = actions.sequences[action];
+            sequences[row] = sequencesByAction[action];
             phases[row] = FlyingSwordSkillPhase.Gather;
-            phaseStartTicks[row] = actions.startTicks[action];
+            phaseStartTicks[row] = startTicks[action];
             roles[row] = role;
             trajectoryStartXs[row] = xs[row];
             trajectoryStartYs[row] = ys[row];
@@ -237,7 +255,7 @@ function acquireFlyingSwordSkills(
                     .remove(FlyingSwordContactWindowStorage)
                     .submit();
             }
-            actions.reservedCounts[action] = role + 1;
+            reservedCounts[action] = role + 1;
         }
     }
 
@@ -251,15 +269,15 @@ function acquireFlyingSwordSkills(
         const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
         for (let row = 0; row < count; row++) {
-            const action = actions.indices.get(groups[row]);
+            const action = indices.get(groups[row]);
             if (
                 action === undefined ||
-                actions.acquired[action] !== ACQUIRE_NONE
+                acquired[action] !== ACQUIRE_NONE
             ) {
                 continue;
             }
-            const plan = catalog.require(actions.planIds[action]);
-            const role = actions.reservedCounts[action];
+            const plan = catalog.require(planIds[action]);
+            const role = reservedCounts[action];
             if (role >= plan.maximumSwords) continue;
             commands
                 .entity(entities[row])
@@ -267,7 +285,7 @@ function acquireFlyingSwordSkills(
                 .set(
                     FlyingSwordSkillActionStorage,
                     FlyingSwordAction.Sequence,
-                    actions.sequences[action],
+                    sequencesByAction[action],
                 )
                 .set(
                     FlyingSwordSkillActionStorage,
@@ -277,7 +295,7 @@ function acquireFlyingSwordSkills(
                 .set(
                     FlyingSwordSkillActionStorage,
                     FlyingSwordAction.PhaseStartTick,
-                    actions.startTicks[action],
+                    startTicks[action],
                 )
                 .set(
                     FlyingSwordSkillActionStorage,
@@ -300,20 +318,19 @@ function acquireFlyingSwordSkills(
                     zs[row],
                 )
                 .submit();
-            actions.reservedCounts[action] = role + 1;
+            reservedCounts[action] = role + 1;
         }
     }
 
-    for (let action = 0; action < actions.count; action++) {
-        if (actions.acquired[action] !== ACQUIRE_NONE) continue;
-        const reserved = actions.reservedCounts[action];
-        const plan = catalog.require(actions.planIds[action]);
-        actions.acquired[action] = ACQUIRE_PENDING_COMMIT;
-        actions.remainingCounts[action] = reserved;
+    for (let action = 0; action < actionCount; action++) {
+        if (acquired[action] !== ACQUIRE_NONE) continue;
+        const reserved = reservedCounts[action];
+        const plan = catalog.require(planIds[action]);
+        acquired[action] = ACQUIRE_PENDING_COMMIT;
+        remainingCounts[action] = reserved;
         if (reserved < plan.minimumSwords) {
-            actions.stages[action] = FlyingSwordSkillPhase.Return;
-            actions.displayPhases[action] =
-                FlyingSwordSkillPhase.Return;
+            stages[action] = FlyingSwordSkillPhase.Return;
+            displayPhases[action] = FlyingSwordSkillPhase.Return;
         }
     }
 }
@@ -326,6 +343,18 @@ function guideFlyingSwordSkills(
     runtime: Readonly<FlyingSwordRuntimeState>,
     swords: GuidedSwords,
 ): void {
+    const tick = time.tick;
+    const actionIndices = actions.indices;
+    const actionSequences = actions.sequences;
+    const actionAcquired = actions.acquired;
+    const actionPlanIds = actions.planIds;
+    const actionTargetXs = actions.targetXs;
+    const actionTargetYs = actions.targetYs;
+    const actionTargetZs = actions.targetZs;
+    const reservedCounts = actions.reservedCounts;
+    const stages = actions.stages;
+    const actionPhaseStartTicks = actions.phaseStartTicks;
+    const snapshots = runtime.groups;
     const iter = swords.iter();
     while (iter.next()) {
         const [
@@ -412,10 +441,10 @@ function guideFlyingSwordSkills(
         let stageStartTick = 0;
 
         for (let row = 0; row < count; row++) {
-            const action = actions.indices.get(groups[row]);
+            const action = actionIndices.get(groups[row]);
             if (
                 action === undefined ||
-                actions.sequences[action] !== sequences[row]
+                actionSequences[action] !== sequences[row]
             ) {
                 removeSkillComponents(
                     commands,
@@ -440,7 +469,7 @@ function guideFlyingSwordSkills(
                 );
                 continue;
             }
-            if (actions.acquired[action] !== ACQUIRE_READY) {
+            if (actionAcquired[action] !== ACQUIRE_READY) {
                 writeFormationMotion(
                     formationGoalXs,
                     formationGoalYs,
@@ -460,16 +489,16 @@ function guideFlyingSwordSkills(
                 continue;
             }
             if (action !== cachedAction) {
-                const snapshot = runtime.groups.get(groups[row]);
-                if (!snapshot || snapshot.tick !== time.tick) continue;
+                const snapshot = snapshots.get(groups[row]);
+                if (!snapshot || snapshot.tick !== tick) continue;
                 cachedAction = action;
-                cachedPlan = catalog.require(actions.planIds[action]);
+                cachedPlan = catalog.require(actionPlanIds[action]);
                 cachedCenterX = snapshot.centerX;
                 cachedCenterY = snapshot.centerY;
                 cachedCenterZ = snapshot.centerZ;
-                cachedTargetX = actions.targetXs[action];
-                cachedTargetY = actions.targetYs[action];
-                cachedTargetZ = actions.targetZs[action];
+                cachedTargetX = actionTargetXs[action];
+                cachedTargetY = actionTargetYs[action];
+                cachedTargetZ = actionTargetZs[action];
                 const dx = cachedTargetX - cachedCenterX;
                 const dz = cachedTargetZ - cachedCenterZ;
                 const length = Math.sqrt(dx * dx + dz * dz);
@@ -484,14 +513,14 @@ function guideFlyingSwordSkills(
                 rightZ = -directionX;
                 reserved = Math.max(
                     1,
-                    actions.reservedCounts[action],
+                    reservedCounts[action],
                 );
                 columns = Math.max(
                     1,
                     Math.ceil(Math.sqrt(reserved)),
                 );
-                stage = actions.stages[action];
-                stageStartTick = actions.phaseStartTicks[action];
+                stage = stages[action];
+                stageStartTick = actionPhaseStartTicks[action];
             }
 
             const plan = cachedPlan;
@@ -569,7 +598,7 @@ function guideFlyingSwordSkills(
             const phase = phases[row];
             if (
                 phase === FlyingSwordSkillPhase.Launch &&
-                time.tick < phaseStartTicks[row]
+                tick < phaseStartTicks[row]
             ) {
                 writeGatherMotion(
                     plan,
@@ -599,13 +628,13 @@ function guideFlyingSwordSkills(
                     reserved,
                     plan.strikeSpread,
                 );
-                if (time.tick === phaseStartTicks[row]) {
+                if (tick === phaseStartTicks[row]) {
                     trajectoryStartXs[row] = xs[row];
                     trajectoryStartYs[row] = ys[row];
                     trajectoryStartZs[row] = zs[row];
                 }
                 const contactActive = writeLaunchCurveMotion(
-                    time.tick - phaseStartTicks[row],
+                    tick - phaseStartTicks[row],
                     plan,
                     maximumSpeeds[row],
                     accelerations[row],
@@ -699,23 +728,36 @@ function resolveFlyingSwordSkills(
     actions: Mut<FlyingSwordSkillActionState>,
     swords: ActiveSwords,
 ): void {
-    if (actions.count === 0) return;
-    for (let action = 0; action < actions.count; action++) {
-        if (actions.acquired[action] !== ACQUIRE_READY) continue;
-        actions.remainingCounts[action] = 0;
-        actions.gatherArrivedCounts[action] = 0;
-        actions.observedMaximumPhases[action] =
+    const actionCount = actions.count;
+    if (actionCount === 0) return;
+    const tick = time.tick;
+    const acquired = actions.acquired;
+    const remainingCounts = actions.remainingCounts;
+    const gatherArrivedCounts = actions.gatherArrivedCounts;
+    const observedMaximumPhases = actions.observedMaximumPhases;
+    const planIds = actions.planIds;
+    const stages = actions.stages;
+    const startTicks = actions.startTicks;
+    const displayPhases = actions.displayPhases;
+    const actionPhaseStartTicks = actions.phaseStartTicks;
+    const actionSequences = actions.sequences;
+    const reservedCounts = actions.reservedCounts;
+    const indices = actions.indices;
+    for (let action = 0; action < actionCount; action++) {
+        if (acquired[action] !== ACQUIRE_READY) continue;
+        remainingCounts[action] = 0;
+        gatherArrivedCounts[action] = 0;
+        observedMaximumPhases[action] =
             FlyingSwordSkillPhase.Gather;
-        const plan = catalog.require(actions.planIds[action]);
+        const plan = catalog.require(planIds[action]);
         if (
-            actions.stages[action] !== FlyingSwordSkillPhase.Return &&
-            time.tick - actions.startTicks[action] >=
+            stages[action] !== FlyingSwordSkillPhase.Return &&
+            tick - startTicks[action] >=
             plan.actionTimeoutTicks
         ) {
-            actions.stages[action] = FlyingSwordSkillPhase.Return;
-            actions.displayPhases[action] =
-                FlyingSwordSkillPhase.Return;
-            actions.phaseStartTicks[action] = time.tick;
+            stages[action] = FlyingSwordSkillPhase.Return;
+            displayPhases[action] = FlyingSwordSkillPhase.Return;
+            actionPhaseStartTicks[action] = tick;
         }
     }
 
@@ -747,10 +789,10 @@ function resolveFlyingSwordSkills(
         const hasContactWindow = contactWindow !== undefined;
 
         for (let row = 0; row < count; row++) {
-            const action = actions.indices.get(groups[row]);
+            const action = indices.get(groups[row]);
             if (
                 action === undefined ||
-                actions.sequences[action] !== sequences[row]
+                actionSequences[action] !== sequences[row]
             ) {
                 removeSkillComponents(
                     commands,
@@ -759,8 +801,8 @@ function resolveFlyingSwordSkills(
                 );
                 continue;
             }
-            if (actions.acquired[action] !== ACQUIRE_READY) continue;
-            const plan = catalog.require(actions.planIds[action]);
+            if (acquired[action] !== ACQUIRE_READY) continue;
+            const plan = catalog.require(planIds[action]);
             const dx = targetXs[row] - xs[row];
             const dy = targetYs[row] - ys[row];
             const dz = targetZs[row] - zs[row];
@@ -770,43 +812,43 @@ function resolveFlyingSwordSkills(
                 arrivalRadii[row] * arrivalRadii[row];
 
             if (
-                actions.stages[action] ===
+                stages[action] ===
                 FlyingSwordSkillPhase.Gather
             ) {
-                actions.remainingCounts[action]++;
-                if (arrived) actions.gatherArrivedCounts[action]++;
+                remainingCounts[action]++;
+                if (arrived) gatherArrivedCounts[action]++;
                 continue;
             }
 
             if (
-                actions.stages[action] ===
+                stages[action] ===
                 FlyingSwordSkillPhase.Return &&
                 phases[row] !== FlyingSwordSkillPhase.Rejoin
             ) {
                 phases[row] = FlyingSwordSkillPhase.Return;
-                phaseStartTicks[row] = time.tick;
+                phaseStartTicks[row] = tick;
             }
 
             let phase = phases[row];
             if (
                 phase === FlyingSwordSkillPhase.Launch &&
-                time.tick >= phaseStartTicks[row]
+                tick >= phaseStartTicks[row]
             ) {
                 const launchElapsed =
-                    time.tick - phaseStartTicks[row];
+                    tick - phaseStartTicks[row];
                 if (
                     launchElapsed >= plan.launchCurveTicks &&
                     arrived
                 ) {
                     phase = FlyingSwordSkillPhase.Strike;
                     phases[row] = phase;
-                    phaseStartTicks[row] = time.tick;
+                    phaseStartTicks[row] = tick;
                 } else if (
                     launchElapsed >= plan.launchTimeoutTicks
                 ) {
                     phase = FlyingSwordSkillPhase.Return;
                     phases[row] = phase;
-                    phaseStartTicks[row] = time.tick;
+                    phaseStartTicks[row] = tick;
                     updateContactWindow(
                         commands,
                         entities[row],
@@ -817,12 +859,12 @@ function resolveFlyingSwordSkills(
             } else if (phase === FlyingSwordSkillPhase.Strike) {
                 if (
                     arrived ||
-                    time.tick - phaseStartTicks[row] >=
+                    tick - phaseStartTicks[row] >=
                     plan.strikeTicks
                 ) {
                     phase = FlyingSwordSkillPhase.Return;
                     phases[row] = phase;
-                    phaseStartTicks[row] = time.tick;
+                    phaseStartTicks[row] = tick;
                     updateContactWindow(
                         commands,
                         entities[row],
@@ -834,11 +876,11 @@ function resolveFlyingSwordSkills(
                 if (arrived) {
                     phase = FlyingSwordSkillPhase.Rejoin;
                     phases[row] = phase;
-                    phaseStartTicks[row] = time.tick;
+                    phaseStartTicks[row] = tick;
                 }
             } else if (phase === FlyingSwordSkillPhase.Rejoin) {
                 if (
-                    time.tick - phaseStartTicks[row] >=
+                    tick - phaseStartTicks[row] >=
                     plan.rejoinTicks
                 ) {
                     removeSkillComponents(
@@ -849,49 +891,44 @@ function resolveFlyingSwordSkills(
                     continue;
                 }
             }
-            actions.remainingCounts[action]++;
-            actions.observedMaximumPhases[action] = Math.max(
-                actions.observedMaximumPhases[action],
+            remainingCounts[action]++;
+            observedMaximumPhases[action] = Math.max(
+                observedMaximumPhases[action],
                 phase,
             );
         }
     }
 
-    for (let action = 0; action < actions.count; action++) {
-        if (actions.acquired[action] !== ACQUIRE_READY) continue;
-        const plan = catalog.require(actions.planIds[action]);
+    for (let action = 0; action < actionCount; action++) {
+        if (acquired[action] !== ACQUIRE_READY) continue;
+        const plan = catalog.require(planIds[action]);
         if (
-            actions.stages[action] === FlyingSwordSkillPhase.Gather
+            stages[action] === FlyingSwordSkillPhase.Gather
         ) {
-            const reserved = actions.reservedCounts[action];
+            const reserved = reservedCounts[action];
             if (
                 reserved > 0 &&
                 (
-                    actions.gatherArrivedCounts[action] / reserved >=
+                    gatherArrivedCounts[action] / reserved >=
                     plan.gatherArrivalRatio ||
-                    time.tick - actions.startTicks[action] >=
+                    tick - startTicks[action] >=
                     plan.gatherTicks
                 )
             ) {
-                actions.stages[action] =
-                    FlyingSwordSkillPhase.Launch;
-                actions.displayPhases[action] =
-                    FlyingSwordSkillPhase.Launch;
-                actions.phaseStartTicks[action] = time.tick;
+                stages[action] = FlyingSwordSkillPhase.Launch;
+                displayPhases[action] = FlyingSwordSkillPhase.Launch;
+                actionPhaseStartTicks[action] = tick;
             } else {
-                actions.displayPhases[action] =
-                    FlyingSwordSkillPhase.Gather;
+                displayPhases[action] = FlyingSwordSkillPhase.Gather;
             }
-        } else if (actions.remainingCounts[action] > 0) {
-            actions.displayPhases[action] =
-                actions.observedMaximumPhases[action];
+        } else if (remainingCounts[action] > 0) {
+            displayPhases[action] = observedMaximumPhases[action];
         } else if (
-            actions.displayPhases[action] !==
+            displayPhases[action] !==
             FlyingSwordSkillPhase.Rejoin
         ) {
-            actions.displayPhases[action] =
-                FlyingSwordSkillPhase.Rejoin;
-            actions.phaseStartTicks[action] = time.tick;
+            displayPhases[action] = FlyingSwordSkillPhase.Rejoin;
+            actionPhaseStartTicks[action] = tick;
         }
     }
 }
@@ -900,13 +937,18 @@ function cleanupFlyingSwordSkills(
     time: Readonly<TimeState>,
     actions: Mut<FlyingSwordSkillActionState>,
 ): void {
+    const acquired = actions.acquired;
+    const remainingCounts = actions.remainingCounts;
+    const displayPhases = actions.displayPhases;
+    const phaseStartTicks = actions.phaseStartTicks;
+    const tick = time.tick;
     for (let action = actions.count - 1; action >= 0; action--) {
         if (
-            actions.acquired[action] === ACQUIRE_READY &&
-            actions.remainingCounts[action] === 0 &&
-            actions.displayPhases[action] ===
+            acquired[action] === ACQUIRE_READY &&
+            remainingCounts[action] === 0 &&
+            displayPhases[action] ===
                 FlyingSwordSkillPhase.Rejoin &&
-            time.tick > actions.phaseStartTicks[action]
+            tick > phaseStartTicks[action]
         ) {
             actions.remove(action);
         }

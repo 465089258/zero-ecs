@@ -21,6 +21,8 @@ export interface FlyingSwordGroupSnapshot {
 /** @internal 固定 Tick 内供各批量系统共享的控制组快照。 */
 export class FlyingSwordRuntimeState extends State {
     readonly groups = new Map<Entity, FlyingSwordGroupSnapshot>();
+    private readonly groupIds: Entity[] = [];
+    private groupCount = 0;
 
     snapshot(group: Entity): FlyingSwordGroupSnapshot {
         let value = this.groups.get(group);
@@ -42,18 +44,28 @@ export class FlyingSwordRuntimeState extends State {
                 mode: 0,
             };
             this.groups.set(group, value);
+            this.groupIds[this.groupCount++] = group;
         }
         return value;
     }
 
     removeStale(tick: number): void {
         if (tick % 120 !== 0) return;
-        for (const [group, snapshot] of this.groups) {
-            if (snapshot.tick !== tick) this.groups.delete(group);
+        const groups = this.groups;
+        const groupIds = this.groupIds;
+        for (let index = this.groupCount - 1; index >= 0; index--) {
+            const group = groupIds[index];
+            const snapshot = groups.get(group);
+            if (snapshot?.tick === tick) continue;
+            groups.delete(group);
+            const last = --this.groupCount;
+            if (index !== last) groupIds[index] = groupIds[last];
         }
     }
 
     dispose(): void {
         this.groups.clear();
+        this.groupIds.length = 0;
+        this.groupCount = 0;
     }
 }

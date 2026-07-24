@@ -6,6 +6,7 @@ import {
     CommandModule,
     GameBuilder,
     INVALID_ENTITY,
+    type Entity,
 } from "@zero-ecs/game";
 import {
     FixedTimeResource,
@@ -81,6 +82,61 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     expect(groups[FlyingSwordGroupField.Mode][0]).toBe(FlyingSwordMode.Focus);
     expect(groups[FlyingSwordGroupField.TargetX][0]).toBe(4);
     expect(groups[FlyingSwordGroupField.TargetZ][0]).toBe(5);
+
+    game.dispose();
+});
+
+test("flying sword requests update their target groups across multiple chunks", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const expectedCenters =
+        new Map<Entity, readonly [number, number, number]>();
+    const groupCount = 320;
+    for (let index = 0; index < groupCount; index++) {
+        const group = flyingSwords.createGroup({
+            owner: INVALID_ENTITY,
+            formationSize: 1,
+        });
+        expectedCenters.set(group, [index, index * 2, -index]);
+    }
+    game.update();
+
+    for (const [group, center] of expectedCenters) {
+        flyingSwords.setCenter(group, {
+            x: center[0],
+            y: center[1],
+            z: center[2],
+        });
+    }
+    game.update();
+
+    let visited = 0;
+    const iter = game.world.query(FlyingSwordGroupQuery).iter();
+    while (iter.next()) {
+        const [count, entities, groups] = iter.current;
+        const centerXs = groups[FlyingSwordGroupField.CenterX];
+        const centerYs = groups[FlyingSwordGroupField.CenterY];
+        const centerZs = groups[FlyingSwordGroupField.CenterZ];
+        const revisions = groups[FlyingSwordGroupField.Revision];
+        for (let row = 0; row < count; row++) {
+            const expected = expectedCenters.get(entities[row]);
+            expect(expected).toBeDefined();
+            expect(centerXs[row]).toBe(expected![0]);
+            expect(centerYs[row]).toBe(expected![1]);
+            expect(centerZs[row]).toBe(expected![2]);
+            expect(revisions[row]).toBe(2);
+            visited++;
+        }
+    }
+    expect(visited).toBe(groupCount);
 
     game.dispose();
 });

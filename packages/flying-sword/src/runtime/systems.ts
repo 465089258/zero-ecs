@@ -1,7 +1,9 @@
 import {
     Update,
+    World,
     Write,
     defSystem,
+    type ComponentColumns,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
@@ -22,6 +24,7 @@ import {
     FlyingSwordGroupStorageQuery,
 } from "./queries";
 import { FlyingSwordRuntimeState } from "./runtime-state";
+import { FlyingSwordGroupStorage } from "./storage";
 
 type Groups = QueryOf<typeof FlyingSwordGroupStorageQuery>;
 type Swords = QueryOf<typeof FlyingSwordBaseStorageQuery>;
@@ -29,7 +32,7 @@ type Swords = QueryOf<typeof FlyingSwordBaseStorageQuery>;
 export const applyFlyingSwordRequestsSystem = defSystem(
     Update.fixed,
     applyFlyingSwordRequests,
-    [Write(FlyingSwordRequestState), FlyingSwordGroupStorageQuery],
+    [World, Write(FlyingSwordRequestState)],
 );
 
 export const snapshotFlyingSwordGroupsSystem = defSystem(
@@ -61,41 +64,57 @@ export const FlyingSwordSystemOptions = Object.freeze({
 });
 
 function applyFlyingSwordRequests(
+    world: World,
     requests: Mut<FlyingSwordRequestState>,
-    groups: Groups,
 ): void {
-    if (requests.count === 0) return;
-    const iter = groups.iter();
-    while (iter.next()) {
-        const [count, entities, data] = iter.current;
-        for (let row = 0; row < count; row++) {
-            const group = entities[row];
-            for (let request = 0; request < requests.count; request++) {
-                if (requests.groups[request] !== group) continue;
-                const kind = requests.kinds[request];
-                if (kind === FlyingSwordRequestKind.SetMode) {
-                    data[FlyingSwordGroupField.Mode][row] =
-                        requests.modes[request];
-                } else if (
-                    kind === FlyingSwordRequestKind.SetTargetPoint
-                ) {
-                    data[FlyingSwordGroupField.TargetX][row] =
-                        requests.xs[request];
-                    data[FlyingSwordGroupField.TargetY][row] =
-                        requests.ys[request];
-                    data[FlyingSwordGroupField.TargetZ][row] =
-                        requests.zs[request];
-                } else if (kind === FlyingSwordRequestKind.SetCenter) {
-                    data[FlyingSwordGroupField.CenterX][row] =
-                        requests.xs[request];
-                    data[FlyingSwordGroupField.CenterY][row] =
-                        requests.ys[request];
-                    data[FlyingSwordGroupField.CenterZ][row] =
-                        requests.zs[request];
-                }
-                data[FlyingSwordGroupField.Revision][row]++;
-            }
+    const requestCount = requests.count;
+    if (requestCount === 0) return;
+
+    const component = world.findComponent(FlyingSwordGroupStorage);
+    if (!component) {
+        requests.clear();
+        return;
+    }
+
+    const kinds = requests.kinds;
+    const groups = requests.groups;
+    const xs = requests.xs;
+    const ys = requests.ys;
+    const zs = requests.zs;
+    const modes = requests.modes;
+    const access = requests.access;
+    const componentId = component.id;
+
+    for (let request = 0; request < requestCount; request++) {
+        if (!world.resolve(groups[request], access)) continue;
+        const archetype = access.archetype;
+        if (!archetype) continue;
+        const data = archetype.getComp(access.row, componentId) as
+            ComponentColumns<FlyingSwordGroupStorage> | null;
+        if (!data) continue;
+
+        const row = archetype.rowIdxOf(access.row);
+        const kind = kinds[request];
+        if (kind === FlyingSwordRequestKind.SetMode) {
+            const groupModes = data[FlyingSwordGroupField.Mode];
+            groupModes[row] = modes[request];
+        } else if (kind === FlyingSwordRequestKind.SetTargetPoint) {
+            const targetXs = data[FlyingSwordGroupField.TargetX];
+            const targetYs = data[FlyingSwordGroupField.TargetY];
+            const targetZs = data[FlyingSwordGroupField.TargetZ];
+            targetXs[row] = xs[request];
+            targetYs[row] = ys[request];
+            targetZs[row] = zs[request];
+        } else if (kind === FlyingSwordRequestKind.SetCenter) {
+            const centerXs = data[FlyingSwordGroupField.CenterX];
+            const centerYs = data[FlyingSwordGroupField.CenterY];
+            const centerZs = data[FlyingSwordGroupField.CenterZ];
+            centerXs[row] = xs[request];
+            centerYs[row] = ys[request];
+            centerZs[row] = zs[request];
         }
+        const revisions = data[FlyingSwordGroupField.Revision];
+        revisions[row]++;
     }
     requests.clear();
 }
@@ -105,40 +124,45 @@ function snapshotFlyingSwordGroups(
     runtime: Mut<FlyingSwordRuntimeState>,
     groups: Groups,
 ): void {
+    const tick = time.tick;
     const iter = groups.iter();
     while (iter.next()) {
         const [count, entities, data] = iter.current;
         const centerXs = data[FlyingSwordGroupField.CenterX];
         const centerYs = data[FlyingSwordGroupField.CenterY];
         const centerZs = data[FlyingSwordGroupField.CenterZ];
+        const targetXs = data[FlyingSwordGroupField.TargetX];
+        const targetYs = data[FlyingSwordGroupField.TargetY];
+        const targetZs = data[FlyingSwordGroupField.TargetZ];
+        const orbitRadii = data[FlyingSwordGroupField.OrbitRadius];
+        const orbitHeights = data[FlyingSwordGroupField.OrbitHeight];
+        const angularSpeeds = data[FlyingSwordGroupField.AngularSpeed];
+        const verticalAmplitudes =
+            data[FlyingSwordGroupField.VerticalAmplitude];
+        const verticalSpeeds =
+            data[FlyingSwordGroupField.VerticalSpeed];
+        const formationSizes =
+            data[FlyingSwordGroupField.FormationSize];
+        const modes = data[FlyingSwordGroupField.Mode];
         for (let row = 0; row < count; row++) {
             const snapshot = runtime.snapshot(entities[row]);
-            snapshot.tick = time.tick;
+            snapshot.tick = tick;
             snapshot.centerX = centerXs[row];
             snapshot.centerY = centerYs[row];
             snapshot.centerZ = centerZs[row];
-            snapshot.targetX = data[FlyingSwordGroupField.TargetX][row];
-            snapshot.targetY = data[FlyingSwordGroupField.TargetY][row];
-            snapshot.targetZ = data[FlyingSwordGroupField.TargetZ][row];
-            snapshot.orbitRadius =
-                data[FlyingSwordGroupField.OrbitRadius][row];
-            snapshot.orbitHeight =
-                data[FlyingSwordGroupField.OrbitHeight][row];
-            snapshot.angularSpeed =
-                data[FlyingSwordGroupField.AngularSpeed][row];
-            snapshot.verticalAmplitude =
-                data[FlyingSwordGroupField.VerticalAmplitude][row];
-            snapshot.verticalSpeed =
-                data[FlyingSwordGroupField.VerticalSpeed][row];
-            snapshot.formationSize = Math.max(
-                1,
-                data[FlyingSwordGroupField.FormationSize][row],
-            );
-            snapshot.mode =
-                data[FlyingSwordGroupField.Mode][row] as FlyingSwordMode;
+            snapshot.targetX = targetXs[row];
+            snapshot.targetY = targetYs[row];
+            snapshot.targetZ = targetZs[row];
+            snapshot.orbitRadius = orbitRadii[row];
+            snapshot.orbitHeight = orbitHeights[row];
+            snapshot.angularSpeed = angularSpeeds[row];
+            snapshot.verticalAmplitude = verticalAmplitudes[row];
+            snapshot.verticalSpeed = verticalSpeeds[row];
+            snapshot.formationSize = Math.max(1, formationSizes[row]);
+            snapshot.mode = modes[row] as FlyingSwordMode;
         }
     }
-    runtime.removeStale(time.tick);
+    runtime.removeStale(tick);
 }
 
 function formFlyingSwordGoals(
@@ -146,6 +170,9 @@ function formFlyingSwordGoals(
     runtime: Readonly<FlyingSwordRuntimeState>,
     swords: Swords,
 ): void {
+    const tick = time.tick;
+    const elapsed = time.elapsed;
+    const snapshots = runtime.groups;
     const iter = swords.iter();
     while (iter.next()) {
         const [count, , members, , , , , , formationGoals] =
@@ -157,11 +184,11 @@ function formFlyingSwordGoals(
         const formationGoalZs = formationGoals[Float3.Z];
 
         for (let row = 0; row < count; row++) {
-            const snapshot = runtime.groups.get(groups[row]);
-            if (!snapshot || snapshot.tick !== time.tick) continue;
+            const snapshot = snapshots.get(groups[row]);
+            if (!snapshot || snapshot.tick !== tick) continue;
 
             const slot = slots[row];
-            const phase = time.elapsed * snapshot.angularSpeed +
+            const phase = elapsed * snapshot.angularSpeed +
                 slot * Math.PI * 2 / snapshot.formationSize;
             let radius = snapshot.orbitRadius;
             let centerX = snapshot.centerX;
@@ -186,7 +213,7 @@ function formFlyingSwordGoals(
             const slotPhase =
                 slot * Math.PI * 2 / snapshot.formationSize;
             const verticalPhase =
-                time.elapsed * snapshot.verticalSpeed + slotPhase;
+                elapsed * snapshot.verticalSpeed + slotPhase;
             const heightWave = Math.sin(verticalPhase) +
                 Math.sin(verticalPhase * 0.5 + phase) * 0.25;
             formationGoalXs[row] =

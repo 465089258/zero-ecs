@@ -1,4 +1,8 @@
-import { State, type Entity } from "@zero-ecs/game";
+import {
+    State,
+    type Entity,
+    type EntityAccess,
+} from "@zero-ecs/game";
 import type { FlyingSwordMode } from "../types";
 
 export const enum FlyingSwordRequestKind {
@@ -15,6 +19,11 @@ export class FlyingSwordRequestState extends State {
     readonly ys: number[] = [];
     readonly zs: number[] = [];
     readonly modes: number[] = [];
+    /** 供请求应用系统复用的零分配实体位置解析结果。 */
+    readonly access: EntityAccess = {
+        archetype: null,
+        row: 0 as EntityAccess["row"],
+    };
     count = 0;
 
     setMode(group: Entity, mode: FlyingSwordMode): void {

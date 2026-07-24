@@ -207,7 +207,13 @@ function integerInRange(name: string, value: number, minimum: number, maximum: n
 }
 
 function vector(name: string, value: ReadonlyVector3): void {
-    finite(`${name}.x`, value.x);
-    finite(`${name}.y`, value.y);
-    finite(`${name}.z`, value.z);
+    if (!Number.isFinite(value.x)) {
+        throw new RangeError(`${name}.x must be finite`);
+    }
+    if (!Number.isFinite(value.y)) {
+        throw new RangeError(`${name}.y must be finite`);
+    }
+    if (!Number.isFinite(value.z)) {
+        throw new RangeError(`${name}.z must be finite`);
+    }
 }
