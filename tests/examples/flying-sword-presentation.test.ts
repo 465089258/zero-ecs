@@ -2,6 +2,7 @@ import {
     expect,
     test,
 } from "@rstest/core";
+import { readFileSync } from "node:fs";
 import {
     TopDownOrthographicCamera,
     degreesToRadians,
@@ -52,4 +53,22 @@ test("flying sword example projection and painter sorting share camera-space dep
     Object.assign(queue.acquire(), { depth: ground.depth, stableId: 1, name: "far" });
     queue.sort();
     expect(queue.items.map(item => item.name)).toEqual(["far", "near"]);
+});
+
+test("flying sword runtime sprites stay at render-scale resolution", () => {
+    const assets = [
+        "sword-jade-render.png",
+        "sword-flame-render.png",
+        "sword-frost-render.png",
+        "sword-thunder-render.png",
+    ];
+    for (let index = 0; index < assets.length; index++) {
+        const png = readFileSync(new URL(
+            `../../examples/flying-sword/src/assets/swords/${assets[index]}`,
+            import.meta.url,
+        ));
+        expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+        expect(png.readUInt32BE(16)).toBeLessThanOrEqual(128);
+        expect(png.readUInt32BE(20)).toBeLessThanOrEqual(32);
+    }
 });

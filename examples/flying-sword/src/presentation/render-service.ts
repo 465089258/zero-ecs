@@ -20,10 +20,10 @@ import {
     type ProjectedPoint,
 } from "./camera";
 import { DemoViewResource } from "../app/resources";
-import swordFlameUrl from "../assets/swords/sword-flame.png";
-import swordFrostUrl from "../assets/swords/sword-frost.png";
-import swordJadeUrl from "../assets/swords/sword-jade.png";
-import swordThunderUrl from "../assets/swords/sword-thunder.png";
+import swordFlameUrl from "../assets/swords/sword-flame-render.png";
+import swordFrostUrl from "../assets/swords/sword-frost-render.png";
+import swordJadeUrl from "../assets/swords/sword-jade-render.png";
+import swordThunderUrl from "../assets/swords/sword-thunder-render.png";
 import {
     CultivatorQuery,
     Transform3Field,
@@ -46,6 +46,7 @@ interface DemoRenderItem extends DepthRenderItem {
     y1: number;
     x2: number;
     y2: number;
+    colorIndex: number;
     color: string;
 }
 
@@ -74,27 +75,51 @@ export class DemoRenderService extends Service {
         y1: 0,
         x2: 0,
         y2: 0,
+        colorIndex: 0,
         color: "#ffffff",
     }));
-    private readonly swordSprites = SWORD_SPRITES.map(definition => ({
+    private readonly swordSprites: SwordSprite[] = SWORD_SPRITES.map(definition => ({
         ...definition,
         image: new Image(),
+        bodyWidth: 0,
+        bodyHeight: 0,
+        glowPadding: 0,
+        shadow: null,
+        glowVariants: [],
     }));
+    private readonly groundLayer = document.createElement("canvas");
     private readonly projected: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly projectedSecond: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly clientPoint = { x: 0, y: 0 };
-    private swordCount = 0;
+    private totalSwordCount = 0;
+    private visibleSwordCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
     private maximumHeight = 0;
+    private statusCountdown = 0;
 
     init(): void {
-        const ratio = Math.min(devicePixelRatio || 1, 2);
+        // 像素素材在 DPR=1 已保持硬边；更高 DPR 只会扩大填充面积。
+        const ratio = 1;
         this.view.canvas.width = this.logicalWidth * ratio;
         this.view.canvas.height = this.logicalHeight * ratio;
         this.view.context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        for (const sprite of this.swordSprites) sprite.image.src = sprite.url;
+        this.view.context.lineCap = "round";
+        this.view.context.lineJoin = "round";
+        this.view.context.imageSmoothingEnabled = false;
+        this.view.context.shadowBlur = 0;
+        this.buildGroundLayer();
+        for (let index = 0; index < this.swordSprites.length; index++) {
+            const sprite = this.swordSprites[index];
+            sprite.image.decoding = "async";
+            sprite.image.addEventListener(
+                "load",
+                () => prepareSwordSprite(sprite),
+                { once: true },
+            );
+            sprite.image.src = sprite.url;
+        }
     }
 
     clientToGround(clientX: number, clientY: number, out: Vector3Out): boolean {
@@ -117,34 +142,39 @@ export class DemoRenderService extends Service {
         swords: Swords,
     ): void {
         this.beginFrame();
-        this.drawGround(scene);
+        this.drawGroundTarget(scene);
         this.queue.begin();
         this.collectCultivators(cultivators);
         this.collectSwords(swords, interpolation);
         this.queue.sort();
         this.drawSortedItems();
-        this.drawStatus(scene);
+        if (this.statusCountdown === 0) {
+            this.drawStatus(scene);
+            this.statusCountdown = STATUS_UPDATE_INTERVAL_FRAMES - 1;
+        } else {
+            this.statusCountdown--;
+        }
     }
 
     private beginFrame(): void {
         const context = this.view.context;
-        context.clearRect(0, 0, this.logicalWidth, this.logicalHeight);
-        context.fillStyle = "#071012";
-        context.fillRect(0, 0, this.logicalWidth, this.logicalHeight);
-        context.lineCap = "round";
-        context.lineJoin = "round";
-        context.imageSmoothingEnabled = false;
+        context.drawImage(this.groundLayer, 0, 0);
         context.globalAlpha = 1;
-        context.shadowBlur = 0;
-        this.swordCount = 0;
+        this.totalSwordCount = 0;
+        this.visibleSwordCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
         this.maximumHeight = Number.NEGATIVE_INFINITY;
     }
 
-    private drawGround(scene: Readonly<DemoSceneState>): void {
-        const context = this.view.context;
+    private buildGroundLayer(): void {
+        this.groundLayer.width = this.logicalWidth;
+        this.groundLayer.height = this.logicalHeight;
+        const context = this.groundLayer.getContext("2d", { alpha: false });
+        if (!context) throw new Error("Cannot create flying sword ground layer");
+        context.fillStyle = "#071012";
+        context.fillRect(0, 0, this.logicalWidth, this.logicalHeight);
         context.lineWidth = 1;
         context.strokeStyle = "rgba(88, 160, 144, 0.13)";
         for (let line = -8; line <= 12; line++) {
@@ -157,7 +187,10 @@ export class DemoRenderService extends Service {
             this.camera.project(line, 0, 12, this.projectedSecond);
             line2(context, this.projected, this.projectedSecond);
         }
+    }
 
+    private drawGroundTarget(scene: Readonly<DemoSceneState>): void {
+        const context = this.view.context;
         this.camera.project(scene.targetX, 0, scene.targetZ, this.projected);
         context.strokeStyle = scene.mode === FlyingSwordMode.Focus
             ? "rgba(255, 183, 83, 0.9)"
@@ -206,28 +239,50 @@ export class DemoRenderService extends Service {
         const iter = swords.iter();
         while (iter.next()) {
             const [count, entities, data] = iter.current;
+            const previousXs = data[FlyingSwordField.PreviousX];
+            const previousYs = data[FlyingSwordField.PreviousY];
+            const previousZs = data[FlyingSwordField.PreviousZ];
+            const xs = data[FlyingSwordField.X];
+            const ys = data[FlyingSwordField.Y];
+            const zs = data[FlyingSwordField.Z];
+            const forwardXs = data[FlyingSwordField.ForwardX];
+            const forwardYs = data[FlyingSwordField.ForwardY];
+            const forwardZs = data[FlyingSwordField.ForwardZ];
+            const visualIds = data[FlyingSwordField.VisualId];
             for (let row = 0; row < count; row++) {
                 const x = lerp(
-                    data[FlyingSwordField.PreviousX][row],
-                    data[FlyingSwordField.X][row],
+                    previousXs[row],
+                    xs[row],
                     interpolation,
                 );
                 const y = lerp(
-                    data[FlyingSwordField.PreviousY][row],
-                    data[FlyingSwordField.Y][row],
+                    previousYs[row],
+                    ys[row],
                     interpolation,
                 );
                 const z = lerp(
-                    data[FlyingSwordField.PreviousZ][row],
-                    data[FlyingSwordField.Z][row],
+                    previousZs[row],
+                    zs[row],
                     interpolation,
                 );
-                const forwardX = data[FlyingSwordField.ForwardX][row];
-                const forwardY = data[FlyingSwordField.ForwardY][row];
-                const forwardZ = data[FlyingSwordField.ForwardZ][row];
+                this.totalSwordCount++;
+                this.camera.project(x, y, z, this.projected);
+                if (
+                    this.projected.x < -VIEW_CULLING_MARGIN ||
+                    this.projected.x > this.logicalWidth + VIEW_CULLING_MARGIN ||
+                    this.projected.y < -VIEW_CULLING_MARGIN ||
+                    this.projected.y > this.logicalHeight + VIEW_CULLING_MARGIN
+                ) {
+                    continue;
+                }
+
+                const forwardX = forwardXs[row];
+                const forwardY = forwardYs[row];
+                const forwardZ = forwardZs[row];
                 const entity = entities[row];
-                const spriteIndex =
-                    data[FlyingSwordField.VisualId][row] % this.swordSprites.length;
+                const visualId = visualIds[row];
+                const spriteIndex = visualId % this.swordSprites.length;
+                const colorIndex = visualId % SWORD_COLORS.length;
 
                 const horizontalLength = Math.sqrt(
                     forwardX * forwardX + forwardZ * forwardZ,
@@ -288,10 +343,9 @@ export class DemoRenderService extends Service {
                 sword.y1 = this.projected.y;
                 sword.x2 = this.projectedSecond.x;
                 sword.y2 = this.projectedSecond.y;
-                sword.color = SWORD_COLORS[
-                    data[FlyingSwordField.VisualId][row] % SWORD_COLORS.length
-                ];
-                this.swordCount++;
+                sword.colorIndex = colorIndex;
+                sword.color = SWORD_COLORS[colorIndex];
+                this.visibleSwordCount++;
                 this.nearestDepth = Math.min(this.nearestDepth, sword.depth);
                 this.farthestDepth = Math.max(this.farthestDepth, sword.depth);
                 this.minimumHeight = Math.min(this.minimumHeight, y);
@@ -302,10 +356,13 @@ export class DemoRenderService extends Service {
 
     private drawSortedItems(): void {
         const context = this.view.context;
-        for (const item of this.queue.items) {
+        const items = this.queue.items;
+        const length = this.queue.length;
+        for (let index = 0; index < length; index++) {
+            const item = items[index];
             if (item.kind === RenderKind.Shadow) {
                 const sprite = this.swordSprites[item.sprite];
-                if (sprite.image.complete && sprite.image.naturalWidth > 0) {
+                if (sprite.shadow) {
                     drawSwordSprite(context, item, sprite, true);
                 } else {
                     drawSwordFallback(context, item, true);
@@ -329,7 +386,7 @@ export class DemoRenderService extends Service {
                 context.fill();
             } else {
                 const sprite = this.swordSprites[item.sprite];
-                if (sprite.image.complete && sprite.image.naturalWidth > 0) {
+                if (sprite.glowVariants[item.colorIndex]) {
                     drawSwordSprite(context, item, sprite);
                 } else {
                     drawSwordFallback(context, item);
@@ -357,7 +414,8 @@ export class DemoRenderService extends Service {
             ? this.maximumHeight.toFixed(2)
             : "--";
         this.view.status.textContent = [
-            `飞剑数量  ${this.swordCount}`,
+            `飞剑数量  ${this.totalSwordCount}`,
+            `当前可见  ${this.visibleSwordCount}`,
             `当前指令  ${mode}`,
             "",
             `目标 X    ${scene.targetX.toFixed(2)}`,
@@ -385,42 +443,20 @@ const SWORD_COLORS = [
 ] as const;
 
 interface SwordSprite {
+    readonly url: string;
     readonly image: HTMLImageElement;
-    readonly sourceX: number;
-    readonly sourceY: number;
-    readonly sourceWidth: number;
-    readonly sourceHeight: number;
+    bodyWidth: number;
+    bodyHeight: number;
+    glowPadding: number;
+    shadow: HTMLCanvasElement | null;
+    glowVariants: HTMLCanvasElement[];
 }
 
 const SWORD_SPRITES = [
-    {
-        url: swordJadeUrl,
-        sourceX: 93,
-        sourceY: 259,
-        sourceWidth: 1751,
-        sourceHeight: 433,
-    },
-    {
-        url: swordFlameUrl,
-        sourceX: 148,
-        sourceY: 230,
-        sourceWidth: 1858,
-        sourceHeight: 267,
-    },
-    {
-        url: swordFrostUrl,
-        sourceX: 100,
-        sourceY: 302,
-        sourceWidth: 1723,
-        sourceHeight: 220,
-    },
-    {
-        url: swordThunderUrl,
-        sourceX: 76,
-        sourceY: 325,
-        sourceWidth: 1621,
-        sourceHeight: 244,
-    },
+    { url: swordJadeUrl },
+    { url: swordFlameUrl },
+    { url: swordFrostUrl },
+    { url: swordThunderUrl },
 ] as const;
 
 function line2(
@@ -451,33 +487,89 @@ function drawSwordSprite(
     // 只让本地剑身轴承受投影缩短；像素厚度不随转向一起缩放。
     const width = Math.max(38, Math.min(96, projectedLength * 1.35));
     const height =
-        NOMINAL_SWORD_SPRITE_WIDTH * sprite.sourceHeight / sprite.sourceWidth;
+        NOMINAL_SWORD_SPRITE_WIDTH * sprite.bodyHeight / sprite.bodyWidth;
     const centerX = (item.x1 + item.x2) * 0.5;
     const centerY = (item.y1 + item.y2) * 0.5;
+    const inverseLength = 1 / projectedLength;
+    const cosine = dx * inverseLength;
+    const sine = dy * inverseLength;
 
-    context.save();
-    context.translate(centerX, centerY);
-    context.rotate(Math.atan2(dy, dx));
+    context.setTransform(cosine, sine, -sine, cosine, centerX, centerY);
     if (shadow) {
-        // 复用飞剑原图 Alpha，把所有非透明像素绘制为黑色。
-        context.filter = "brightness(0)";
         context.globalAlpha = 0.3;
+        context.drawImage(
+            sprite.shadow as HTMLCanvasElement,
+            -width * 0.5,
+            -height * 0.5,
+            width,
+            height,
+        );
     } else {
-        context.shadowColor = item.color;
-        context.shadowBlur = 9;
+        const variant = sprite.glowVariants[item.colorIndex];
+        const horizontalPadding = sprite.glowPadding * width / sprite.bodyWidth;
+        const verticalPadding = sprite.glowPadding * height / sprite.bodyHeight;
+        context.drawImage(
+            variant,
+            -width * 0.5 - horizontalPadding,
+            -height * 0.5 - verticalPadding,
+            width + horizontalPadding * 2,
+            height + verticalPadding * 2,
+        );
     }
-    context.drawImage(
-        sprite.image,
-        sprite.sourceX,
-        sprite.sourceY,
-        sprite.sourceWidth,
-        sprite.sourceHeight,
-        -width * 0.5,
-        -height * 0.5,
-        width,
-        height,
-    );
-    context.restore();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.globalAlpha = 1;
+}
+
+function prepareSwordSprite(sprite: SwordSprite): void {
+    const width = sprite.image.naturalWidth;
+    const height = sprite.image.naturalHeight;
+    if (width <= 0 || height <= 0) return;
+    sprite.bodyWidth = width;
+    sprite.bodyHeight = height;
+    sprite.glowPadding = SPRITE_GLOW_PADDING;
+
+    const shadow = createSpriteCanvas(width, height);
+    const shadowContext = context2d(shadow);
+    shadowContext.imageSmoothingEnabled = false;
+    shadowContext.drawImage(sprite.image, 0, 0);
+    shadowContext.globalCompositeOperation = "source-in";
+    shadowContext.fillStyle = "#000000";
+    shadowContext.fillRect(0, 0, width, height);
+    shadowContext.globalCompositeOperation = "source-over";
+    sprite.shadow = shadow;
+
+    const variants = sprite.glowVariants;
+    variants.length = SWORD_COLORS.length;
+    for (let index = 0; index < SWORD_COLORS.length; index++) {
+        const variant = createSpriteCanvas(
+            width + SPRITE_GLOW_PADDING * 2,
+            height + SPRITE_GLOW_PADDING * 2,
+        );
+        const variantContext = context2d(variant);
+        variantContext.imageSmoothingEnabled = false;
+        // shadowBlur 只在素材加载冷路径执行一次，稳定帧只绘制预烘焙位图。
+        variantContext.shadowColor = SWORD_COLORS[index];
+        variantContext.shadowBlur = SPRITE_GLOW_BLUR;
+        variantContext.drawImage(
+            sprite.image,
+            SPRITE_GLOW_PADDING,
+            SPRITE_GLOW_PADDING,
+        );
+        variants[index] = variant;
+    }
+}
+
+function createSpriteCanvas(width: number, height: number): HTMLCanvasElement {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+}
+
+function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Cannot create flying sword sprite layer");
+    return context;
 }
 
 function drawSwordFallback(
@@ -485,8 +577,6 @@ function drawSwordFallback(
     item: Readonly<DemoRenderItem>,
     shadow = false,
 ): void {
-    context.shadowColor = shadow ? "transparent" : item.color;
-    context.shadowBlur = shadow ? 0 : 13;
     context.strokeStyle = shadow ? "rgba(0, 0, 0, 0.3)" : item.color;
     context.lineWidth = shadow ? 6 : 4;
     context.beginPath();
@@ -494,7 +584,6 @@ function drawSwordFallback(
     context.lineTo(item.x2, item.y2);
     context.stroke();
     if (!shadow) {
-        context.shadowBlur = 0;
         context.strokeStyle = "#effffa";
         context.lineWidth = 1.25;
         context.stroke();
@@ -502,3 +591,7 @@ function drawSwordFallback(
 }
 
 const NOMINAL_SWORD_SPRITE_WIDTH = 84;
+const VIEW_CULLING_MARGIN = 192;
+const SPRITE_GLOW_PADDING = 12;
+const SPRITE_GLOW_BLUR = 9;
+const STATUS_UPDATE_INTERVAL_FRAMES = 6;

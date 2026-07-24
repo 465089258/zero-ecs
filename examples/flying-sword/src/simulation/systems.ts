@@ -59,7 +59,7 @@ function setupFlyingSwordDemo(
         .set(Transform3Type, Transform3Field.Y, 0)
         .set(Transform3Type, Transform3Field.Z, 0)
         .submit();
-    const flyingSwordCount = 81;
+    const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
         owner: cultivator,
         center: { x: 0, y: 0, z: 0 },
@@ -89,12 +89,23 @@ function setupFlyingSwordDemo(
     scene.swordGroup = group;
 }
 
+function readFlyingSwordCount(): number {
+    const raw = new URLSearchParams(window.location.search).get("swords");
+    if (raw === null) return DEFAULT_FLYING_SWORD_COUNT;
+    const count = Number(raw);
+    return Number.isSafeInteger(count) && count >= 1 && count <= MAX_FLYING_SWORD_COUNT
+        ? count
+        : DEFAULT_FLYING_SWORD_COUNT;
+}
+
 const input: DemoInputOut = {
     action: DemoInputAction.None,
     clientX: 0,
     clientY: 0,
 };
 const target = { x: 0, y: 0, z: 0 };
+const DEFAULT_FLYING_SWORD_COUNT = 81;
+const MAX_FLYING_SWORD_COUNT = 2000;
 
 function consumeFlyingSwordInput(
     inputService: DemoInputService,

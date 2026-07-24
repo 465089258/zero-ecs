@@ -9,7 +9,10 @@ export class DemoViewResource extends Resource {
         readonly status: HTMLElement,
     ) {
         super();
-        const context = canvas.getContext("2d");
+        const context = canvas.getContext("2d", {
+            alpha: false,
+            desynchronized: true,
+        });
         if (!context) throw new Error("Canvas 2D context is unavailable");
         this.context = context;
     }
