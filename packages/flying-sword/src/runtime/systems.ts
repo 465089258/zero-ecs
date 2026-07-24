@@ -2,7 +2,6 @@ import {
     Update,
     Write,
     defSystem,
-    type ComponentColumns,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
@@ -25,9 +24,7 @@ import {
 } from "./queries";
 import {
     FlyingSwordRuntimeState,
-    type FlyingSwordGroupSnapshot,
 } from "./runtime-state";
-import { FlyingSwordStorage } from "./storage";
 
 type Groups = QueryOf<typeof FlyingSwordGroupStorageQuery>;
 type Swords = QueryOf<typeof FlyingSwordStorageQuery>;
@@ -52,6 +49,12 @@ export const synchronizeFlyingSwordGroupsSystem = defSystem(
 export const moveFlyingSwordsSystem = defSystem(
     Update.fixed,
     moveFlyingSwords,
+    [TimeState, FlyingSwordStorageQuery],
+);
+
+export const formFlyingSwordGoalsSystem = defSystem(
+    Update.fixed,
+    formFlyingSwordGoals,
     [TimeState, FlyingSwordRuntimeState, FlyingSwordStorageQuery],
 );
 
@@ -61,9 +64,13 @@ export const FlyingSwordSystemOptions = Object.freeze({
         inSet: FlyingSwordSystemSet.Control,
         after: FlyingSwordSystemSet.Request,
     } as const,
+    formation: {
+        inSet: FlyingSwordSystemSet.Formation,
+        after: FlyingSwordSystemSet.Skill,
+    } as const,
     motion: {
         inSet: FlyingSwordSystemSet.Motion,
-        after: FlyingSwordSystemSet.Control,
+        after: FlyingSwordSystemSet.Guidance,
     } as const,
 });
 
@@ -143,7 +150,7 @@ function synchronizeFlyingSwordGroups(
     runtime.removeStale(time.tick);
 }
 
-function moveFlyingSwords(
+function formFlyingSwordGoals(
     time: Readonly<TimeState>,
     runtime: Readonly<FlyingSwordRuntimeState>,
     swords: Swords,
@@ -151,104 +158,158 @@ function moveFlyingSwords(
     const iter = swords.iter();
     while (iter.next()) {
         const [count, , data] = iter.current;
+        const groups = data[FlyingSwordField.Group];
+        const slots = data[FlyingSwordField.Slot];
+        const formationGoalXs = data[FlyingSwordField.FormationGoalX];
+        const formationGoalYs = data[FlyingSwordField.FormationGoalY];
+        const formationGoalZs = data[FlyingSwordField.FormationGoalZ];
+        const goalXs = data[FlyingSwordField.GoalX];
+        const goalYs = data[FlyingSwordField.GoalY];
+        const goalZs = data[FlyingSwordField.GoalZ];
+        const arrivalRadii = data[FlyingSwordField.ArrivalRadius];
+        const speedMultipliers = data[FlyingSwordField.SpeedMultiplier];
+        const accelerationMultipliers =
+            data[FlyingSwordField.AccelerationMultiplier];
+        const contactActive = data[FlyingSwordField.ContactActive];
         for (let row = 0; row < count; row++) {
-            const snapshot = runtime.groups.get(data[FlyingSwordField.Group][row]);
+            const snapshot = runtime.groups.get(groups[row]);
             if (!snapshot || snapshot.tick !== time.tick) continue;
-            moveSword(time, snapshot, data, row);
+
+            const slot = slots[row];
+            const phase = time.elapsed * snapshot.angularSpeed +
+                slot * Math.PI * 2 / snapshot.formationSize;
+            let radius = snapshot.orbitRadius;
+            let centerX = snapshot.centerX;
+            let centerY = snapshot.centerY;
+            let centerZ = snapshot.centerZ;
+            let height = snapshot.orbitHeight;
+            let verticalAmplitude = snapshot.verticalAmplitude;
+
+            if (snapshot.mode === FlyingSwordMode.Focus) {
+                centerX = snapshot.targetX;
+                centerY = snapshot.targetY;
+                centerZ = snapshot.targetZ;
+                radius *= 0.28;
+                height *= 0.72;
+                verticalAmplitude *= 0.65;
+            } else if (snapshot.mode === FlyingSwordMode.Recall) {
+                radius = Math.min(radius, 0.85);
+                height *= 0.55;
+                verticalAmplitude *= 0.25;
+            }
+
+            const slotPhase = slot * Math.PI * 2 / snapshot.formationSize;
+            const verticalPhase =
+                time.elapsed * snapshot.verticalSpeed + slotPhase;
+            const heightWave = Math.sin(verticalPhase) +
+                Math.sin(verticalPhase * 0.5 + phase) * 0.25;
+            const goalX = centerX + Math.cos(phase) * radius;
+            const goalY =
+                centerY + height + heightWave * verticalAmplitude;
+            const goalZ = centerZ + Math.sin(phase) * radius;
+            formationGoalXs[row] = goalX;
+            formationGoalYs[row] = goalY;
+            formationGoalZs[row] = goalZ;
+            goalXs[row] = goalX;
+            goalYs[row] = goalY;
+            goalZs[row] = goalZ;
+            arrivalRadii[row] = DEFAULT_ARRIVAL_RADIUS;
+            speedMultipliers[row] = 1;
+            accelerationMultipliers[row] = 1;
+            contactActive[row] = 0;
         }
     }
 }
 
-function moveSword(
+function moveFlyingSwords(
     time: Readonly<TimeState>,
-    group: Readonly<FlyingSwordGroupSnapshot>,
-    data: ComponentColumns<FlyingSwordStorage>,
-    row: number,
+    swords: Swords,
 ): void {
-    const xs = data[FlyingSwordField.X];
-    const ys = data[FlyingSwordField.Y];
-    const zs = data[FlyingSwordField.Z];
-    const velocityXs = data[FlyingSwordField.VelocityX];
-    const velocityYs = data[FlyingSwordField.VelocityY];
-    const velocityZs = data[FlyingSwordField.VelocityZ];
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, , data] = iter.current;
+        const previousXs = data[FlyingSwordField.PreviousX];
+        const previousYs = data[FlyingSwordField.PreviousY];
+        const previousZs = data[FlyingSwordField.PreviousZ];
+        const xs = data[FlyingSwordField.X];
+        const ys = data[FlyingSwordField.Y];
+        const zs = data[FlyingSwordField.Z];
+        const goalXs = data[FlyingSwordField.GoalX];
+        const goalYs = data[FlyingSwordField.GoalY];
+        const goalZs = data[FlyingSwordField.GoalZ];
+        const velocityXs = data[FlyingSwordField.VelocityX];
+        const velocityYs = data[FlyingSwordField.VelocityY];
+        const velocityZs = data[FlyingSwordField.VelocityZ];
+        const maximumSpeeds = data[FlyingSwordField.MaximumSpeed];
+        const accelerations = data[FlyingSwordField.Acceleration];
+        const speedMultipliers = data[FlyingSwordField.SpeedMultiplier];
+        const accelerationMultipliers =
+            data[FlyingSwordField.AccelerationMultiplier];
+        const forwardXs = data[FlyingSwordField.ForwardX];
+        const forwardYs = data[FlyingSwordField.ForwardY];
+        const forwardZs = data[FlyingSwordField.ForwardZ];
+        for (let row = 0; row < count; row++) {
+            const x = xs[row];
+            const y = ys[row];
+            const z = zs[row];
+            previousXs[row] = x;
+            previousYs[row] = y;
+            previousZs[row] = z;
 
-    data[FlyingSwordField.PreviousX][row] = xs[row];
-    data[FlyingSwordField.PreviousY][row] = ys[row];
-    data[FlyingSwordField.PreviousZ][row] = zs[row];
+            const dx = goalXs[row] - x;
+            const dy = goalYs[row] - y;
+            const dz = goalZs[row] - z;
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const maximumSpeed =
+                maximumSpeeds[row] * speedMultipliers[row];
+            const desiredSpeed = Math.min(maximumSpeed, distance * 6);
+            const inverseDistance = distance > 1e-6 ? 1 / distance : 0;
+            const desiredVelocityX = dx * inverseDistance * desiredSpeed;
+            const desiredVelocityY = dy * inverseDistance * desiredSpeed;
+            const desiredVelocityZ = dz * inverseDistance * desiredSpeed;
 
-    const slot = data[FlyingSwordField.Slot][row];
-    const phase = time.elapsed * group.angularSpeed +
-        slot * Math.PI * 2 / group.formationSize;
-    let radius = group.orbitRadius;
-    let centerX = group.centerX;
-    let centerY = group.centerY;
-    let centerZ = group.centerZ;
-    let height = group.orbitHeight;
-    let verticalAmplitude = group.verticalAmplitude;
+            let changeX = desiredVelocityX - velocityXs[row];
+            let changeY = desiredVelocityY - velocityYs[row];
+            let changeZ = desiredVelocityZ - velocityZs[row];
+            const changeLength = Math.sqrt(
+                changeX * changeX +
+                changeY * changeY +
+                changeZ * changeZ,
+            );
+            const maximumChange =
+                accelerations[row] *
+                accelerationMultipliers[row] *
+                time.delta;
+            if (changeLength > maximumChange && changeLength > 1e-6) {
+                const scale = maximumChange / changeLength;
+                changeX *= scale;
+                changeY *= scale;
+                changeZ *= scale;
+            }
 
-    if (group.mode === FlyingSwordMode.Focus) {
-        centerX = group.targetX;
-        centerY = group.targetY;
-        centerZ = group.targetZ;
-        radius *= 0.28;
-        height *= 0.72;
-        verticalAmplitude *= 0.65;
-    } else if (group.mode === FlyingSwordMode.Recall) {
-        radius = Math.min(radius, 0.85);
-        height *= 0.55;
-        verticalAmplitude *= 0.25;
-    }
+            const velocityX = velocityXs[row] + changeX;
+            const velocityY = velocityYs[row] + changeY;
+            const velocityZ = velocityZs[row] + changeZ;
+            velocityXs[row] = velocityX;
+            velocityYs[row] = velocityY;
+            velocityZs[row] = velocityZ;
+            xs[row] = x + velocityX * time.delta;
+            ys[row] = y + velocityY * time.delta;
+            zs[row] = z + velocityZ * time.delta;
 
-    const slotPhase = slot * Math.PI * 2 / group.formationSize;
-    const verticalPhase = time.elapsed * group.verticalSpeed + slotPhase;
-    const heightWave = Math.sin(verticalPhase) +
-        Math.sin(verticalPhase * 0.5 + phase) * 0.25;
-    const goalX = centerX + Math.cos(phase) * radius;
-    const goalY = centerY + height + heightWave * verticalAmplitude;
-    const goalZ = centerZ + Math.sin(phase) * radius;
-
-    const dx = goalX - xs[row];
-    const dy = goalY - ys[row];
-    const dz = goalZ - zs[row];
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const maximumSpeed = data[FlyingSwordField.MaximumSpeed][row];
-    const desiredSpeed = Math.min(maximumSpeed, distance * 6);
-    const inverseDistance = distance > 1e-6 ? 1 / distance : 0;
-    const desiredVelocityX = dx * inverseDistance * desiredSpeed;
-    const desiredVelocityY = dy * inverseDistance * desiredSpeed;
-    const desiredVelocityZ = dz * inverseDistance * desiredSpeed;
-
-    let changeX = desiredVelocityX - velocityXs[row];
-    let changeY = desiredVelocityY - velocityYs[row];
-    let changeZ = desiredVelocityZ - velocityZs[row];
-    const changeLength = Math.sqrt(
-        changeX * changeX + changeY * changeY + changeZ * changeZ,
-    );
-    const maximumChange = data[FlyingSwordField.Acceleration][row] * time.delta;
-    if (changeLength > maximumChange && changeLength > 1e-6) {
-        const scale = maximumChange / changeLength;
-        changeX *= scale;
-        changeY *= scale;
-        changeZ *= scale;
-    }
-
-    const velocityX = velocityXs[row] + changeX;
-    const velocityY = velocityYs[row] + changeY;
-    const velocityZ = velocityZs[row] + changeZ;
-    velocityXs[row] = velocityX;
-    velocityYs[row] = velocityY;
-    velocityZs[row] = velocityZ;
-    xs[row] += velocityX * time.delta;
-    ys[row] += velocityY * time.delta;
-    zs[row] += velocityZ * time.delta;
-
-    const velocityLength = Math.sqrt(
-        velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ,
-    );
-    if (velocityLength > 1e-4) {
-        const inverseVelocity = 1 / velocityLength;
-        data[FlyingSwordField.ForwardX][row] = velocityX * inverseVelocity;
-        data[FlyingSwordField.ForwardY][row] = velocityY * inverseVelocity;
-        data[FlyingSwordField.ForwardZ][row] = velocityZ * inverseVelocity;
+            const velocityLength = Math.sqrt(
+                velocityX * velocityX +
+                velocityY * velocityY +
+                velocityZ * velocityZ,
+            );
+            if (velocityLength > 1e-4) {
+                const inverseVelocity = 1 / velocityLength;
+                forwardXs[row] = velocityX * inverseVelocity;
+                forwardYs[row] = velocityY * inverseVelocity;
+                forwardZs[row] = velocityZ * inverseVelocity;
+            }
+        }
     }
 }
+
+const DEFAULT_ARRIVAL_RADIUS = 0.15;

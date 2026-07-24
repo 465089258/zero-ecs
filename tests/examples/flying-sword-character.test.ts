@@ -17,11 +17,13 @@ import {
     TimeModule,
 } from "@zero-ecs/game/time";
 import {
-    FlyingSwordGroupField,
-    FlyingSwordGroupQuery,
+    FlyingSwordField,
     FlyingSwordMode,
     FlyingSwordModule,
+    FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillPhase,
+    FlyingSwordSkillService,
     type Vector3Out,
 } from "@zero-ecs/flying-sword";
 import {
@@ -37,9 +39,7 @@ import {
 } from "../../examples/flying-sword/src/simulation/components";
 import { DemoSceneState } from "../../examples/flying-sword/src/simulation/state";
 import {
-    DemoSwordCommandSystemOptions,
     moveCultivatorsSystem,
-    resolveFlyingSwordCommandSystem,
 } from "../../examples/flying-sword/src/simulation/systems";
 
 const setupMovingCultivatorSystem = defSystem(
@@ -123,8 +123,8 @@ function setupSwordCommand(
     scene.swordGroup = group;
     scene.targetX = 0;
     scene.targetY = 0;
-    scene.targetZ = 0;
-    scene.mode = FlyingSwordMode.Focus;
+    scene.targetZ = 6;
+    scene.mode = FlyingSwordMode.Orbit;
 }
 
 test("cultivator advances on the XZ ground and retains fixed-tick history", () => {
@@ -155,7 +155,7 @@ test("cultivator advances on the XZ ground and retains fixed-tick history", () =
     game.dispose();
 });
 
-test("focused swords recall on arrival and restore orbit beside the cultivator", () => {
+test("Piercing Cloud gathers, strikes, returns, and releases its swords", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(0.1)))
@@ -163,28 +163,37 @@ test("focused swords recall on arrival and restore orbit beside the cultivator",
         .addState(DemoSceneState)
         .addModule(new FlyingSwordModule());
     builder.addSystem(setupSwordCommandSystem);
-    builder.addSystem(
-        resolveFlyingSwordCommandSystem,
-        DemoSwordCommandSystemOptions,
-    );
     const game = builder.build();
     game.init();
     game.start();
 
-    // 第一个 Tick 提交实体，第二个 Tick 判断集火抵达并进入归剑。
+    // 第一个 Tick 提交实体，之后从正式飞剑技能入口激活穿云。
     game.update();
-    game.update();
-    expect(game.state(DemoSceneState).mode).toBe(FlyingSwordMode.Recall);
+    const skills = game.service(FlyingSwordSkillService);
+    const group = game.state(DemoSceneState).swordGroup;
+    skills.cast({
+        group,
+        target: { x: 0, y: 0, z: 6 },
+    });
 
-    // 归剑到角色附近后恢复护体环绕，下一 Tick 应用到控制组。
-    game.update();
-    expect(game.state(DemoSceneState).mode).toBe(FlyingSwordMode.Orbit);
-    game.update();
+    const observed = new Set<number>();
+    for (let tick = 0; tick < 500; tick++) {
+        game.update();
+        const phase = skills.phase(group);
+        observed.add(phase);
+        if (phase === FlyingSwordSkillPhase.Idle && tick > 0) break;
+    }
+    expect(observed.has(FlyingSwordSkillPhase.Gather)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Launch)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Strike)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Return)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Rejoin)).toBe(true);
+    expect(skills.phase(group)).toBe(FlyingSwordSkillPhase.Idle);
 
-    const iter = game.world.query(FlyingSwordGroupQuery).iter();
+    const iter = game.world.query(FlyingSwordQuery).iter();
     expect(iter.next()).toBe(true);
-    const [, , groups] = iter.current;
-    expect(groups[FlyingSwordGroupField.Mode][0]).toBe(FlyingSwordMode.Orbit);
+    const [, , swords] = iter.current;
+    expect(swords[FlyingSwordField.ActionSequence][0]).toBe(0);
 
     game.dispose();
 });

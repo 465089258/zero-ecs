@@ -10,10 +10,9 @@ import {
 } from "@zero-ecs/game";
 import { TimeState } from "@zero-ecs/game/time";
 import {
-    FlyingSwordField,
     FlyingSwordMode,
-    FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillService,
     FlyingSwordSystemSet,
 } from "@zero-ecs/flying-sword";
 import { DemoRenderService } from "../presentation/render-service";
@@ -21,7 +20,6 @@ import {
     CultivatorMovementField,
     CultivatorMovementQuery,
     CultivatorMovementType,
-    CultivatorQuery,
     CultivatorTag,
     Transform3Field,
     Transform3Type,
@@ -33,9 +31,7 @@ import {
 } from "./input-service";
 import { DemoSceneState } from "./state";
 
-type Cultivators = QueryOf<typeof CultivatorQuery>;
 type MovingCultivators = QueryOf<typeof CultivatorMovementQuery>;
-type FlyingSwords = QueryOf<typeof FlyingSwordQuery>;
 
 export const setupFlyingSwordDemoSystem = defSystem(
     Startup,
@@ -50,6 +46,7 @@ export const consumeFlyingSwordInputSystem = defSystem(
         DemoInputService,
         DemoRenderService,
         FlyingSwordService,
+        FlyingSwordSkillService,
         Write(DemoSceneState),
         CultivatorMovementQuery,
     ],
@@ -61,26 +58,11 @@ export const moveCultivatorsSystem = defSystem(
     [TimeState, CultivatorMovementQuery, Write(DemoSceneState)],
 );
 
-export const resolveFlyingSwordCommandSystem = defSystem(
-    Update.fixed,
-    resolveFlyingSwordCommand,
-    [
-        FlyingSwordService,
-        Write(DemoSceneState),
-        CultivatorQuery,
-        FlyingSwordQuery,
-    ],
-);
-
 const DemoSimulationSystemSet = Object.freeze({
     Input: new SystemSet(Update.fixed, "flying-sword-demo:input"),
     CultivatorMovement: new SystemSet(
         Update.fixed,
         "flying-sword-demo:cultivator-movement",
-    ),
-    SwordCommand: new SystemSet(
-        Update.fixed,
-        "flying-sword-demo:sword-command",
     ),
 });
 
@@ -93,11 +75,6 @@ export const DemoCultivatorMovementSystemOptions = Object.freeze({
     inSet: DemoSimulationSystemSet.CultivatorMovement,
     after: DemoSimulationSystemSet.Input,
     before: FlyingSwordSystemSet.Control,
-});
-
-export const DemoSwordCommandSystemOptions = Object.freeze({
-    inSet: DemoSimulationSystemSet.SwordCommand,
-    after: FlyingSwordSystemSet.Motion,
 });
 
 function setupFlyingSwordDemo(
@@ -179,6 +156,7 @@ function consumeFlyingSwordInput(
     inputService: DemoInputService,
     renderer: DemoRenderService,
     flyingSwords: FlyingSwordService,
+    skills: FlyingSwordSkillService,
     scene: Mut<DemoSceneState>,
     cultivators: MovingCultivators,
 ): void {
@@ -199,15 +177,21 @@ function consumeFlyingSwordInput(
         scene.hasMoveTarget = true;
     } else if (input.action === DemoInputAction.Focus) {
         if (!renderer.clientToGround(input.clientX, input.clientY, target)) return;
-        flyingSwords.focus(scene.swordGroup, target);
+        flyingSwords.orbit(scene.swordGroup);
+        skills.cast({
+            group: scene.swordGroup,
+            target,
+        });
         scene.targetX = target.x;
         scene.targetY = target.y;
         scene.targetZ = target.z;
-        scene.mode = FlyingSwordMode.Focus;
+        scene.mode = FlyingSwordMode.Orbit;
     } else if (input.action === DemoInputAction.Orbit) {
+        skills.cancel(scene.swordGroup);
         flyingSwords.orbit(scene.swordGroup);
         scene.mode = FlyingSwordMode.Orbit;
     } else if (input.action === DemoInputAction.Recall) {
+        skills.cancel(scene.swordGroup);
         flyingSwords.recall(scene.swordGroup);
         scene.mode = FlyingSwordMode.Recall;
     }
@@ -288,82 +272,3 @@ function moveCultivators(
         }
     }
 }
-
-function resolveFlyingSwordCommand(
-    flyingSwords: FlyingSwordService,
-    scene: Mut<DemoSceneState>,
-    cultivators: Cultivators,
-    swords: FlyingSwords,
-): void {
-    if (scene.mode === FlyingSwordMode.Orbit) return;
-
-    let centerX = 0;
-    let centerZ = 0;
-    if (scene.mode === FlyingSwordMode.Recall) {
-        const center = findCultivatorPosition(cultivators, scene.cultivator);
-        if (!center) return;
-        centerX = center.x;
-        centerZ = center.z;
-    }
-
-    const targetX = scene.mode === FlyingSwordMode.Focus
-        ? scene.targetX
-        : centerX;
-    const targetZ = scene.mode === FlyingSwordMode.Focus
-        ? scene.targetZ
-        : centerZ;
-    const arrivalRadius = scene.mode === FlyingSwordMode.Focus
-        ? FOCUS_ARRIVAL_RADIUS
-        : RECALL_ARRIVAL_RADIUS;
-    const arrivalRadiusSquared = arrivalRadius * arrivalRadius;
-    let total = 0;
-    let arrived = 0;
-    const iter = swords.iter();
-    while (iter.next()) {
-        const [count, , data] = iter.current;
-        const groups = data[FlyingSwordField.Group];
-        const xs = data[FlyingSwordField.X];
-        const zs = data[FlyingSwordField.Z];
-        for (let row = 0; row < count; row++) {
-            if (groups[row] !== scene.swordGroup) continue;
-            total++;
-            const dx = xs[row] - targetX;
-            const dz = zs[row] - targetZ;
-            if (dx * dx + dz * dz <= arrivalRadiusSquared) arrived++;
-        }
-    }
-    if (total === 0 || arrived / total < ARRIVAL_RATIO) return;
-
-    if (scene.mode === FlyingSwordMode.Focus) {
-        flyingSwords.recall(scene.swordGroup);
-        scene.mode = FlyingSwordMode.Recall;
-    } else {
-        flyingSwords.orbit(scene.swordGroup);
-        scene.mode = FlyingSwordMode.Orbit;
-    }
-}
-
-const cultivatorPosition = { x: 0, z: 0 };
-
-function findCultivatorPosition(
-    cultivators: Cultivators,
-    entity: number,
-): typeof cultivatorPosition | null {
-    const iter = cultivators.iter();
-    while (iter.next()) {
-        const [count, entities, transforms] = iter.current;
-        const xs = transforms[Transform3Field.X];
-        const zs = transforms[Transform3Field.Z];
-        for (let row = 0; row < count; row++) {
-            if (entities[row] !== entity) continue;
-            cultivatorPosition.x = xs[row];
-            cultivatorPosition.z = zs[row];
-            return cultivatorPosition;
-        }
-    }
-    return null;
-}
-
-const FOCUS_ARRIVAL_RADIUS = 1.55;
-const RECALL_ARRIVAL_RADIUS = 1.45;
-const ARRIVAL_RATIO = 0.8;

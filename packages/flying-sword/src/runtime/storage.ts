@@ -45,4 +45,18 @@ export class FlyingSwordStorage implements FlyingSwordViewData {
     readonly [FlyingSwordField.Slot] = Types.U16;
     readonly [FlyingSwordField.VisualId] = Types.U16;
     readonly [FlyingSwordField.State] = Types.U8;
+    readonly [FlyingSwordField.FormationGoalX] = Types.F32;
+    readonly [FlyingSwordField.FormationGoalY] = Types.F32;
+    readonly [FlyingSwordField.FormationGoalZ] = Types.F32;
+    readonly [FlyingSwordField.GoalX] = Types.F32;
+    readonly [FlyingSwordField.GoalY] = Types.F32;
+    readonly [FlyingSwordField.GoalZ] = Types.F32;
+    readonly [FlyingSwordField.ArrivalRadius] = Types.F32;
+    readonly [FlyingSwordField.SpeedMultiplier] = Types.F32;
+    readonly [FlyingSwordField.AccelerationMultiplier] = Types.F32;
+    readonly [FlyingSwordField.ActionSequence] = Types.U32;
+    readonly [FlyingSwordField.ActionPhase] = Types.U8;
+    readonly [FlyingSwordField.ActionPhaseStartTick] = Types.U32;
+    readonly [FlyingSwordField.ActionRole] = Types.U16;
+    readonly [FlyingSwordField.ContactActive] = Types.U8;
 }

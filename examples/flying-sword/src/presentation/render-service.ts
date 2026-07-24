@@ -7,6 +7,9 @@ import {
     FlyingSwordField,
     FlyingSwordMode,
     FlyingSwordQuery,
+    FlyingSwordSkillPhase,
+    FlyingSwordSkillService,
+    type FlyingSwordSkillPhaseValue,
     type Vector3Out,
 } from "@zero-ecs/flying-sword";
 import {
@@ -53,6 +56,8 @@ interface DemoRenderItem extends DepthRenderItem {
 /** 示例专属 Canvas 表现后端。 */
 export class DemoRenderService extends Service {
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
+    @Inject.service(FlyingSwordSkillService)
+    private readonly skills!: FlyingSwordSkillService;
 
     private readonly logicalWidth = 960;
     private readonly logicalHeight = 640;
@@ -144,6 +149,7 @@ export class DemoRenderService extends Service {
         cultivators: Cultivators,
         swords: Swords,
     ): void {
+        const skillPhase = this.skills.phase(scene.swordGroup);
         this.followCultivator(
             cultivators,
             scene.cultivator,
@@ -151,14 +157,14 @@ export class DemoRenderService extends Service {
         );
         this.beginFrame();
         this.drawGroundGrid();
-        this.drawGroundTargets(scene);
+        this.drawGroundTargets(scene, skillPhase);
         this.queue.begin();
         this.collectCultivators(cultivators, interpolation);
         this.collectSwords(swords, interpolation);
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
-            this.drawStatus(scene);
+            this.drawStatus(scene, skillPhase);
             this.statusCountdown = STATUS_UPDATE_INTERVAL_FRAMES - 1;
         } else {
             this.statusCountdown--;
@@ -212,7 +218,10 @@ export class DemoRenderService extends Service {
         context.stroke();
     }
 
-    private drawGroundTargets(scene: Readonly<DemoSceneState>): void {
+    private drawGroundTargets(
+        scene: Readonly<DemoSceneState>,
+        skillPhase: FlyingSwordSkillPhaseValue,
+    ): void {
         const context = this.view.context;
         if (scene.hasMoveTarget) {
             this.camera.project(
@@ -223,12 +232,12 @@ export class DemoRenderService extends Service {
             );
             drawGroundMarker(context, this.projected, "#65ddbf", 18, 8, true);
         }
-        if (scene.mode === FlyingSwordMode.Orbit) return;
+        if (skillPhase === FlyingSwordSkillPhase.Idle) return;
         this.camera.project(scene.targetX, 0, scene.targetZ, this.projected);
         drawGroundMarker(
             context,
             this.projected,
-            scene.mode === FlyingSwordMode.Focus
+            skillPhase <= FlyingSwordSkillPhase.Strike
                 ? "#ffb753"
                 : "rgba(255, 183, 83, 0.38)",
             22,
@@ -461,12 +470,11 @@ export class DemoRenderService extends Service {
         }
     }
 
-    private drawStatus(scene: Readonly<DemoSceneState>): void {
-        const mode = scene.mode === FlyingSwordMode.Focus
-            ? "集火出击"
-            : scene.mode === FlyingSwordMode.Recall
-                ? "归剑途中"
-                : "护体环绕";
+    private drawStatus(
+        scene: Readonly<DemoSceneState>,
+        skillPhase: FlyingSwordSkillPhaseValue,
+    ): void {
+        const mode = skillPhaseName(skillPhase, scene.mode);
         const nearest = Number.isFinite(this.nearestDepth)
             ? this.nearestDepth.toFixed(2)
             : "--";
@@ -482,7 +490,8 @@ export class DemoRenderService extends Service {
         this.view.status.textContent = [
             `飞剑数量  ${this.totalSwordCount}`,
             `当前可见  ${this.visibleSwordCount}`,
-            `当前指令  ${mode}`,
+            `当前状态  ${mode}`,
+            `剑诀阶段  ${skillPhase}`,
             "",
             `角色 X    ${this.followedX.toFixed(2)}`,
             `角色 Y    ${this.followedY.toFixed(2)}`,
@@ -500,6 +509,18 @@ export class DemoRenderService extends Service {
             "layer → depth↓ → stableId",
         ].join("\n");
     }
+}
+
+function skillPhaseName(
+    phase: FlyingSwordSkillPhaseValue,
+    mode: number,
+): string {
+    if (phase === FlyingSwordSkillPhase.Gather) return "穿云 · 聚剑";
+    if (phase === FlyingSwordSkillPhase.Launch) return "穿云 · 齐射";
+    if (phase === FlyingSwordSkillPhase.Strike) return "穿云 · 贯穿";
+    if (phase === FlyingSwordSkillPhase.Return) return "穿云 · 归剑";
+    if (phase === FlyingSwordSkillPhase.Rejoin) return "穿云 · 入阵";
+    return mode === FlyingSwordMode.Recall ? "召回" : "护体环绕";
 }
 
 const SWORD_COLORS = [

@@ -8,10 +8,8 @@ import { DemoSceneState } from "./state";
 import {
     DemoCultivatorMovementSystemOptions,
     DemoInputSystemOptions,
-    DemoSwordCommandSystemOptions,
     consumeFlyingSwordInputSystem,
     moveCultivatorsSystem,
-    resolveFlyingSwordCommandSystem,
     setupFlyingSwordDemoSystem,
 } from "./systems";
 
@@ -29,10 +27,6 @@ export class FlyingSwordDemoSimulationModule implements Module {
         builder.addSystem(
             moveCultivatorsSystem,
             DemoCultivatorMovementSystemOptions,
-        );
-        builder.addSystem(
-            resolveFlyingSwordCommandSystem,
-            DemoSwordCommandSystemOptions,
         );
     }
 }

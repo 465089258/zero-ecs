@@ -116,6 +116,20 @@ export enum FlyingSwordField {
     Slot,
     VisualId,
     State,
+    FormationGoalX,
+    FormationGoalY,
+    FormationGoalZ,
+    GoalX,
+    GoalY,
+    GoalZ,
+    ArrivalRadius,
+    SpeedMultiplier,
+    AccelerationMultiplier,
+    ActionSequence,
+    ActionPhase,
+    ActionPhaseStartTick,
+    ActionRole,
+    ContactActive,
 }
 
 /** 飞剑的公开只读数据形状。 */
@@ -138,4 +152,18 @@ export interface FlyingSwordViewData {
     readonly [FlyingSwordField.Slot]: typeof Types.U16;
     readonly [FlyingSwordField.VisualId]: typeof Types.U16;
     readonly [FlyingSwordField.State]: typeof Types.U8;
+    readonly [FlyingSwordField.FormationGoalX]: typeof Types.F32;
+    readonly [FlyingSwordField.FormationGoalY]: typeof Types.F32;
+    readonly [FlyingSwordField.FormationGoalZ]: typeof Types.F32;
+    readonly [FlyingSwordField.GoalX]: typeof Types.F32;
+    readonly [FlyingSwordField.GoalY]: typeof Types.F32;
+    readonly [FlyingSwordField.GoalZ]: typeof Types.F32;
+    readonly [FlyingSwordField.ArrivalRadius]: typeof Types.F32;
+    readonly [FlyingSwordField.SpeedMultiplier]: typeof Types.F32;
+    readonly [FlyingSwordField.AccelerationMultiplier]: typeof Types.F32;
+    readonly [FlyingSwordField.ActionSequence]: typeof Types.U32;
+    readonly [FlyingSwordField.ActionPhase]: typeof Types.U8;
+    readonly [FlyingSwordField.ActionPhaseStartTick]: typeof Types.U32;
+    readonly [FlyingSwordField.ActionRole]: typeof Types.U16;
+    readonly [FlyingSwordField.ContactActive]: typeof Types.U8;
 }

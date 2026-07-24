@@ -20,6 +20,8 @@ import {
     FlyingSwordModule,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillPhase,
+    FlyingSwordSkillService,
     type Vector3Out,
 } from "@zero-ecs/flying-sword";
 import {
@@ -78,5 +80,64 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     expect(groups[FlyingSwordGroupField.TargetX][0]).toBe(4);
     expect(groups[FlyingSwordGroupField.TargetZ][0]).toBe(5);
 
+    game.dispose();
+});
+
+test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addService(FixedSpatialService)
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const skills = game.service(FlyingSwordSkillService);
+    const swordCount = 81;
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: swordCount,
+        orbitRadius: 3,
+        orbitHeight: 1.4,
+    });
+    for (let slot = 0; slot < swordCount; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 13,
+            acceleration: 42,
+        });
+    }
+    game.update();
+    skills.cast({
+        group,
+        target: { x: 2, y: 0, z: 8 },
+    });
+
+    const observed = new Set<number>();
+    for (let tick = 0; tick < 600; tick++) {
+        game.update();
+        const phase = skills.phase(group);
+        observed.add(phase);
+        if (phase === FlyingSwordSkillPhase.Idle && tick > 0) break;
+    }
+    expect(observed.has(FlyingSwordSkillPhase.Gather)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Launch)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Strike)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Return)).toBe(true);
+    expect(observed.has(FlyingSwordSkillPhase.Rejoin)).toBe(true);
+    expect(skills.phase(group)).toBe(FlyingSwordSkillPhase.Idle);
+
+    const iter = game.world.query(FlyingSwordQuery).iter();
+    while (iter.next()) {
+        const [count, , swords] = iter.current;
+        for (let row = 0; row < count; row++) {
+            expect(swords[FlyingSwordField.ActionSequence][row]).toBe(0);
+        }
+    }
     game.dispose();
 });

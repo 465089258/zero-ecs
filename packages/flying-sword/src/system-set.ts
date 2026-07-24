@@ -4,6 +4,7 @@ import { SystemSet, Update } from "@zero-ecs/game";
 export const FlyingSwordSystemSet = Object.freeze({
     Request: new SystemSet(Update.fixed, "flying-sword:request"),
     Control: new SystemSet(Update.fixed, "flying-sword:control"),
+    Skill: new SystemSet(Update.fixed, "flying-sword:skill"),
     Formation: new SystemSet(Update.fixed, "flying-sword:formation"),
     Guidance: new SystemSet(Update.fixed, "flying-sword:guidance"),
     Motion: new SystemSet(Update.fixed, "flying-sword:motion"),

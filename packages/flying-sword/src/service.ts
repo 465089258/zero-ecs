@@ -103,6 +103,28 @@ export class FlyingSwordService extends Service {
             .set(FlyingSwordStorage, FlyingSwordField.Slot, slot)
             .set(FlyingSwordStorage, FlyingSwordField.VisualId, visualId)
             .set(FlyingSwordStorage, FlyingSwordField.State, FlyingSwordState.Active)
+            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalX, x)
+            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalY, y)
+            .set(FlyingSwordStorage, FlyingSwordField.FormationGoalZ, z)
+            .set(FlyingSwordStorage, FlyingSwordField.GoalX, x)
+            .set(FlyingSwordStorage, FlyingSwordField.GoalY, y)
+            .set(FlyingSwordStorage, FlyingSwordField.GoalZ, z)
+            .set(FlyingSwordStorage, FlyingSwordField.ArrivalRadius, 0.15)
+            .set(FlyingSwordStorage, FlyingSwordField.SpeedMultiplier, 1)
+            .set(FlyingSwordStorage, FlyingSwordField.AccelerationMultiplier, 1)
+            .set(FlyingSwordStorage, FlyingSwordField.ActionSequence, 0)
+            .set(
+                FlyingSwordStorage,
+                FlyingSwordField.ActionPhase,
+                0,
+            )
+            .set(
+                FlyingSwordStorage,
+                FlyingSwordField.ActionPhaseStartTick,
+                0,
+            )
+            .set(FlyingSwordStorage, FlyingSwordField.ActionRole, 0)
+            .set(FlyingSwordStorage, FlyingSwordField.ContactActive, 0)
             .submit();
         return entity;
     }

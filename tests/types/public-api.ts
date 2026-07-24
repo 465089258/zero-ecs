@@ -48,7 +48,13 @@ import {
     FlyingSwordModule,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillCatalog,
+    FlyingSwordSkillPhase,
+    FlyingSwordSkillPlanId,
+    FlyingSwordSkillService,
     FlyingSwordView,
+    PiercingCloudSkillPlan,
+    type CompiledFlyingSwordSkillPlan,
     type FlyingSwordViewData,
     type Vector3Out,
 } from "@zero-ecs/flying-sword";
@@ -144,6 +150,25 @@ new GameBuilder().addModule(new HierarchyModule());
 const flyingSwordProjection: QueryProjection<FlyingSwordViewData> = FlyingSwordView;
 componentWorld.query(FlyingSwordQuery);
 new GameBuilder().addModule(new FlyingSwordModule());
+const customFlyingSwordSkillPlan: CompiledFlyingSwordSkillPlan = {
+    ...PiercingCloudSkillPlan,
+    id: 2,
+};
+new GameBuilder().addModule(new FlyingSwordModule(
+    new FlyingSwordSkillCatalog([customFlyingSwordSkillPlan]),
+));
+declare const flyingSwordSkillService: FlyingSwordSkillService;
+flyingSwordSkillService.cast({
+    group: INVALID_ENTITY,
+    target: { x: 0, y: 0, z: 1 },
+    planId: FlyingSwordSkillPlanId.PiercingCloud,
+});
+flyingSwordSkillService.cancel(INVALID_ENTITY);
+const flyingSwordSkillPhase =
+    flyingSwordSkillService.phase(INVALID_ENTITY);
+if (flyingSwordSkillPhase === FlyingSwordSkillPhase.Gather) {
+    flyingSwordSkillService.sequence(INVALID_ENTITY);
+}
 componentWorld.component(MathPosition2Type);
 componentWorld.component(MathPosition3Type);
 componentWorld.component(TopDownCamera3Type);
