@@ -37,6 +37,7 @@ export interface CompiledFlyingSwordSkillPlan {
     readonly gatherHeight: number;
     readonly gatherSpacing: number;
     readonly gatherArrivalRadius: number;
+    readonly gatherSpeedMultiplier: number;
     readonly launchWaveCount: number;
     readonly launchIntervalTicks: number;
     readonly launchTimeoutTicks: number;
@@ -58,4 +59,3 @@ export interface ActivateFlyingSwordSkillOptions {
     readonly target: ReadonlyVector3;
     readonly planId?: number;
 }
-

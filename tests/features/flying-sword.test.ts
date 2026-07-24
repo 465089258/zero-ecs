@@ -18,6 +18,7 @@ import {
     FlyingSwordGroupQuery,
     FlyingSwordMode,
     FlyingSwordModule,
+    PiercingCloudSkillPlan,
     FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSkillPhase,
@@ -139,5 +140,68 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
             expect(swords[FlyingSwordField.ActionSequence][row]).toBe(0);
         }
     }
+    game.dispose();
+});
+
+test("Piercing Cloud rises above its formation before diving at the target", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addService(FixedSpatialService)
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const skills = game.service(FlyingSwordSkillService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 1,
+        orbitRadius: 2,
+        orbitHeight: 1.4,
+    });
+    flyingSwords.createSword({
+        group,
+        position: { x: 0, y: 1.4, z: 0 },
+        maximumSpeed: 13,
+        acceleration: 42,
+    });
+    game.update();
+    skills.cast({
+        group,
+        target: { x: 0, y: 0, z: 8 },
+    });
+
+    let gatherGoalY = Number.NaN;
+    let launchStartY = Number.NaN;
+    let launchGoalY = Number.NaN;
+    for (let tick = 0; tick < 180; tick++) {
+        game.update();
+        const iter = game.world.query(FlyingSwordQuery).iter();
+        if (!iter.next()) continue;
+        const [, , swords] = iter.current;
+        const phase = swords[FlyingSwordField.ActionPhase][0];
+        if (phase === FlyingSwordSkillPhase.Gather) {
+            gatherGoalY = swords[FlyingSwordField.GoalY][0];
+        } else if (
+            phase === FlyingSwordSkillPhase.Launch &&
+            Number.isNaN(launchStartY)
+        ) {
+            launchStartY = swords[FlyingSwordField.Y][0];
+            launchGoalY = swords[FlyingSwordField.GoalY][0];
+            break;
+        }
+    }
+
+    expect(gatherGoalY).toBeCloseTo(PiercingCloudSkillPlan.gatherHeight);
+    expect(launchStartY).toBeGreaterThan(
+        PiercingCloudSkillPlan.gatherHeight -
+        PiercingCloudSkillPlan.gatherArrivalRadius,
+    );
+    expect(launchGoalY).toBeCloseTo(PiercingCloudSkillPlan.strikeHeight);
+    expect(launchStartY - launchGoalY).toBeGreaterThan(3);
+
     game.dispose();
 });

@@ -10,21 +10,22 @@ export const PiercingCloudSkillPlan: CompiledFlyingSwordSkillPlan =
         id: FlyingSwordSkillPlanId.PiercingCloud,
         minimumSwords: 1,
         maximumSwords: 0xffff,
-        gatherTicks: 24,
-        gatherArrivalRatio: 0.8,
-        gatherDistance: 1.35,
-        gatherHeight: 1.65,
+        gatherTicks: 48,
+        gatherArrivalRatio: 0.9,
+        gatherDistance: 0.55,
+        gatherHeight: 5.2,
         gatherSpacing: 0.28,
         gatherArrivalRadius: 0.42,
+        gatherSpeedMultiplier: 1.35,
         launchWaveCount: 8,
         launchIntervalTicks: 2,
         launchTimeoutTicks: 120,
-        launchSpeedMultiplier: 1.45,
+        launchSpeedMultiplier: 2.15,
         strikeHeight: 0.9,
         strikeSpread: 1.2,
         passDistance: 3.6,
         strikeTicks: 12,
-        strikeSpeedMultiplier: 1.6,
+        strikeSpeedMultiplier: 1.8,
         returnSpeedMultiplier: 1.25,
         rejoinRadius: 1.35,
         rejoinTicks: 2,
@@ -84,6 +85,7 @@ function validatePlan(plan: CompiledFlyingSwordSkillPlan): void {
     finite("gatherHeight", plan.gatherHeight);
     positive("gatherSpacing", plan.gatherSpacing);
     positive("gatherArrivalRadius", plan.gatherArrivalRadius);
+    positive("gatherSpeedMultiplier", plan.gatherSpeedMultiplier);
     integer("launchWaveCount", plan.launchWaveCount, 1, 0xffff);
     integer("launchIntervalTicks", plan.launchIntervalTicks, 0, 0xffffffff);
     integer("launchTimeoutTicks", plan.launchTimeoutTicks, 1, 0xffffffff);

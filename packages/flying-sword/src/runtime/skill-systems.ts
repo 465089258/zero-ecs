@@ -308,6 +308,7 @@ function guideFlyingSwordSkills(
                     cachedPlan.gatherHeight,
                     cachedPlan.gatherSpacing,
                     cachedPlan.gatherArrivalRadius,
+                    cachedPlan.gatherSpeedMultiplier,
                     cachedCenterX,
                     cachedCenterY,
                     cachedCenterZ,
@@ -346,6 +347,7 @@ function guideFlyingSwordSkills(
                     cachedPlan.gatherHeight,
                     cachedPlan.gatherSpacing,
                     cachedPlan.gatherArrivalRadius,
+                    cachedPlan.gatherSpeedMultiplier,
                     cachedCenterX,
                     cachedCenterY,
                     cachedCenterZ,
@@ -622,6 +624,7 @@ function writeGatherGoal(
     gatherHeight: number,
     gatherSpacing: number,
     gatherArrivalRadius: number,
+    gatherSpeedMultiplier: number,
     centerX: number,
     centerY: number,
     centerZ: number,
@@ -645,15 +648,18 @@ function writeGatherGoal(
     const rowStart = gatherRow * columns;
     const rowCount = Math.min(columns, reserved - rowStart);
     const column = role - rowStart;
+    const rows = Math.ceil(reserved / columns);
     const lateral = (column - (rowCount - 1) * 0.5) * gatherSpacing;
-    const depth = gatherDistance + gatherRow * gatherSpacing * 0.8;
+    const longitudinal =
+        (gatherRow - (rows - 1) * 0.5) * gatherSpacing;
+    const depth = gatherDistance + longitudinal;
     goalXs[row] = centerX - directionX * depth + rightX * lateral;
     goalYs[row] =
         centerY + gatherHeight + gatherRow % 3 * gatherSpacing * 0.18;
     goalZs[row] = centerZ - directionZ * depth + rightZ * lateral;
     arrivalRadii[row] = gatherArrivalRadius;
-    speedMultipliers[row] = 1;
-    accelerationMultipliers[row] = 1;
+    speedMultipliers[row] = gatherSpeedMultiplier;
+    accelerationMultipliers[row] = gatherSpeedMultiplier;
     contactActive[row] = 0;
 }
 
