@@ -64,7 +64,7 @@ export class DemoRenderService extends Service {
     private readonly camera = new TopDownOrthographicCamera({
         viewportWidth: this.logicalWidth,
         viewportHeight: this.logicalHeight,
-        elevation: degreesToRadians(50),
+        elevation: degreesToRadians(30),
         yaw: degreesToRadians(45),
         zoom: 62,
         target: { x: 0, y: 0.9, z: 2.2 },
