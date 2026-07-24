@@ -6,8 +6,12 @@ import { DemoInputService } from "./input-service";
 import { DemoFlyingSwordSpatialService } from "./spatial-service";
 import { DemoSceneState } from "./state";
 import {
+    DemoCultivatorMovementSystemOptions,
     DemoInputSystemOptions,
+    DemoSwordCommandSystemOptions,
     consumeFlyingSwordInputSystem,
+    moveCultivatorsSystem,
+    resolveFlyingSwordCommandSystem,
     setupFlyingSwordDemoSystem,
 } from "./systems";
 
@@ -21,6 +25,14 @@ export class FlyingSwordDemoSimulationModule implements Module {
         builder.addSystem(
             consumeFlyingSwordInputSystem,
             DemoInputSystemOptions,
+        );
+        builder.addSystem(
+            moveCultivatorsSystem,
+            DemoCultivatorMovementSystemOptions,
+        );
+        builder.addSystem(
+            resolveFlyingSwordCommandSystem,
+            DemoSwordCommandSystemOptions,
         );
     }
 }

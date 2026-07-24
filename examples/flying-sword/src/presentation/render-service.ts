@@ -59,7 +59,7 @@ export class DemoRenderService extends Service {
     private readonly camera = new TopDownOrthographicCamera({
         viewportWidth: this.logicalWidth,
         viewportHeight: this.logicalHeight,
-        elevation: degreesToRadians(27.5),
+        elevation: degreesToRadians(50),
         yaw: degreesToRadians(45),
         zoom: 62,
         target: { x: 0, y: 0.9, z: 2.2 },
@@ -98,6 +98,9 @@ export class DemoRenderService extends Service {
     private minimumHeight = 0;
     private maximumHeight = 0;
     private statusCountdown = 0;
+    private followedX = 0;
+    private followedY = 0;
+    private followedZ = 0;
 
     init(): void {
         // 像素素材在 DPR=1 已保持硬边；更高 DPR 只会扩大填充面积。
@@ -141,10 +144,16 @@ export class DemoRenderService extends Service {
         cultivators: Cultivators,
         swords: Swords,
     ): void {
+        this.followCultivator(
+            cultivators,
+            scene.cultivator,
+            interpolation,
+        );
         this.beginFrame();
-        this.drawGroundTarget(scene);
+        this.drawGroundGrid();
+        this.drawGroundTargets(scene);
         this.queue.begin();
-        this.collectCultivators(cultivators);
+        this.collectCultivators(cultivators, interpolation);
         this.collectSwords(swords, interpolation);
         this.queue.sort();
         this.drawSortedItems();
@@ -175,48 +184,105 @@ export class DemoRenderService extends Service {
         if (!context) throw new Error("Cannot create flying sword ground layer");
         context.fillStyle = "#071012";
         context.fillRect(0, 0, this.logicalWidth, this.logicalHeight);
-        context.lineWidth = 1;
-        context.strokeStyle = "rgba(88, 160, 144, 0.13)";
-        for (let line = -8; line <= 12; line++) {
-            this.camera.project(-10, 0, line, this.projected);
-            this.camera.project(10, 0, line, this.projectedSecond);
-            line2(context, this.projected, this.projectedSecond);
-        }
-        for (let line = -10; line <= 10; line++) {
-            this.camera.project(line, 0, -8, this.projected);
-            this.camera.project(line, 0, 12, this.projectedSecond);
-            line2(context, this.projected, this.projectedSecond);
-        }
     }
 
-    private drawGroundTarget(scene: Readonly<DemoSceneState>): void {
+    private drawGroundGrid(): void {
         const context = this.view.context;
-        this.camera.project(scene.targetX, 0, scene.targetZ, this.projected);
-        context.strokeStyle = scene.mode === FlyingSwordMode.Focus
-            ? "rgba(255, 183, 83, 0.9)"
-            : "rgba(101, 221, 191, 0.32)";
-        context.lineWidth = 2;
+        context.lineWidth = 1;
+        context.strokeStyle = "rgba(88, 160, 144, 0.13)";
         context.beginPath();
-        context.ellipse(
-            this.projected.x,
-            this.projected.y,
-            22,
-            10,
-            0,
-            0,
-            Math.PI * 2,
-        );
+        const centerX = Math.floor(this.followedX);
+        const centerZ = Math.floor(this.followedZ);
+        const minimumX = centerX - GRID_HALF_SPAN;
+        const maximumX = centerX + GRID_HALF_SPAN;
+        const minimumZ = centerZ - GRID_HALF_SPAN;
+        const maximumZ = centerZ + GRID_HALF_SPAN;
+        for (let z = minimumZ; z <= maximumZ; z++) {
+            this.camera.project(minimumX, 0, z, this.projected);
+            this.camera.project(maximumX, 0, z, this.projectedSecond);
+            context.moveTo(this.projected.x, this.projected.y);
+            context.lineTo(this.projectedSecond.x, this.projectedSecond.y);
+        }
+        for (let x = minimumX; x <= maximumX; x++) {
+            this.camera.project(x, 0, minimumZ, this.projected);
+            this.camera.project(x, 0, maximumZ, this.projectedSecond);
+            context.moveTo(this.projected.x, this.projected.y);
+            context.lineTo(this.projectedSecond.x, this.projectedSecond.y);
+        }
         context.stroke();
     }
 
-    private collectCultivators(cultivators: Cultivators): void {
+    private drawGroundTargets(scene: Readonly<DemoSceneState>): void {
+        const context = this.view.context;
+        if (scene.hasMoveTarget) {
+            this.camera.project(
+                scene.moveTargetX,
+                scene.moveTargetY,
+                scene.moveTargetZ,
+                this.projected,
+            );
+            drawGroundMarker(context, this.projected, "#65ddbf", 18, 8, true);
+        }
+        if (scene.mode === FlyingSwordMode.Orbit) return;
+        this.camera.project(scene.targetX, 0, scene.targetZ, this.projected);
+        drawGroundMarker(
+            context,
+            this.projected,
+            scene.mode === FlyingSwordMode.Focus
+                ? "#ffb753"
+                : "rgba(255, 183, 83, 0.38)",
+            22,
+            10,
+            false,
+        );
+    }
+
+    private followCultivator(
+        cultivators: Cultivators,
+        entity: number,
+        interpolation: number,
+    ): void {
         const iter = cultivators.iter();
         while (iter.next()) {
             const [count, entities, transforms] = iter.current;
+            const previousXs = transforms[Transform3Field.PreviousX];
+            const previousYs = transforms[Transform3Field.PreviousY];
+            const previousZs = transforms[Transform3Field.PreviousZ];
+            const xs = transforms[Transform3Field.X];
+            const ys = transforms[Transform3Field.Y];
+            const zs = transforms[Transform3Field.Z];
             for (let row = 0; row < count; row++) {
-                const x = transforms[Transform3Field.X][row];
-                const y = transforms[Transform3Field.Y][row];
-                const z = transforms[Transform3Field.Z][row];
+                if (entities[row] !== entity) continue;
+                this.followedX = lerp(previousXs[row], xs[row], interpolation);
+                this.followedY = lerp(previousYs[row], ys[row], interpolation);
+                this.followedZ = lerp(previousZs[row], zs[row], interpolation);
+                this.camera.setTargetPosition(
+                    this.followedX,
+                    this.followedY + CAMERA_TARGET_HEIGHT,
+                    this.followedZ + CAMERA_TARGET_FORWARD_OFFSET,
+                );
+                return;
+            }
+        }
+    }
+
+    private collectCultivators(
+        cultivators: Cultivators,
+        interpolation: number,
+    ): void {
+        const iter = cultivators.iter();
+        while (iter.next()) {
+            const [count, entities, transforms] = iter.current;
+            const previousXs = transforms[Transform3Field.PreviousX];
+            const previousYs = transforms[Transform3Field.PreviousY];
+            const previousZs = transforms[Transform3Field.PreviousZ];
+            const xs = transforms[Transform3Field.X];
+            const ys = transforms[Transform3Field.Y];
+            const zs = transforms[Transform3Field.Z];
+            for (let row = 0; row < count; row++) {
+                const x = lerp(previousXs[row], xs[row], interpolation);
+                const y = lerp(previousYs[row], ys[row], interpolation);
+                const z = lerp(previousZs[row], zs[row], interpolation);
                 this.camera.project(x, y, z, this.projected);
                 this.camera.project(x, y + 1.75, z, this.projectedSecond);
                 const item = this.queue.acquire();
@@ -397,10 +463,10 @@ export class DemoRenderService extends Service {
 
     private drawStatus(scene: Readonly<DemoSceneState>): void {
         const mode = scene.mode === FlyingSwordMode.Focus
-            ? "集中"
+            ? "集火出击"
             : scene.mode === FlyingSwordMode.Recall
-                ? "召回"
-                : "环绕";
+                ? "归剑途中"
+                : "护体环绕";
         const nearest = Number.isFinite(this.nearestDepth)
             ? this.nearestDepth.toFixed(2)
             : "--";
@@ -418,9 +484,13 @@ export class DemoRenderService extends Service {
             `当前可见  ${this.visibleSwordCount}`,
             `当前指令  ${mode}`,
             "",
-            `目标 X    ${scene.targetX.toFixed(2)}`,
-            `目标 Y    ${scene.targetY.toFixed(2)}`,
-            `目标 Z    ${scene.targetZ.toFixed(2)}`,
+            `角色 X    ${this.followedX.toFixed(2)}`,
+            `角色 Y    ${this.followedY.toFixed(2)}`,
+            `角色 Z    ${this.followedZ.toFixed(2)}`,
+            "",
+            `集火 X    ${scene.targetX.toFixed(2)}`,
+            `集火 Y    ${scene.targetY.toFixed(2)}`,
+            `集火 Z    ${scene.targetZ.toFixed(2)}`,
             "",
             `最近深度  ${nearest}`,
             `最远深度  ${farthest}`,
@@ -459,14 +529,32 @@ const SWORD_SPRITES = [
     { url: swordThunderUrl },
 ] as const;
 
-function line2(
+function drawGroundMarker(
     context: CanvasRenderingContext2D,
-    from: Readonly<ProjectedPoint>,
-    to: Readonly<ProjectedPoint>,
+    point: Readonly<ProjectedPoint>,
+    color: string,
+    radiusX: number,
+    radiusY: number,
+    cross: boolean,
 ): void {
+    context.strokeStyle = color;
+    context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(from.x, from.y);
-    context.lineTo(to.x, to.y);
+    context.ellipse(
+        point.x,
+        point.y,
+        radiusX,
+        radiusY,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    if (cross) {
+        context.moveTo(point.x - radiusX * 0.55, point.y);
+        context.lineTo(point.x + radiusX * 0.55, point.y);
+        context.moveTo(point.x, point.y - radiusY * 0.7);
+        context.lineTo(point.x, point.y + radiusY * 0.7);
+    }
     context.stroke();
 }
 
@@ -592,6 +680,9 @@ function drawSwordFallback(
 
 const NOMINAL_SWORD_SPRITE_WIDTH = 84;
 const VIEW_CULLING_MARGIN = 192;
+const GRID_HALF_SPAN = 24;
+const CAMERA_TARGET_HEIGHT = 0.9;
+const CAMERA_TARGET_FORWARD_OFFSET = 2.2;
 const SPRITE_GLOW_PADDING = 12;
 const SPRITE_GLOW_BLUR = 9;
 const STATUS_UPDATE_INTERVAL_FRAMES = 6;

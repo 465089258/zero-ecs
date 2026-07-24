@@ -41,6 +41,20 @@ test("flying sword example projection and painter sorting share camera-space dep
     expect(roundTrip.x).toBeCloseTo(0, 5);
     expect(roundTrip.z).toBeCloseTo(4, 5);
 
+    camera.setTargetPosition(6, 0, -3);
+    const followedTarget = { x: 0, y: 0, depth: 0 };
+    camera.project(6, 0, -3, followedTarget);
+    expect(followedTarget.x).toBeCloseTo(480, 5);
+    expect(followedTarget.y).toBeCloseTo(320, 5);
+    expect(camera.unprojectToHeight(
+        followedTarget.x,
+        followedTarget.y,
+        0,
+        roundTrip,
+    )).toBe(true);
+    expect(roundTrip.x).toBeCloseTo(6, 5);
+    expect(roundTrip.z).toBeCloseTo(-3, 5);
+
     const queue = new DepthRenderQueue(() => ({
         layer: DemoRenderLayer.World,
         depth: 0,

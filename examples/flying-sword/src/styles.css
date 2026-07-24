@@ -88,6 +88,7 @@ canvas {
     width: 100%;
     aspect-ratio: 3 / 2;
     cursor: crosshair;
+    touch-action: none;
 }
 
 aside {

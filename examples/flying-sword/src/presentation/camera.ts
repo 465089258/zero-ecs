@@ -71,9 +71,13 @@ export class TopDownOrthographicCamera {
     }
 
     setTarget(target: ReadonlyVector3): void {
-        this.targetX = finite("target.x", target.x);
-        this.targetY = finite("target.y", target.y);
-        this.targetZ = finite("target.z", target.z);
+        this.setTargetPosition(target.x, target.y, target.z);
+    }
+
+    setTargetPosition(x: number, y: number, z: number): void {
+        this.targetX = finite("target.x", x);
+        this.targetY = finite("target.y", y);
+        this.targetZ = finite("target.z", z);
     }
 
     setOrientation(elevation: number, yaw: number): void {

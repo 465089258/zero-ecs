@@ -6,9 +6,10 @@ import { DemoViewResource } from "../app/resources";
 
 export const DemoInputAction = Object.freeze({
     None: 0,
-    Focus: 1,
-    Orbit: 2,
-    Recall: 3,
+    Move: 1,
+    Focus: 2,
+    Orbit: 3,
+    Recall: 4,
 } as const);
 
 export interface DemoInputOut {
@@ -26,9 +27,20 @@ export class DemoInputService extends Service {
     private clientY = 0;
 
     private readonly onPointerDown = (event: PointerEvent): void => {
-        this.action = DemoInputAction.Focus;
+        if (event.button === 0) {
+            this.action = DemoInputAction.Move;
+        } else if (event.button === 2) {
+            this.action = DemoInputAction.Focus;
+        } else {
+            return;
+        }
+        event.preventDefault();
         this.clientX = event.clientX;
         this.clientY = event.clientY;
+    };
+
+    private readonly onContextMenu = (event: MouseEvent): void => {
+        event.preventDefault();
     };
 
     private readonly onKeyDown = (event: KeyboardEvent): void => {
@@ -42,11 +54,13 @@ export class DemoInputService extends Service {
 
     start(): void {
         this.view.canvas.addEventListener("pointerdown", this.onPointerDown);
+        this.view.canvas.addEventListener("contextmenu", this.onContextMenu);
         window.addEventListener("keydown", this.onKeyDown);
     }
 
     stop(): void {
         this.view.canvas.removeEventListener("pointerdown", this.onPointerDown);
+        this.view.canvas.removeEventListener("contextmenu", this.onContextMenu);
         window.removeEventListener("keydown", this.onKeyDown);
         this.action = DemoInputAction.None;
     }
