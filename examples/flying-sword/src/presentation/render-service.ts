@@ -33,6 +33,11 @@ import swordWraithUrl from "../assets/monsters/sword-wraith-render.png";
 import {
     FlyingSwordVisual,
 } from "../content/components";
+import {
+    DamageDisplay,
+    DamageDisplayStyle,
+} from "../damage-display/components";
+import { DamageDisplayQuery } from "../damage-display/queries";
 import { RogueUpgradeCatalog } from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
 import {
@@ -62,6 +67,7 @@ type Runs = QueryOf<typeof RogueRunQuery>;
 type Cultivators = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
+type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
 
 enum RenderKind {
     SwordShadow,
@@ -70,6 +76,7 @@ enum RenderKind {
     Enemy,
     Experience,
     Sword,
+    Damage,
 }
 
 interface DemoRenderItem extends DepthRenderItem {
@@ -84,6 +91,9 @@ interface DemoRenderItem extends DepthRenderItem {
     width: number;
     height: number;
     health: number;
+    amount: number;
+    alpha: number;
+    style: number;
 }
 
 /** 示例专属 Canvas 表现后端。 */
@@ -120,6 +130,9 @@ export class DemoRenderService extends Service {
         width: 0,
         height: 0,
         health: 1,
+        amount: 0,
+        alpha: 1,
+        style: DamageDisplayStyle.Dealt,
     }));
     private readonly swordSprites: SwordSprite[] = SWORD_SPRITES.map(definition => ({
         ...definition,
@@ -215,6 +228,7 @@ export class DemoRenderService extends Service {
         cultivators: Cultivators,
         enemies: Enemies,
         pickups: Pickups,
+        damages: DamageDisplays,
         swords: Swords,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
@@ -231,6 +245,11 @@ export class DemoRenderService extends Service {
         this.collectEnemies(enemies, interpolation);
         this.collectExperience(pickups, interpolation);
         this.collectSwords(swords, interpolation);
+        this.collectDamageDisplays(
+            damages,
+            this.readRunTick(runs),
+            interpolation,
+        );
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
@@ -653,6 +672,66 @@ export class DemoRenderService extends Service {
         }
     }
 
+    private collectDamageDisplays(
+        displays: DamageDisplays,
+        tick: number,
+        interpolation: number,
+    ): void {
+        const iter = displays.iter();
+        while (iter.next()) {
+            const [count, entities, positions, data] = iter.current;
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const amounts = data[DamageDisplay.Amount];
+            const startTicks = data[DamageDisplay.StartTick];
+            const durations = data[DamageDisplay.DurationTicks];
+            const styles = data[DamageDisplay.Style];
+            const offsets = data[DamageDisplay.HorizontalOffset];
+            for (let row = 0; row < count; row++) {
+                const duration = Math.max(1, durations[row]);
+                const progress = Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        (tick + interpolation - startTicks[row]) /
+                            duration,
+                    ),
+                );
+                this.camera.project(
+                    xs[row] + offsets[row],
+                    ys[row] + progress * 0.9,
+                    zs[row],
+                    this.projected,
+                );
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
+                    continue;
+                }
+                const item = this.queue.acquire();
+                item.kind = RenderKind.Damage;
+                item.sprite = 0;
+                item.layer = DemoRenderLayer.ForegroundEffect;
+                item.depth = this.projected.depth;
+                item.subOrder = 0;
+                item.stableId = entities[row];
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                item.amount = amounts[row];
+                item.alpha = 1 - progress * progress;
+                item.style = styles[row];
+            }
+        }
+    }
+
+    private readRunTick(runs: Runs): number {
+        const iter = runs.iter();
+        while (iter.next()) {
+            const [count, , , clocks] = iter.current;
+            if (count > 0) return clocks[RogueRunClock.Tick][0];
+        }
+        return 0;
+    }
+
     private drawSortedItems(): void {
         const context = this.view.context;
         const items = this.queue.items;
@@ -701,6 +780,8 @@ export class DemoRenderService extends Service {
                 } else {
                     drawSwordFallback(context, item);
                 }
+            } else if (item.kind === RenderKind.Damage) {
+                drawDamageDisplay(context, item);
             }
         }
     }
@@ -934,6 +1015,26 @@ function drawActorSprite(
     context.beginPath();
     context.arc(item.x1, item.y1 - 18, 12, 0, Math.PI * 2);
     context.fill();
+}
+
+function drawDamageDisplay(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    context.globalAlpha = item.alpha;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = "700 20px monospace";
+    context.lineWidth = 4;
+    context.strokeStyle = "rgba(7, 10, 12, 0.92)";
+    context.fillStyle =
+        item.style === DamageDisplayStyle.Taken
+            ? "#ff6f72"
+            : "#ffe08a";
+    const text = String(Math.max(1, Math.round(item.amount)));
+    context.strokeText(text, Math.round(item.x1), Math.round(item.y1));
+    context.fillText(text, Math.round(item.x1), Math.round(item.y1));
+    context.globalAlpha = 1;
 }
 
 function drawEnemyHealth(

@@ -41,6 +41,8 @@ import {
     SetFlyingSwordCenterRequestStorage,
     SetFlyingSwordModeRequest,
     SetFlyingSwordModeRequestStorage,
+    SetFlyingSwordFormationSizeRequest,
+    SetFlyingSwordFormationSizeRequestStorage,
 } from "./runtime/storage";
 
 /**
@@ -230,6 +232,29 @@ export class FlyingSwordService extends Service {
                 SetFlyingSwordCenterRequestStorage,
                 SetFlyingSwordCenterRequest.Z,
                 center.z,
+            )
+            .submit();
+    }
+
+    setFormationSize(group: Entity, size: number): void {
+        const formationSize = integerInRange(
+            "size",
+            size,
+            1,
+            0xffff,
+        );
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordFormationSizeRequestStorage)
+            .set(
+                SetFlyingSwordFormationSizeRequestStorage,
+                SetFlyingSwordFormationSizeRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordFormationSizeRequestStorage,
+                SetFlyingSwordFormationSizeRequest.Size,
+                formationSize,
             )
             .submit();
     }

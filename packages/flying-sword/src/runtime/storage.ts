@@ -92,10 +92,26 @@ implements FlyingSwordActionViewData {
     readonly [FlyingSwordAction.TrajectoryStartX] = Types.F32;
     readonly [FlyingSwordAction.TrajectoryStartY] = Types.F32;
     readonly [FlyingSwordAction.TrajectoryStartZ] = Types.F32;
+    readonly [FlyingSwordAction.TargetX] = Types.F32;
+    readonly [FlyingSwordAction.TargetY] = Types.F32;
+    readonly [FlyingSwordAction.TargetZ] = Types.F32;
+    readonly [FlyingSwordAction.HasIndividualTarget] = Types.U8;
 }
 
 /** @internal 只有能够生成攻击接触事实时才存在。 */
 export class FlyingSwordContactWindowStorage implements ComponentTag {}
+
+/**
+ * @internal 下一次技能获取时消费的每剑目标。
+ *
+ * 该组件只跨越 Commands 提交边界，不是飞剑的长期业务状态。
+ */
+export class FlyingSwordPendingSkillTarget3Storage
+implements Component<Float3> {
+    readonly [Float3.X] = Types.F32;
+    readonly [Float3.Y] = Types.F32;
+    readonly [Float3.Z] = Types.F32;
+}
 
 export enum SetFlyingSwordCenterRequest {
     Group,
@@ -123,6 +139,18 @@ export class SetFlyingSwordModeRequestStorage
 implements Component<SetFlyingSwordModeRequest> {
     readonly [SetFlyingSwordModeRequest.Group] = Types.Entity;
     readonly [SetFlyingSwordModeRequest.Mode] = Types.U8;
+}
+
+export enum SetFlyingSwordFormationSizeRequest {
+    Group,
+    Size,
+}
+
+/** @internal 修改控制组编队容量的一次性请求实体。 */
+export class SetFlyingSwordFormationSizeRequestStorage
+implements Component<SetFlyingSwordFormationSizeRequest> {
+    readonly [SetFlyingSwordFormationSizeRequest.Group] = Types.Entity;
+    readonly [SetFlyingSwordFormationSizeRequest.Size] = Types.U16;
 }
 
 export enum FocusFlyingSwordRequest {
@@ -157,6 +185,22 @@ implements Component<CastFlyingSwordSkillRequest> {
     readonly [CastFlyingSwordSkillRequest.TargetX] = Types.F32;
     readonly [CastFlyingSwordSkillRequest.TargetY] = Types.F32;
     readonly [CastFlyingSwordSkillRequest.TargetZ] = Types.F32;
+}
+
+export enum SetFlyingSwordSkillTargetRequest {
+    Sword,
+    TargetX,
+    TargetY,
+    TargetZ,
+}
+
+/** @internal 为下一次技能获取指定单把飞剑目标的一次性请求实体。 */
+export class SetFlyingSwordSkillTargetRequestStorage
+implements Component<SetFlyingSwordSkillTargetRequest> {
+    readonly [SetFlyingSwordSkillTargetRequest.Sword] = Types.Entity;
+    readonly [SetFlyingSwordSkillTargetRequest.TargetX] = Types.F32;
+    readonly [SetFlyingSwordSkillTargetRequest.TargetY] = Types.F32;
+    readonly [SetFlyingSwordSkillTargetRequest.TargetZ] = Types.F32;
 }
 
 export enum CancelFlyingSwordSkillRequest {

@@ -22,6 +22,8 @@ import {
 } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordMode,
+    FlyingSwordMember,
+    FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSkillService,
     FlyingSwordSystemSet,
@@ -73,10 +75,13 @@ import {
     UpgradeSelection,
     UpgradeSelectionType,
 } from "./rogue/components";
+import { RogueRunQuery } from "./rogue/queries";
 import { DemoSceneState } from "./state";
 
 type Cultivators = QueryOf<typeof CultivatorControlQuery>;
 type MovingCultivators = QueryOf<typeof MovingCultivatorQuery>;
+type Runs = QueryOf<typeof RogueRunQuery>;
+type FlyingSwords = QueryOf<typeof FlyingSwordQuery>;
 
 export const setupFlyingSwordDemoSystem = defSystem(
     Startup,
@@ -100,6 +105,8 @@ export const consumeFlyingSwordInputSystem = defSystem(
         FlyingSwordSkillService,
         Write(DemoSceneState),
         CultivatorControlQuery,
+        RogueRunQuery,
+        FlyingSwordQuery,
     ],
 );
 
@@ -340,6 +347,8 @@ function consumeFlyingSwordInput(
     skills: FlyingSwordSkillService,
     scene: Mut<DemoSceneState>,
     cultivators: Cultivators,
+    runs: Runs,
+    swords: FlyingSwords,
 ): void {
     const keyboardMoving = inputService.readMovement(movement);
     if (keyboardMoving) {
@@ -391,6 +400,14 @@ function consumeFlyingSwordInput(
             return;
         }
         flyingSwords.orbit(scene.swordGroup);
+        assignFlyingSwordSkillTarget(
+            skills,
+            swords,
+            scene.swordGroup,
+            target.x,
+            target.y,
+            target.z,
+        );
         skills.cast({
             group: scene.swordGroup,
             target,
@@ -399,6 +416,7 @@ function consumeFlyingSwordInput(
         scene.targetY = target.y;
         scene.targetZ = target.z;
         scene.mode = FlyingSwordMode.Orbit;
+        setRogueSkillTarget(runs, target.x, target.y, target.z);
     } else if (input.action === DemoInputAction.Orbit) {
         skills.cancel(scene.swordGroup);
         flyingSwords.orbit(scene.swordGroup);
@@ -411,6 +429,48 @@ function consumeFlyingSwordInput(
 }
 
 let keyboardWasMoving = false;
+
+function setRogueSkillTarget(
+    runs: Runs,
+    x: number,
+    y: number,
+    z: number,
+): void {
+    const iter = runs.iter();
+    while (iter.next()) {
+        const [count, , , , , , , , targets] = iter.current;
+        if (count === 0) continue;
+        const xs = targets[RogueRunTarget.SkillX];
+        const ys = targets[RogueRunTarget.SkillY];
+        const zs = targets[RogueRunTarget.SkillZ];
+        xs[0] = x;
+        ys[0] = y;
+        zs[0] = z;
+        return;
+    }
+}
+
+function assignFlyingSwordSkillTarget(
+    skills: FlyingSwordSkillService,
+    swords: FlyingSwords,
+    group: number,
+    x: number,
+    y: number,
+    z: number,
+): void {
+    target.x = x;
+    target.y = y;
+    target.z = z;
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, entities, members] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < count; row++) {
+            if (groups[row] !== group) continue;
+            skills.setSkillTarget(entities[row], target);
+        }
+    }
+}
 
 function setCultivatorKeyboardMovement(
     commands: Commands,

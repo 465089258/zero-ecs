@@ -1,6 +1,7 @@
 import {
     defSystem,
 } from "@zero-ecs/game";
+import { DamageDisplayQuery } from "../damage-display/queries";
 import { DemoSceneState } from "../simulation/state";
 import {
     RogueEnemyRenderQuery,
@@ -29,6 +30,7 @@ export const renderFlyingSwordDemoSystem = defSystem(
         RoguePlayerQuery,
         RogueEnemyRenderQuery,
         RogueExperiencePickupQuery,
+        DamageDisplayQuery,
         DemoFlyingSwordRenderQuery,
     ],
 );
@@ -45,7 +47,8 @@ function renderFlyingSwordDemo(
     cultivators: Parameters<DemoRenderService["render"]>[3],
     enemies: Parameters<DemoRenderService["render"]>[4],
     pickups: Parameters<DemoRenderService["render"]>[5],
-    swords: Parameters<DemoRenderService["render"]>[6],
+    damages: Parameters<DemoRenderService["render"]>[6],
+    swords: Parameters<DemoRenderService["render"]>[7],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -54,6 +57,7 @@ function renderFlyingSwordDemo(
         cultivators,
         enemies,
         pickups,
+        damages,
         swords,
     );
 }

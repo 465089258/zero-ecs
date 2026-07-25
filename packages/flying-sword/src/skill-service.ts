@@ -20,10 +20,13 @@ import {
     CastFlyingSwordSkillRequestStorage,
     FlyingSwordSkillActionEntityStorage,
     FlyingSwordSkillTimingStorage,
+    SetFlyingSwordSkillTargetRequest,
+    SetFlyingSwordSkillTargetRequestStorage,
 } from "./runtime/storage";
 import {
     FlyingSwordSkillAction,
     FlyingSwordSkillTiming,
+    type ReadonlyVector3,
 } from "./types";
 
 /** 飞剑技能激活、取消和只读状态查询入口。 */
@@ -71,6 +74,39 @@ export class FlyingSwordSkillService extends Service {
                 CastFlyingSwordSkillRequestStorage,
                 CastFlyingSwordSkillRequest.TargetZ,
                 options.target.z,
+            )
+            .submit();
+    }
+
+    /**
+     * 为一把飞剑的下一次技能动作指定独立目标点。
+     *
+     * 未调用该方法的飞剑继续使用 cast 的控制组目标。
+     */
+    setSkillTarget(sword: Entity, target: ReadonlyVector3): void {
+        vector("target", target);
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordSkillTargetRequestStorage)
+            .set(
+                SetFlyingSwordSkillTargetRequestStorage,
+                SetFlyingSwordSkillTargetRequest.Sword,
+                sword,
+            )
+            .set(
+                SetFlyingSwordSkillTargetRequestStorage,
+                SetFlyingSwordSkillTargetRequest.TargetX,
+                target.x,
+            )
+            .set(
+                SetFlyingSwordSkillTargetRequestStorage,
+                SetFlyingSwordSkillTargetRequest.TargetY,
+                target.y,
+            )
+            .set(
+                SetFlyingSwordSkillTargetRequestStorage,
+                SetFlyingSwordSkillTargetRequest.TargetZ,
+                target.z,
             )
             .submit();
     }

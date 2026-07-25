@@ -8,7 +8,9 @@ import { RogueRunTuning } from "../../content/run-tuning";
 import { RogueUpgradeCatalog } from "../../content/upgrades";
 import { RogueContentService } from "./content-service";
 import {
+    CombatScratchState,
     EnemySpatialIndexState,
+    FlyingSwordTargetingState,
     RogueEntityAccessState,
 } from "./state";
 import {
@@ -34,6 +36,8 @@ export class FlyingSwordRogueSimulationModule implements Module {
             .addResource(RogueRunTuning, new RogueRunTuning())
             .addResource(RogueUpgradeCatalog, new RogueUpgradeCatalog())
             .addState(EnemySpatialIndexState)
+            .addState(CombatScratchState)
+            .addState(FlyingSwordTargetingState)
             .addState(RogueEntityAccessState)
             .addService(RogueContentService)
             .addService(RogueRunControlService);

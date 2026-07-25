@@ -14,6 +14,8 @@ import { TimeState } from "@zero-ecs/game/time";
 import {
     FlyingSwordAction,
     FlyingSwordMember,
+    FlyingSwordQuery,
+    FlyingSwordService,
     FlyingSwordSkillAction,
     FlyingSwordSkillActionQuery,
     FlyingSwordSkillPhase,
@@ -29,6 +31,10 @@ import {
     MotionSystemSet,
     MoveTowards3,
 } from "@zero-ecs/motion/3d";
+import {
+    FlyingSwordVisual,
+    FlyingSwordVisualType,
+} from "../../content/components";
 import {
     EnemyCatalog,
     EnemyKind,
@@ -77,7 +83,9 @@ import {
     RogueRunQuery,
 } from "./queries";
 import {
+    CombatScratchState,
     EnemySpatialIndexState,
+    FlyingSwordTargetingState,
     GRID_CELL_SIZE,
     GRID_HEIGHT,
     GRID_WIDTH,
@@ -93,6 +101,7 @@ type AutoGroups = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type SwordContacts = QueryOf<typeof RogueFlyingSwordContactQuery>;
 type SkillActions = QueryOf<typeof FlyingSwordSkillActionQuery>;
 type UpgradeRequests = QueryOf<typeof RogueChooseUpgradeRequestQuery>;
+type FlyingSwords = QueryOf<typeof FlyingSwordQuery>;
 
 export const RogueSystemSet = Object.freeze({
     ApplyUpgrade: new SystemSet(
@@ -119,9 +128,11 @@ export const applyRogueUpgradeRequestsSystem = defSystem(
     applyRogueUpgradeRequests,
     [
         Commands,
+        FlyingSwordService,
         RogueRunQuery,
         RoguePlayerQuery,
         RogueAutoFlyingSwordGroupQuery,
+        FlyingSwordQuery,
         RogueChooseUpgradeRequestQuery,
     ],
 );
@@ -155,10 +166,12 @@ export const autoCastFlyingSwordSystem = defSystem(
     autoCastFlyingSword,
     [
         FlyingSwordSkillService,
+        Write(FlyingSwordTargetingState),
         RogueRunQuery,
         RoguePlayerQuery,
         RogueEnemyQuery,
         RogueAutoFlyingSwordGroupQuery,
+        FlyingSwordQuery,
     ],
 );
 
@@ -177,6 +190,7 @@ export const collideFlyingSwordsWithEnemiesSystem = defSystem(
     collideFlyingSwordsWithEnemies,
     [
         World,
+        Write(CombatScratchState),
         Write(EnemySpatialIndexState),
         RogueContentService,
         RogueAutoFlyingSwordGroupQuery,
@@ -240,6 +254,7 @@ export const openRogueUpgradeSelectionSystem = defSystem(
         RogueRunControlService,
         RogueRunQuery,
         RoguePlayerQuery,
+        FlyingSwordQuery,
     ],
 );
 
@@ -312,9 +327,11 @@ export const RogueSystemOptions = Object.freeze({
 
 function applyRogueUpgradeRequests(
     commands: Commands,
+    flyingSwords: FlyingSwordService,
     runs: Runs,
     players: Players,
     groups: AutoGroups,
+    swords: FlyingSwords,
     requests: UpgradeRequests,
 ): void {
     const requestIter = requests.iter();
@@ -357,6 +374,15 @@ function applyRogueUpgradeRequests(
             if (upgrade >= 0 && activeSelection) {
                 applyUpgradeToPlayer(upgrade, players);
                 applyUpgradeToSwordGroup(upgrade, groups);
+                if (upgrade === RogueUpgrade.AddSword) {
+                    addFlyingSword(
+                        commands,
+                        flyingSwords,
+                        runs,
+                        players,
+                        swords,
+                    );
+                }
                 activeSelection[0] = 0;
                 decrementPendingChoice(players);
             }
@@ -365,11 +391,80 @@ function applyRogueUpgradeRequests(
     }
 }
 
+function addFlyingSword(
+    commands: Commands,
+    flyingSwords: FlyingSwordService,
+    runs: Runs,
+    players: Players,
+    swords: FlyingSwords,
+): void {
+    let group = 0 as Entity;
+    const runIter = runs.iter();
+    while (runIter.next()) {
+        const [count, , identities] = runIter.current;
+        if (count === 0) continue;
+        group = identities[RogueRunIdentity.SwordGroup][0];
+        break;
+    }
+    if (group === 0) return;
+
+    let swordCount = 0;
+    let maximumSlot = -1;
+    const swordIter = swords.iter();
+    while (swordIter.next()) {
+        const [count, , members] = swordIter.current;
+        const swordGroups = members[FlyingSwordMember.Group];
+        const slots = members[FlyingSwordMember.Slot];
+        for (let row = 0; row < count; row++) {
+            if (swordGroups[row] !== group) continue;
+            swordCount++;
+            maximumSlot = Math.max(maximumSlot, slots[row]);
+        }
+    }
+    if (swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT) return;
+
+    let x = 0;
+    let y = 0.9;
+    let z = 0;
+    const playerIter = players.iter();
+    while (playerIter.next()) {
+        const [count, , positions] = playerIter.current;
+        if (count === 0) continue;
+        x = positions[Float3.X][0];
+        y = positions[Float3.Y][0] + 0.9;
+        z = positions[Float3.Z][0];
+        break;
+    }
+    const slot = maximumSlot + 1;
+    const sword = flyingSwords.createSword({
+        group,
+        position: {
+            x: x + ((slot & 1) === 0 ? -0.18 : 0.18),
+            y,
+            z: z - 0.55,
+        },
+        slot,
+        maximumSpeed: 13,
+        acceleration: 42,
+    });
+    commands
+        .entity(sword)
+        .add(FlyingSwordVisualType)
+        .set(
+            FlyingSwordVisualType,
+            FlyingSwordVisual.Id,
+            slot,
+        )
+        .submit();
+    flyingSwords.setFormationSize(group, swordCount + 1);
+}
+
 function openRogueUpgradeSelection(
     catalog: Readonly<RogueUpgradeCatalog>,
     control: RogueRunControlService,
     runs: Runs,
     players: Players,
+    swords: FlyingSwords,
 ): void {
     let pendingChoices = 0;
     const playerIter = players.iter();
@@ -398,7 +493,7 @@ function openRogueUpgradeSelection(
         const [
             count,
             ,
-            ,
+            identities,
             ,
             statuses,
             randoms,
@@ -414,17 +509,31 @@ function openRogueUpgradeSelection(
         ) {
             continue;
         }
+        const swordCount = countFlyingSwords(
+            swords,
+            identities[RogueRunIdentity.SwordGroup][0],
+        );
         let randomState = randoms[RogueRunRandom.State][0];
-        randomState = nextRandom(randomState);
-        const first = randomState % catalog.count;
+        let first = 0;
+        do {
+            randomState = nextRogueRandom(randomState);
+            first = randomState % catalog.count;
+        } while (!isUpgradeAvailable(first, swordCount));
         let second = first;
-        while (second === first) {
-            randomState = nextRandom(randomState);
+        while (
+            second === first ||
+            !isUpgradeAvailable(second, swordCount)
+        ) {
+            randomState = nextRogueRandom(randomState);
             second = randomState % catalog.count;
         }
         let third = first;
-        while (third === first || third === second) {
-            randomState = nextRandom(randomState);
+        while (
+            third === first ||
+            third === second ||
+            !isUpgradeAvailable(third, swordCount)
+        ) {
+            randomState = nextRogueRandom(randomState);
             third = randomState % catalog.count;
         }
         selection[UpgradeSelection.OptionA][0] = first;
@@ -435,6 +544,30 @@ function openRogueUpgradeSelection(
         control.pauseForUpgrade();
         return;
     }
+}
+
+function countFlyingSwords(
+    swords: FlyingSwords,
+    group: Entity,
+): number {
+    let result = 0;
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, , members] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < count; row++) {
+            if (groups[row] === group) result++;
+        }
+    }
+    return result;
+}
+
+function isUpgradeAvailable(
+    upgrade: number,
+    swordCount: number,
+): boolean {
+    return upgrade !== RogueUpgrade.AddSword ||
+        swordCount < MAX_FLYING_SWORD_UPGRADE_COUNT;
 }
 
 function applyUpgradeToPlayer(
@@ -592,17 +725,17 @@ function directEnemySpawns(
                 spawned < tuning.maximumSpawnsPerTick &&
                 budget >= 0.6
             ) {
-                randomState = nextRandom(randomState);
+                randomState = nextRogueRandom(randomState);
                 const roll = randomState / 0x100000000;
                 const kind = chooseEnemyKind(tick, roll);
                 const cost = catalog.cost[kind];
                 if (budget < cost && activeEnemies[row] >= initialTargets[row]) {
                     break;
                 }
-                randomState = nextRandom(randomState);
+                randomState = nextRogueRandom(randomState);
                 const angle =
                     randomState / 0x100000000 * Math.PI * 2;
-                randomState = nextRandom(randomState);
+                randomState = nextRogueRandom(randomState);
                 const radius = tuning.spawnRadius +
                     randomState / 0x100000000 * 4;
                 const healthScale = 1 + tick / (60 * 240) * 1.8;
@@ -681,10 +814,12 @@ function updateEnemyIntent(
 
 function autoCastFlyingSword(
     skills: FlyingSwordSkillService,
+    targeting: Mut<FlyingSwordTargetingState>,
     runs: Runs,
     players: Players,
     enemies: Enemies,
     groups: AutoGroups,
+    swords: FlyingSwords,
 ): void {
     let tick = 0;
     let phase = RogueRunPhase.Defeat;
@@ -732,94 +867,140 @@ function autoCastFlyingSword(
         break;
     }
 
+    let cooldownTicks = 0;
+    let nextCastTicks: Uint32Array | undefined;
+    let groupRow = -1;
+    let targetRadiusSquared = 0;
     const groupIter = groups.iter();
     while (groupIter.next()) {
         const [count, entities, auto] = groupIter.current;
-        const cooldownTicks =
+        const cooldowns =
             auto[AutoFlyingSwordSkill.CooldownTicks];
-        const nextCastTicks =
+        const nextCasts =
             auto[AutoFlyingSwordSkill.NextCastTick];
         const targetRadii =
             auto[AutoFlyingSwordSkill.TargetRadius];
         for (let row = 0; row < count; row++) {
             if (
                 entities[row] !== swordGroup ||
-                tick < nextCastTicks[row]
+                tick < nextCasts[row]
             ) {
                 continue;
             }
-            const targetRadiusSquared =
+            cooldownTicks = cooldowns[row];
+            nextCastTicks = nextCasts;
+            groupRow = row;
+            targetRadiusSquared =
                 targetRadii[row] * targetRadii[row];
-            let bestPriority = -1;
-            let bestDistance = Number.POSITIVE_INFINITY;
-            let bestX = 0;
-            let bestY = 0;
-            let bestZ = 0;
-            const enemyIter = enemies.iter();
-            while (enemyIter.next()) {
-                const [
-                    enemyCount,
-                    ,
-                    positions,
-                    ,
-                    ,
-                    ,
-                    ,
-                    identities,
-                    ,
-                    ,
-                    health,
-                ] = enemyIter.current;
-                const xs = positions[Float3.X];
-                const ys = positions[Float3.Y];
-                const zs = positions[Float3.Z];
-                const priorities =
-                    identities[EnemyIdentity.Priority];
-                const currentHealth = health[Health.Current];
-                for (
-                    let enemyRow = 0;
-                    enemyRow < enemyCount;
-                    enemyRow++
-                ) {
-                    if (currentHealth[enemyRow] <= 0) continue;
-                    const dx = xs[enemyRow] - playerX;
-                    const dz = zs[enemyRow] - playerZ;
-                    const distance = dx * dx + dz * dz;
-                    if (distance > targetRadiusSquared) continue;
-                    const priority = priorities[enemyRow];
-                    if (
-                        priority < bestPriority ||
-                        (
-                            priority === bestPriority &&
-                            distance >= bestDistance
-                        )
-                    ) {
-                        continue;
-                    }
-                    bestPriority = priority;
-                    bestDistance = distance;
-                    bestX = xs[enemyRow];
-                    bestY = ys[enemyRow];
-                    bestZ = zs[enemyRow];
-                }
-            }
-            if (bestPriority < 0) return;
-            castTarget.x = bestX;
-            castTarget.y = bestY;
-            castTarget.z = bestZ;
-            skills.cast({
-                group: swordGroup,
-                target: castTarget,
-            });
-            nextCastTicks[row] = tick + cooldownTicks[row];
-            if (skillTargetXs && skillTargetYs && skillTargetZs) {
-                skillTargetXs[0] = bestX;
-                skillTargetYs[0] = bestY;
-                skillTargetZs[0] = bestZ;
-            }
-            return;
+            break;
+        }
+        if (groupRow >= 0) break;
+    }
+    if (!nextCastTicks || groupRow < 0) return;
+
+    targeting.reset();
+    const enemyIter = enemies.iter();
+    while (enemyIter.next()) {
+        const [
+            count,
+            entities,
+            positions,
+            ,
+            ,
+            ,
+            ,
+            identities,
+            ,
+            ,
+            health,
+        ] = enemyIter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        const priorities = identities[EnemyIdentity.Priority];
+        const currentHealth = health[Health.Current];
+        for (let row = 0; row < count; row++) {
+            if (currentHealth[row] <= 0) continue;
+            const dx = xs[row] - playerX;
+            const dz = zs[row] - playerZ;
+            const distance = dx * dx + dz * dz;
+            if (distance > targetRadiusSquared) continue;
+            targeting.insert(
+                entities[row],
+                xs[row],
+                ys[row],
+                zs[row],
+                distance,
+                priorities[row],
+            );
         }
     }
+    const candidateCount = targeting.count;
+    if (candidateCount === 0) return;
+
+    let assignment = 0;
+    const swordIter = swords.iter();
+    while (swordIter.next()) {
+        const [count, entities, members] = swordIter.current;
+        const swordGroups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < count; row++) {
+            if (swordGroups[row] !== swordGroup) continue;
+            let candidate = assignment % candidateCount;
+            if (assignment < candidateCount) {
+                candidate = findBestTargetCandidate(
+                    targeting,
+                    assignment,
+                );
+                targeting.swap(assignment, candidate);
+                candidate = assignment;
+            }
+            castTarget.x = targeting.xs[candidate];
+            castTarget.y = targeting.ys[candidate];
+            castTarget.z = targeting.zs[candidate];
+            skills.setSkillTarget(entities[row], castTarget);
+            assignment++;
+        }
+    }
+    if (assignment === 0) return;
+
+    const primaryX = targeting.xs[0];
+    const primaryY = targeting.ys[0];
+    const primaryZ = targeting.zs[0];
+    castTarget.x = primaryX;
+    castTarget.y = primaryY;
+    castTarget.z = primaryZ;
+    skills.cast({
+        group: swordGroup,
+        target: castTarget,
+    });
+    nextCastTicks[groupRow] = tick + cooldownTicks;
+    if (skillTargetXs && skillTargetYs && skillTargetZs) {
+        skillTargetXs[0] = primaryX;
+        skillTargetYs[0] = primaryY;
+        skillTargetZs[0] = primaryZ;
+    }
+}
+
+function findBestTargetCandidate(
+    targeting: Readonly<FlyingSwordTargetingState>,
+    start: number,
+): number {
+    let best = start;
+    for (let candidate = start + 1; candidate < targeting.count; candidate++) {
+        if (
+            targeting.priorities[candidate] >
+                targeting.priorities[best] ||
+            (
+                targeting.priorities[candidate] ===
+                    targeting.priorities[best] &&
+                targeting.distances[candidate] <
+                    targeting.distances[best]
+            )
+        ) {
+            best = candidate;
+        }
+    }
+    return best;
 }
 
 function rebuildEnemySpatialIndex(
@@ -875,12 +1056,15 @@ function rebuildEnemySpatialIndex(
 
 function collideFlyingSwordsWithEnemies(
     world: World,
+    scratch: Mut<CombatScratchState>,
     index: Mut<EnemySpatialIndexState>,
     content: RogueContentService,
     groups: AutoGroups,
     skillActions: SkillActions,
     contacts: SwordContacts,
 ): void {
+    buildActionSnapshots(scratch, skillActions, groups);
+    if (scratch.actionCount === 0) return;
     const iter = contacts.iter();
     while (iter.next()) {
         const [
@@ -903,21 +1087,19 @@ function collideFlyingSwordsWithEnemies(
         for (let row = 0; row < count; row++) {
             const actionEntity = actionEntities[row];
             if (actionEntity === 0) continue;
-            const action = findAction(actionEntity, skillActions);
-            if (!action.found) continue;
-            const baseDamage = findGroupDamage(
+            const action = findActionSnapshot(
+                scratch,
+                actionEntity,
                 groupEntities[row],
-                groups,
             );
-            const damage =
-                baseDamage * Math.sqrt(Math.max(1, action.reserved));
+            if (action < 0) continue;
             collideSwordSegment(
                 world,
                 content,
                 index,
                 actionEntity,
-                action.startTick,
-                damage,
+                scratch.startTicks[action],
+                scratch.damages[action],
                 previousXs[row],
                 previousYs[row],
                 previousZs[row],
@@ -983,7 +1165,7 @@ function collideSwordSegment(
             while (candidate !== -1) {
                 const radius = index.radii[candidate] + SWORD_HIT_RADIUS;
                 if (
-                    pointSegmentDistanceSquared(
+                    squaredDistanceToSegment3(
                         index.xs[candidate],
                         index.ys[candidate],
                         index.zs[candidate],
@@ -1332,7 +1514,7 @@ function collectRogueExperience(
             currentExperience[0] -= requiredExperience[0];
             levelValues[0]++;
             pendingChoices[0] = Math.min(255, pendingChoices[0] + 1);
-            requiredExperience[0] = requiredExperienceFor(
+            requiredExperience[0] = rogueRequiredExperienceFor(
                 levelValues[0],
             );
         }
@@ -1340,33 +1522,60 @@ function collectRogueExperience(
     }
 }
 
-function findAction(
-    actionEntity: Entity,
+function buildActionSnapshots(
+    scratch: Mut<CombatScratchState>,
     actions: SkillActions,
-): ActionSnapshot {
-    actionSnapshot.found = false;
+    groups: AutoGroups,
+): void {
+    let required = 0;
+    const countIter = actions.iter();
+    while (countIter.next()) required += countIter.current[0];
+    scratch.reset(required);
     const iter = actions.iter();
     while (iter.next()) {
         const [
             count,
             entities,
-            ,
+            identities,
             ,
             timings,
             progresses,
         ] = iter.current;
+        const groupEntities =
+            identities[FlyingSwordSkillAction.Group];
         const startTicks = timings[FlyingSwordSkillTiming.StartTick];
         const reserved =
             progresses[FlyingSwordSkillProgress.ReservedCount];
         for (let row = 0; row < count; row++) {
-            if (entities[row] !== actionEntity) continue;
-            actionSnapshot.found = true;
-            actionSnapshot.startTick = startTicks[row];
-            actionSnapshot.reserved = reserved[row];
-            return actionSnapshot;
+            const index = scratch.actionCount++;
+            const group = groupEntities[row];
+            scratch.actionEntities[index] = entities[row];
+            scratch.actionGroups[index] = group;
+            scratch.startTicks[index] = startTicks[row];
+            scratch.reservedCounts[index] = reserved[row];
+            scratch.damages[index] =
+                findGroupDamage(group, groups) *
+                Math.sqrt(Math.max(1, reserved[row]));
         }
     }
-    return actionSnapshot;
+}
+
+function findActionSnapshot(
+    scratch: Readonly<CombatScratchState>,
+    actionEntity: Entity,
+    group: Entity,
+): number {
+    const actionEntities = scratch.actionEntities;
+    const actionGroups = scratch.actionGroups;
+    for (let index = 0; index < scratch.actionCount; index++) {
+        if (
+            actionEntities[index] === actionEntity &&
+            actionGroups[index] === group
+        ) {
+            return index;
+        }
+    }
+    return -1;
 }
 
 function findGroupDamage(group: Entity, groups: AutoGroups): number {
@@ -1388,7 +1597,7 @@ function chooseEnemyKind(tick: number, roll: number): EnemyKind {
     return EnemyKind.CorruptedBat;
 }
 
-function nextRandom(state: number): number {
+export function nextRogueRandom(state: number): number {
     let value = state >>> 0;
     value ^= value << 13;
     value ^= value >>> 17;
@@ -1401,7 +1610,7 @@ function clampCell(value: number, size: number): number {
     return Math.max(0, Math.min(size - 1, value));
 }
 
-function pointSegmentDistanceSquared(
+export function squaredDistanceToSegment3(
     pointX: number,
     pointY: number,
     pointZ: number,
@@ -1434,22 +1643,12 @@ function pointSegmentDistanceSquared(
     return dx * dx + dy * dy + dz * dz;
 }
 
-function requiredExperienceFor(level: number): number {
+export function rogueRequiredExperienceFor(level: number): number {
     return Math.round(8 + 5 * Math.pow(level, 1.35));
 }
 
-interface ActionSnapshot {
-    found: boolean;
-    startTick: number;
-    reserved: number;
-}
-
-const actionSnapshot: ActionSnapshot = {
-    found: false,
-    startTick: 0,
-    reserved: 0,
-};
 const castTarget = { x: 0, y: 0, z: 0 };
 const DEFAULT_SWORD_DAMAGE = 18;
 const SWORD_HIT_RADIUS = 0.32;
 const PLAYER_RADIUS = 0.48;
+const MAX_FLYING_SWORD_UPGRADE_COUNT = 49;

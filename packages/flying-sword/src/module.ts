@@ -11,6 +11,7 @@ import {
 import {
     FlyingSwordSkillSystemOptions,
     acquireFlyingSwordSkillsSystem,
+    applyFlyingSwordSkillTargetRequestsSystem,
     applyFlyingSwordSkillRequestsSystem,
     cleanupFlyingSwordSkillsSystem,
     guideFlyingSwordSkillsSystem,
@@ -20,6 +21,7 @@ import {
 import {
     FlyingSwordSystemOptions,
     applyFlyingSwordCenterRequestsSystem,
+    applyFlyingSwordFormationSizeRequestsSystem,
     applyFlyingSwordFocusRequestsSystem,
     applyFlyingSwordModeRequestsSystem,
     formFlyingSwordGoalsSystem,
@@ -60,9 +62,17 @@ export class FlyingSwordModule implements Module {
             applyFlyingSwordModeRequestsSystem,
             FlyingSwordSystemOptions.modeRequests,
         );
+        const formationSizeRequests = builder.addSystem(
+            applyFlyingSwordFormationSizeRequestsSystem,
+            FlyingSwordSystemOptions.formationSizeRequests,
+        );
         const actionIndex = builder.addSystem(
             snapshotFlyingSwordSkillActionsSystem,
             FlyingSwordSkillSystemOptions.actionIndex,
+        );
+        const skillTargetRequests = builder.addSystem(
+            applyFlyingSwordSkillTargetRequestsSystem,
+            FlyingSwordSkillSystemOptions.targetRequests,
         );
         const skillRequests = builder.addSystem(
             applyFlyingSwordSkillRequestsSystem,
@@ -72,7 +82,9 @@ export class FlyingSwordModule implements Module {
             centerRequests,
             focusRequests,
             modeRequests,
+            formationSizeRequests,
             actionIndex,
+            skillTargetRequests,
             skillRequests,
         );
         builder.addSystem(

@@ -29,6 +29,7 @@ import {
     FlyingSwordOrientationStorageQuery,
     FocusFlyingSwordRequestStorageQuery,
     SetFlyingSwordCenterRequestStorageQuery,
+    SetFlyingSwordFormationSizeRequestStorageQuery,
     SetFlyingSwordModeRequestStorageQuery,
 } from "./queries";
 import { FlyingSwordGroupIndexState } from "./runtime-state";
@@ -39,6 +40,7 @@ import {
     FlyingSwordGroupTarget3Storage,
     FocusFlyingSwordRequest,
     SetFlyingSwordCenterRequest,
+    SetFlyingSwordFormationSizeRequest,
     SetFlyingSwordModeRequest,
 } from "./storage";
 
@@ -50,6 +52,8 @@ type FocusRequests =
     QueryOf<typeof FocusFlyingSwordRequestStorageQuery>;
 type ModeRequests =
     QueryOf<typeof SetFlyingSwordModeRequestStorageQuery>;
+type FormationSizeRequests =
+    QueryOf<typeof SetFlyingSwordFormationSizeRequestStorageQuery>;
 type OrientedSwords =
     QueryOf<typeof FlyingSwordOrientationStorageQuery>;
 
@@ -86,6 +90,17 @@ export const applyFlyingSwordModeRequestsSystem = defSystem(
     ],
 );
 
+export const applyFlyingSwordFormationSizeRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordFormationSizeRequests,
+    [
+        Commands,
+        World,
+        Write(FlyingSwordEntityAccessState),
+        SetFlyingSwordFormationSizeRequestStorageQuery,
+    ],
+);
+
 export const snapshotFlyingSwordGroupsSystem = defSystem(
     Update.fixed,
     snapshotFlyingSwordGroups,
@@ -118,6 +133,9 @@ export const FlyingSwordSystemOptions = Object.freeze({
     centerRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     focusRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     modeRequests: { inSet: FlyingSwordSystemSet.Request } as const,
+    formationSizeRequests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
     groups: {
         inSet: FlyingSwordSystemSet.Control,
         after: FlyingSwordSystemSet.Request,
@@ -250,6 +268,44 @@ function applyFlyingSwordModeRequests(
                     const groupRow = archetype.rowIdxOf(access.row);
                     control[FlyingSwordControl.Mode][groupRow] =
                         modes[row];
+                }
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
+function applyFlyingSwordFormationSizeRequests(
+    commands: Commands,
+    world: World,
+    scratch: Mut<FlyingSwordEntityAccessState>,
+    requests: FormationSizeRequests,
+): void {
+    const componentId = world.findComponent(
+        FlyingSwordFormationStorage,
+    )?.id;
+    const access = scratch.access;
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const groups =
+            data[SetFlyingSwordFormationSizeRequest.Group];
+        const sizes =
+            data[SetFlyingSwordFormationSizeRequest.Size];
+        for (let row = 0; row < count; row++) {
+            if (
+                componentId !== undefined &&
+                world.resolve(groups[row], access)
+            ) {
+                const archetype = access.archetype;
+                const formation = archetype?.getComp(
+                    access.row,
+                    componentId,
+                ) as ComponentColumns<FlyingSwordFormationStorage> | null;
+                if (archetype && formation) {
+                    const groupRow = archetype.rowIdxOf(access.row);
+                    formation[FlyingSwordFormation.Size][groupRow] =
+                        sizes[row];
                 }
             }
             commands.entity(entities[row]).despawn().submit();

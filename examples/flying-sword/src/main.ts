@@ -11,6 +11,9 @@ import {
     FlyingSwordModule,
 } from "@zero-ecs/flying-sword";
 import { Motion3Module } from "@zero-ecs/motion/3d";
+import {
+    FlyingSwordDamageDisplayModule,
+} from "./damage-display/module";
 import { DemoViewResource } from "./app/resources";
 import { RogueRunControlService } from "./app/run-control-service";
 import {
@@ -60,6 +63,7 @@ const game = new GameBuilder()
     .addModule(new FlyingSwordModule())
     .addModule(new FlyingSwordDemoSimulationModule())
     .addModule(new FlyingSwordRogueSimulationModule())
+    .addModule(new FlyingSwordDamageDisplayModule())
     .addModule(new FlyingSwordDemoPresentationModule())
     .build();
 

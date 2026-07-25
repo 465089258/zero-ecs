@@ -6,6 +6,7 @@ export enum RogueUpgrade {
     BodyTechnique,
     ProtectiveBody,
     GatherSpirit,
+    AddSword,
 }
 
 export class RogueUpgradeCatalog extends Resource {
@@ -15,6 +16,7 @@ export class RogueUpgradeCatalog extends Resource {
         "身法精进",
         "护体真元",
         "聚灵法域",
+        "添置飞剑",
     ]);
 
     readonly descriptions = Object.freeze([
@@ -23,6 +25,7 @@ export class RogueUpgradeCatalog extends Resource {
         "移动速度提高 12%",
         "最大生命增加 20，并恢复 20",
         "灵蕴吸附范围提高 25%",
+        "增加一把飞剑，最多拥有 49 把",
     ]);
 
     readonly count = this.names.length;

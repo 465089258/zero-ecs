@@ -37,6 +37,7 @@ import {
     CastFlyingSwordSkillRequestStorageQuery,
     FlyingSwordGuidanceStorageQuery,
     FlyingSwordSkillActionEntityStorageQuery,
+    SetFlyingSwordSkillTargetRequestStorageQuery,
 } from "./queries";
 import { FlyingSwordGroupIndexState } from "./runtime-state";
 import {
@@ -55,6 +56,9 @@ import {
     FlyingSwordSkillTarget3Storage,
     FlyingSwordSkillTimingStorage,
     FlyingSwordGroupStorage,
+    FlyingSwordMemberStorage,
+    FlyingSwordPendingSkillTarget3Storage,
+    SetFlyingSwordSkillTargetRequest,
 } from "./storage";
 
 type AvailableSwords =
@@ -69,6 +73,8 @@ type CastRequests =
     QueryOf<typeof CastFlyingSwordSkillRequestStorageQuery>;
 type CancelRequests =
     QueryOf<typeof CancelFlyingSwordSkillRequestStorageQuery>;
+type SkillTargetRequests =
+    QueryOf<typeof SetFlyingSwordSkillTargetRequestStorageQuery>;
 
 export const snapshotFlyingSwordSkillActionsSystem = defSystem(
     Update.fixed,
@@ -92,6 +98,16 @@ export const applyFlyingSwordSkillRequestsSystem = defSystem(
         Write(FlyingSwordSkillSequenceState),
         CastFlyingSwordSkillRequestStorageQuery,
         CancelFlyingSwordSkillRequestStorageQuery,
+    ],
+);
+
+export const applyFlyingSwordSkillTargetRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordSkillTargetRequests,
+    [
+        Commands,
+        World,
+        SetFlyingSwordSkillTargetRequestStorageQuery,
     ],
 );
 
@@ -148,6 +164,9 @@ export const FlyingSwordSkillSystemOptions = Object.freeze({
         inSet: FlyingSwordSystemSet.Request,
     } as const,
     requests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
+    targetRequests: {
         inSet: FlyingSwordSystemSet.Request,
     } as const,
     acquire: {
@@ -255,6 +274,59 @@ function snapshotFlyingSwordSkillActions(
     for (let action = actions.count - 1; action >= 0; action--) {
         if (actions.marks[action] !== tick) {
             removeActionIndex(actions, action);
+        }
+    }
+}
+
+function applyFlyingSwordSkillTargetRequests(
+    commands: Commands,
+    world: World,
+    requests: SkillTargetRequests,
+): void {
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const swords =
+            data[SetFlyingSwordSkillTargetRequest.Sword];
+        const xs =
+            data[SetFlyingSwordSkillTargetRequest.TargetX];
+        const ys =
+            data[SetFlyingSwordSkillTargetRequest.TargetY];
+        const zs =
+            data[SetFlyingSwordSkillTargetRequest.TargetZ];
+        for (let row = 0; row < count; row++) {
+            const sword = swords[row];
+            if (world.has(sword, FlyingSwordMemberStorage)) {
+                const command = commands.entity(sword);
+                if (
+                    !world.has(
+                        sword,
+                        FlyingSwordPendingSkillTarget3Storage,
+                    )
+                ) {
+                    command.add(
+                        FlyingSwordPendingSkillTarget3Storage,
+                    );
+                }
+                command
+                    .set(
+                        FlyingSwordPendingSkillTarget3Storage,
+                        Float3.X,
+                        xs[row],
+                    )
+                    .set(
+                        FlyingSwordPendingSkillTarget3Storage,
+                        Float3.Y,
+                        ys[row],
+                    )
+                    .set(
+                        FlyingSwordPendingSkillTarget3Storage,
+                        Float3.Z,
+                        zs[row],
+                    )
+                    .submit();
+            }
+            commands.entity(entities[row]).despawn().submit();
         }
     }
 }
@@ -502,6 +574,9 @@ function acquireFlyingSwordSkills(
     const indices = actions.indices;
     const planIds = actions.planIds;
     const actionEntities = actions.entities;
+    const actionTargetXs = actions.targetXs;
+    const actionTargetYs = actions.targetYs;
+    const actionTargetZs = actions.targetZs;
     const visible = actions.visible;
     const startTicks = actions.startTicks;
     const stages = actions.stages;
@@ -533,6 +608,7 @@ function acquireFlyingSwordSkills(
             ,
             actionsData,
             contactWindow,
+            pendingTargets,
         ] = activeIter.current;
         const groups = members[FlyingSwordMember.Group];
         const xs = positions[Float3.X];
@@ -549,6 +625,14 @@ function acquireFlyingSwordSkills(
             actionsData[FlyingSwordAction.TrajectoryStartY];
         const trajectoryStartZs =
             actionsData[FlyingSwordAction.TrajectoryStartZ];
+        const targetXs = actionsData[FlyingSwordAction.TargetX];
+        const targetYs = actionsData[FlyingSwordAction.TargetY];
+        const targetZs = actionsData[FlyingSwordAction.TargetZ];
+        const hasIndividualTargets =
+            actionsData[FlyingSwordAction.HasIndividualTarget];
+        const pendingTargetXs = pendingTargets?.[Float3.X];
+        const pendingTargetYs = pendingTargets?.[Float3.Y];
+        const pendingTargetZs = pendingTargets?.[Float3.Z];
         const hasContactWindow = contactWindow !== undefined;
 
         for (let row = 0; row < count; row++) {
@@ -577,11 +661,32 @@ function acquireFlyingSwordSkills(
             trajectoryStartXs[row] = xs[row];
             trajectoryStartYs[row] = ys[row];
             trajectoryStartZs[row] = zs[row];
-            if (hasContactWindow) {
-                commands
-                    .entity(entities[row])
-                    .remove(FlyingSwordContactWindowStorage)
-                    .submit();
+            if (
+                pendingTargetXs &&
+                pendingTargetYs &&
+                pendingTargetZs
+            ) {
+                targetXs[row] = pendingTargetXs[row];
+                targetYs[row] = pendingTargetYs[row];
+                targetZs[row] = pendingTargetZs[row];
+                hasIndividualTargets[row] = 1;
+            } else {
+                targetXs[row] = actionTargetXs[action];
+                targetYs[row] = actionTargetYs[action];
+                targetZs[row] = actionTargetZs[action];
+                hasIndividualTargets[row] = 0;
+            }
+            if (pendingTargetXs || hasContactWindow) {
+                const command = commands.entity(entities[row]);
+                if (pendingTargetXs) {
+                    command.remove(
+                        FlyingSwordPendingSkillTarget3Storage,
+                    );
+                }
+                if (hasContactWindow) {
+                    command.remove(FlyingSwordContactWindowStorage);
+                }
+                command.submit();
             }
             reservedCounts[action] = role + 1;
         }
@@ -590,12 +695,24 @@ function acquireFlyingSwordSkills(
     // 没有动作能力的飞剑通过一次结构事务进入技能 Archetype。
     const availableIter = availableSwords.iter();
     while (availableIter.next()) {
-        const [count, entities, members, , positions] =
+        const [
+            count,
+            entities,
+            members,
+            ,
+            positions,
+            ,
+            ,
+            pendingTargets,
+        ] =
             availableIter.current;
         const groups = members[FlyingSwordMember.Group];
         const xs = positions[Float3.X];
         const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
+        const pendingTargetXs = pendingTargets?.[Float3.X];
+        const pendingTargetYs = pendingTargets?.[Float3.Y];
+        const pendingTargetZs = pendingTargets?.[Float3.Z];
         for (let row = 0; row < count; row++) {
             const action = indices.get(groups[row]);
             if (
@@ -608,8 +725,8 @@ function acquireFlyingSwordSkills(
             const plan = catalog.require(planIds[action]);
             const role = reservedCounts[action];
             if (role >= plan.maximumSwords) continue;
-            commands
-                .entity(entities[row])
+            const command = commands.entity(entities[row]);
+            command
                 .add(FlyingSwordSkillActionStorage)
                 .set(
                     FlyingSwordSkillActionStorage,
@@ -646,7 +763,35 @@ function acquireFlyingSwordSkills(
                     FlyingSwordAction.TrajectoryStartZ,
                     zs[row],
                 )
-                .submit();
+                .set(
+                    FlyingSwordSkillActionStorage,
+                    FlyingSwordAction.TargetX,
+                    pendingTargetXs?.[row] ??
+                        actionTargetXs[action],
+                )
+                .set(
+                    FlyingSwordSkillActionStorage,
+                    FlyingSwordAction.TargetY,
+                    pendingTargetYs?.[row] ??
+                        actionTargetYs[action],
+                )
+                .set(
+                    FlyingSwordSkillActionStorage,
+                    FlyingSwordAction.TargetZ,
+                    pendingTargetZs?.[row] ??
+                        actionTargetZs[action],
+                )
+                .set(
+                    FlyingSwordSkillActionStorage,
+                    FlyingSwordAction.HasIndividualTarget,
+                    pendingTargetXs ? 1 : 0,
+                );
+            if (pendingTargetXs) {
+                command.remove(
+                    FlyingSwordPendingSkillTarget3Storage,
+                );
+            }
+            command.submit();
             reservedCounts[action] = role + 1;
         }
     }
@@ -750,6 +895,14 @@ function guideFlyingSwordSkills(
             actionsData[FlyingSwordAction.TrajectoryStartY];
         const trajectoryStartZs =
             actionsData[FlyingSwordAction.TrajectoryStartZ];
+        const swordTargetXs =
+            actionsData[FlyingSwordAction.TargetX];
+        const swordTargetYs =
+            actionsData[FlyingSwordAction.TargetY];
+        const swordTargetZs =
+            actionsData[FlyingSwordAction.TargetZ];
+        const hasIndividualTargets =
+            actionsData[FlyingSwordAction.HasIndividualTarget];
         const hasContactWindow = contactWindow !== undefined;
 
         let cachedAction = -1;
@@ -929,6 +1082,25 @@ function guideFlyingSwordSkills(
                     role % plan.launchWaveCount *
                     plan.launchIntervalTicks;
             }
+            const swordTargetX = swordTargetXs[row];
+            const swordTargetY = swordTargetYs[row];
+            const swordTargetZ = swordTargetZs[row];
+            const targetDirectionX =
+                swordTargetX - cachedCenterX;
+            const targetDirectionZ =
+                swordTargetZ - cachedCenterZ;
+            const targetDirectionLength = Math.sqrt(
+                targetDirectionX * targetDirectionX +
+                targetDirectionZ * targetDirectionZ,
+            );
+            const swordDirectionX = targetDirectionLength > 1e-6
+                ? targetDirectionX / targetDirectionLength
+                : directionX;
+            const swordDirectionZ = targetDirectionLength > 1e-6
+                ? targetDirectionZ / targetDirectionLength
+                : directionZ;
+            const swordRightX = swordDirectionZ;
+            const swordRightZ = -swordDirectionX;
             const phase = phases[row];
             if (
                 phase === FlyingSwordSkillPhase.Launch &&
@@ -960,7 +1132,9 @@ function guideFlyingSwordSkills(
                 const lateral = strikeLateral(
                     role,
                     reserved,
-                    plan.strikeSpread,
+                    hasIndividualTargets[row] !== 0
+                        ? 0
+                        : plan.strikeSpread,
                 );
                 if (tick === phaseStartTicks[row]) {
                     trajectoryStartXs[row] = xs[row];
@@ -975,13 +1149,13 @@ function guideFlyingSwordSkills(
                     trajectoryStartXs[row],
                     trajectoryStartYs[row],
                     trajectoryStartZs[row],
-                    cachedTargetX,
-                    cachedTargetY,
-                    cachedTargetZ,
-                    directionX,
-                    directionZ,
-                    rightX,
-                    rightZ,
+                    swordTargetX,
+                    swordTargetY,
+                    swordTargetZ,
+                    swordDirectionX,
+                    swordDirectionZ,
+                    swordRightX,
+                    swordRightZ,
                     lateral,
                     targetXs,
                     targetYs,
@@ -1001,18 +1175,20 @@ function guideFlyingSwordSkills(
                 const lateral = strikeLateral(
                     role,
                     reserved,
-                    plan.strikeSpread,
+                    hasIndividualTargets[row] !== 0
+                        ? 0
+                        : plan.strikeSpread,
                 );
                 targetXs[row] =
-                    cachedTargetX +
-                    directionX * plan.passDistance +
-                    rightX * lateral;
+                    swordTargetX +
+                    swordDirectionX * plan.passDistance +
+                    swordRightX * lateral;
                 targetYs[row] =
-                    cachedTargetY + plan.strikeHeight;
+                    swordTargetY + plan.strikeHeight;
                 targetZs[row] =
-                    cachedTargetZ +
-                    directionZ * plan.passDistance +
-                    rightZ * lateral;
+                    swordTargetZ +
+                    swordDirectionZ * plan.passDistance +
+                    swordRightZ * lateral;
                 arrivalRadii[row] =
                     SKILL_TARGET_ARRIVAL_RADIUS;
                 motionMaximumSpeeds[row] =

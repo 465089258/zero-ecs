@@ -29,8 +29,12 @@ import {
 } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordActionQuery,
+    FlyingSwordAction,
+    FlyingSwordFormation,
+    FlyingSwordGroupQuery,
     FlyingSwordMode,
     FlyingSwordModule,
+    FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
@@ -116,13 +120,20 @@ function setupSwordCommand(
     const group = flyingSwords.createGroup({
         owner: cultivator.entity,
         center: { x: 0, y: 0, z: 0 },
-        formationSize: 1,
+        formationSize: 2,
         orbitRadius: 1,
         orbitHeight: 1,
     });
     flyingSwords.createSword({
         group,
         position: { x: 0, y: 1, z: 0 },
+        maximumSpeed: 10,
+        acceleration: 20,
+    });
+    flyingSwords.createSword({
+        group,
+        position: { x: 0.25, y: 1.1, z: 0 },
+        slot: 1,
         maximumSpeed: 10,
         acceleration: 20,
     });
@@ -206,6 +217,73 @@ test("Piercing Cloud gathers, strikes, returns, and removes action components", 
     let activeSwordCount = 0;
     while (iter.next()) activeSwordCount += iter.current[0];
     expect(activeSwordCount).toBe(0);
+
+    game.dispose();
+});
+
+test("each sword can consume an independent skill target", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(0.1)))
+        .addModule(new Motion3Module())
+        .addState(DemoSceneState)
+        .addModule(new FlyingSwordModule());
+    builder.addSystem(setupSwordCommandSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+
+    const group = game.state(DemoSceneState).swordGroup;
+    const swordEntities: number[] = [];
+    const swordIter = game.world.query(FlyingSwordQuery).iter();
+    while (swordIter.next()) {
+        const [count, entities] = swordIter.current;
+        for (let row = 0; row < count; row++) {
+            swordEntities.push(entities[row]);
+        }
+    }
+    expect(swordEntities).toHaveLength(2);
+
+    const skills = game.service(FlyingSwordSkillService);
+    skills.setSkillTarget(
+        swordEntities[0],
+        { x: -3, y: 0.5, z: 7 },
+    );
+    skills.setSkillTarget(
+        swordEntities[1],
+        { x: 4, y: 0.75, z: 9 },
+    );
+    skills.cast({
+        group,
+        target: { x: 0, y: 0, z: 8 },
+    });
+    const flyingSwords = game.service(FlyingSwordService);
+    flyingSwords.setFormationSize(group, 3);
+    for (let tick = 0; tick < 6; tick++) game.update();
+
+    const targets = new Map<number, readonly number[]>();
+    const actionIter = game.world.query(FlyingSwordActionQuery).iter();
+    while (actionIter.next()) {
+        const [count, entities, , actions] = actionIter.current;
+        for (let row = 0; row < count; row++) {
+            targets.set(entities[row], [
+                actions[FlyingSwordAction.TargetX][row],
+                actions[FlyingSwordAction.TargetY][row],
+                actions[FlyingSwordAction.TargetZ][row],
+            ]);
+            expect(
+                actions[FlyingSwordAction.HasIndividualTarget][row],
+            ).toBe(1);
+        }
+    }
+    expect(targets.get(swordEntities[0])).toEqual([-3, 0.5, 7]);
+    expect(targets.get(swordEntities[1])).toEqual([4, 0.75, 9]);
+
+    const groupIter = game.world.query(FlyingSwordGroupQuery).iter();
+    expect(groupIter.next()).toBe(true);
+    const [, , , , , formation] = groupIter.current;
+    expect(formation[FlyingSwordFormation.Size][0]).toBe(3);
 
     game.dispose();
 });

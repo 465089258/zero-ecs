@@ -108,6 +108,10 @@ export enum FlyingSwordAction {
     TrajectoryStartX,
     TrajectoryStartY,
     TrajectoryStartZ,
+    TargetX,
+    TargetY,
+    TargetZ,
+    HasIndividualTarget,
 }
 
 export interface FlyingSwordActionViewData {
@@ -118,6 +122,10 @@ export interface FlyingSwordActionViewData {
     readonly [FlyingSwordAction.TrajectoryStartX]: typeof Types.F32;
     readonly [FlyingSwordAction.TrajectoryStartY]: typeof Types.F32;
     readonly [FlyingSwordAction.TrajectoryStartZ]: typeof Types.F32;
+    readonly [FlyingSwordAction.TargetX]: typeof Types.F32;
+    readonly [FlyingSwordAction.TargetY]: typeof Types.F32;
+    readonly [FlyingSwordAction.TargetZ]: typeof Types.F32;
+    readonly [FlyingSwordAction.HasIndividualTarget]: typeof Types.U8;
 }
 
 /** 一个控制组级技能动作实体的稳定身份。 */
