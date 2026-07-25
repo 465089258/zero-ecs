@@ -11,14 +11,28 @@ import {
 } from "@zero-ecs/math/3d";
 import {
     FlyingSwordContactWindowStorage,
+    FlyingSwordControlStorage,
+    FlyingSwordFormationStorage,
+    FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
+    FlyingSwordGroupTarget3Storage,
     FlyingSwordMemberStorage,
+    FlyingSwordSkillActionEntityStorage,
     FlyingSwordSkillActionStorage,
+    FlyingSwordSkillProgressStorage,
+    FlyingSwordSkillTarget3Storage,
+    FlyingSwordSkillTimingStorage,
 } from "./runtime/storage";
 import type {
     FlyingSwordActionViewData,
+    FlyingSwordControlViewData,
+    FlyingSwordFormationViewData,
     FlyingSwordGroupViewData,
     FlyingSwordMemberViewData,
+    FlyingSwordSkillActionViewData,
+    FlyingSwordSkillProgressViewData,
+    FlyingSwordSkillTimingViewData,
+    FlyingSwordVector3ViewData,
 } from "./types";
 
 /** 控制组公开只读投影；调用方不能借此修改内部存储。 */
@@ -26,6 +40,34 @@ export const FlyingSwordGroupView =
     defineQueryProjection<FlyingSwordGroupViewData>(
         FlyingSwordGroupStorage,
         "FlyingSwordGroupView",
+    );
+
+/** 控制组中心的公开只读投影。 */
+export const FlyingSwordGroupCenter3View =
+    defineQueryProjection<FlyingSwordVector3ViewData>(
+        FlyingSwordGroupCenter3Storage,
+        "FlyingSwordGroupCenter3View",
+    );
+
+/** 控制组基础目标的公开只读投影。 */
+export const FlyingSwordGroupTarget3View =
+    defineQueryProjection<FlyingSwordVector3ViewData>(
+        FlyingSwordGroupTarget3Storage,
+        "FlyingSwordGroupTarget3View",
+    );
+
+/** 控制组编队参数的公开只读投影。 */
+export const FlyingSwordFormationView =
+    defineQueryProjection<FlyingSwordFormationViewData>(
+        FlyingSwordFormationStorage,
+        "FlyingSwordFormationView",
+    );
+
+/** 控制组基础模式的公开只读投影。 */
+export const FlyingSwordControlView =
+    defineQueryProjection<FlyingSwordControlViewData>(
+        FlyingSwordControlStorage,
+        "FlyingSwordControlView",
     );
 
 /** 飞剑领域身份的公开只读投影。 */
@@ -40,6 +82,34 @@ export const FlyingSwordActionView =
     defineQueryProjection<FlyingSwordActionViewData>(
         FlyingSwordSkillActionStorage,
         "FlyingSwordActionView",
+    );
+
+/** 控制组级技能动作身份的公开只读投影。 */
+export const FlyingSwordSkillActionView =
+    defineQueryProjection<FlyingSwordSkillActionViewData>(
+        FlyingSwordSkillActionEntityStorage,
+        "FlyingSwordSkillActionView",
+    );
+
+/** 控制组级技能动作目标的公开只读投影。 */
+export const FlyingSwordSkillTarget3View =
+    defineQueryProjection<FlyingSwordVector3ViewData>(
+        FlyingSwordSkillTarget3Storage,
+        "FlyingSwordSkillTarget3View",
+    );
+
+/** 控制组级技能动作时序的公开只读投影。 */
+export const FlyingSwordSkillTimingView =
+    defineQueryProjection<FlyingSwordSkillTimingViewData>(
+        FlyingSwordSkillTimingStorage,
+        "FlyingSwordSkillTimingView",
+    );
+
+/** 控制组级技能动作进度的公开只读投影。 */
+export const FlyingSwordSkillProgressView =
+    defineQueryProjection<FlyingSwordSkillProgressViewData>(
+        FlyingSwordSkillProgressStorage,
+        "FlyingSwordSkillProgressView",
     );
 
 /** 只选择当前开放攻击接触窗口的飞剑。 */
@@ -72,7 +142,13 @@ export const FlyingSwordDirection3View =
 
 /** 遍历全部飞剑控制组的公共查询。 */
 export const FlyingSwordGroupQuery =
-    QueryType.from(With(FlyingSwordGroupView));
+    QueryType.from(With(
+        FlyingSwordGroupView,
+        FlyingSwordGroupCenter3View,
+        FlyingSwordGroupTarget3View,
+        FlyingSwordFormationView,
+        FlyingSwordControlView,
+    ));
 
 /** 表现层所需的最小飞剑查询。 */
 export const FlyingSwordQuery = QueryType.from(With(
@@ -86,6 +162,14 @@ export const FlyingSwordQuery = QueryType.from(With(
 export const FlyingSwordActionQuery = QueryType.from(With(
     FlyingSwordView,
     FlyingSwordActionView,
+));
+
+/** 遍历控制组级技能动作实体。 */
+export const FlyingSwordSkillActionQuery = QueryType.from(With(
+    FlyingSwordSkillActionView,
+    FlyingSwordSkillTarget3View,
+    FlyingSwordSkillTimingView,
+    FlyingSwordSkillProgressView,
 ));
 
 /** 只遍历当前能够生成接触事实的飞剑。 */

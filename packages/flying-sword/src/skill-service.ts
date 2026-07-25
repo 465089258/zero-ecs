@@ -1,6 +1,8 @@
 import {
+    Commands,
     Inject,
     Service,
+    World,
     type Entity,
 } from "@zero-ecs/game";
 import { FlyingSwordSkillCatalog } from "./skill-catalog";
@@ -10,47 +12,102 @@ import {
     type ActivateFlyingSwordSkillOptions,
     type FlyingSwordSkillPhase as FlyingSwordSkillPhaseValue,
 } from "./skill-types";
-import { FlyingSwordSkillActionState } from "./runtime/skill-action-state";
-import { FlyingSwordSkillRequestState } from "./runtime/skill-request-state";
+import { FlyingSwordSkillActionIndexState } from "./runtime/skill-action-state";
+import {
+    CancelFlyingSwordSkillRequest,
+    CancelFlyingSwordSkillRequestStorage,
+    CastFlyingSwordSkillRequest,
+    CastFlyingSwordSkillRequestStorage,
+    FlyingSwordSkillActionEntityStorage,
+    FlyingSwordSkillTimingStorage,
+} from "./runtime/storage";
+import {
+    FlyingSwordSkillAction,
+    FlyingSwordSkillTiming,
+} from "./types";
 
 /** 飞剑技能激活、取消和只读状态查询入口。 */
 export class FlyingSwordSkillService extends Service {
     @Inject.resource(FlyingSwordSkillCatalog)
     private readonly catalog!: FlyingSwordSkillCatalog;
 
-    @Inject.state(FlyingSwordSkillRequestState)
-    private readonly requests!: FlyingSwordSkillRequestState;
+    @Inject.service(Commands)
+    private readonly commands!: Commands;
 
-    @Inject.state(FlyingSwordSkillActionState)
-    private readonly actions!: FlyingSwordSkillActionState;
+    @Inject.world()
+    private readonly world!: World;
+
+    @Inject.state(FlyingSwordSkillActionIndexState)
+    private readonly actions!: FlyingSwordSkillActionIndexState;
 
     cast(options: ActivateFlyingSwordSkillOptions): void {
         const planId = options.planId ?? FlyingSwordSkillPlanId.PiercingCloud;
         this.catalog.require(planId);
         vector("target", options.target);
-        this.requests.activate(
-            options.group,
-            planId,
-            options.target.x,
-            options.target.y,
-            options.target.z,
-        );
+        this.commands
+            .spawn()
+            .add(CastFlyingSwordSkillRequestStorage)
+            .set(
+                CastFlyingSwordSkillRequestStorage,
+                CastFlyingSwordSkillRequest.Group,
+                options.group,
+            )
+            .set(
+                CastFlyingSwordSkillRequestStorage,
+                CastFlyingSwordSkillRequest.Plan,
+                planId,
+            )
+            .set(
+                CastFlyingSwordSkillRequestStorage,
+                CastFlyingSwordSkillRequest.TargetX,
+                options.target.x,
+            )
+            .set(
+                CastFlyingSwordSkillRequestStorage,
+                CastFlyingSwordSkillRequest.TargetY,
+                options.target.y,
+            )
+            .set(
+                CastFlyingSwordSkillRequestStorage,
+                CastFlyingSwordSkillRequest.TargetZ,
+                options.target.z,
+            )
+            .submit();
     }
 
     cancel(group: Entity): void {
-        this.requests.cancel(group);
+        this.commands
+            .spawn()
+            .add(CancelFlyingSwordSkillRequestStorage)
+            .set(
+                CancelFlyingSwordSkillRequestStorage,
+                CancelFlyingSwordSkillRequest.Group,
+                group,
+            )
+            .submit();
     }
 
     phase(group: Entity): FlyingSwordSkillPhaseValue {
-        const index = this.actions.indices.get(group);
-        return index === undefined
+        const action = this.actions.groupActions.get(group);
+        if (action === undefined) return FlyingSwordSkillPhase.Idle;
+        const phase = this.world.get(
+            action,
+            FlyingSwordSkillTimingStorage,
+            FlyingSwordSkillTiming.DisplayPhase,
+        );
+        return phase === null
             ? FlyingSwordSkillPhase.Idle
-            : this.actions.displayPhases[index] as FlyingSwordSkillPhaseValue;
+            : phase as FlyingSwordSkillPhaseValue;
     }
 
     sequence(group: Entity): number {
-        const index = this.actions.indices.get(group);
-        return index === undefined ? 0 : this.actions.sequences[index];
+        const action = this.actions.groupActions.get(group);
+        if (action === undefined) return 0;
+        return this.world.get(
+            action,
+            FlyingSwordSkillActionEntityStorage,
+            FlyingSwordSkillAction.Sequence,
+        ) ?? 0;
     }
 }
 

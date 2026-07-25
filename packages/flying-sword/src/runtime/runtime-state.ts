@@ -1,71 +1,50 @@
-import { State, type Entity } from "@zero-ecs/game";
-import type { FlyingSwordMode } from "../types";
+import {
+    State,
+    type Entity,
+} from "@zero-ecs/game";
 
-export interface FlyingSwordGroupSnapshot {
-    tick: number;
-    centerX: number;
-    centerY: number;
-    centerZ: number;
-    targetX: number;
-    targetY: number;
-    targetZ: number;
-    orbitRadius: number;
-    orbitHeight: number;
-    angularSpeed: number;
-    verticalAmplitude: number;
-    verticalSpeed: number;
-    formationSize: number;
-    mode: FlyingSwordMode;
-}
-
-/** @internal 固定 Tick 内供各批量系统共享的控制组快照。 */
-export class FlyingSwordRuntimeState extends State {
-    readonly groups = new Map<Entity, FlyingSwordGroupSnapshot>();
-    private readonly groupIds: Entity[] = [];
-    private groupCount = 0;
-
-    snapshot(group: Entity): FlyingSwordGroupSnapshot {
-        let value = this.groups.get(group);
-        if (!value) {
-            value = {
-                tick: 0,
-                centerX: 0,
-                centerY: 0,
-                centerZ: 0,
-                targetX: 0,
-                targetY: 0,
-                targetZ: 0,
-                orbitRadius: 0,
-                orbitHeight: 0,
-                angularSpeed: 0,
-                verticalAmplitude: 0,
-                verticalSpeed: 0,
-                formationSize: 1,
-                mode: 0,
-            };
-            this.groups.set(group, value);
-            this.groupIds[this.groupCount++] = group;
-        }
-        return value;
-    }
-
-    removeStale(tick: number): void {
-        if (tick % 120 !== 0) return;
-        const groups = this.groups;
-        const groupIds = this.groupIds;
-        for (let index = this.groupCount - 1; index >= 0; index--) {
-            const group = groupIds[index];
-            const snapshot = groups.get(group);
-            if (snapshot?.tick === tick) continue;
-            groups.delete(group);
-            const last = --this.groupCount;
-            if (index !== last) groupIds[index] = groupIds[last];
-        }
-    }
+/**
+ * @internal 控制组组件在当前固定帧的紧凑派生索引。
+ *
+ * 组件是权威数据；该 State 只把跨 Archetype 的组数据整理成热路径 SoA，
+ * 使逐剑系统通过 group -> dense index 读取且不创建临时对象。
+ */
+export class FlyingSwordGroupIndexState extends State {
+    readonly groups: Entity[] = [];
+    readonly centerXs: number[] = [];
+    readonly centerYs: number[] = [];
+    readonly centerZs: number[] = [];
+    readonly targetXs: number[] = [];
+    readonly targetYs: number[] = [];
+    readonly targetZs: number[] = [];
+    readonly orbitRadii: number[] = [];
+    readonly orbitHeights: number[] = [];
+    readonly angularSpeeds: number[] = [];
+    readonly verticalAmplitudes: number[] = [];
+    readonly verticalSpeeds: number[] = [];
+    readonly formationSizes: number[] = [];
+    readonly modes: number[] = [];
+    readonly marks: number[] = [];
+    readonly indices = new Map<Entity, number>();
+    count = 0;
 
     dispose(): void {
-        this.groups.clear();
-        this.groupIds.length = 0;
-        this.groupCount = 0;
+        this.groups.length = 0;
+        this.centerXs.length = 0;
+        this.centerYs.length = 0;
+        this.centerZs.length = 0;
+        this.targetXs.length = 0;
+        this.targetYs.length = 0;
+        this.targetZs.length = 0;
+        this.orbitRadii.length = 0;
+        this.orbitHeights.length = 0;
+        this.angularSpeeds.length = 0;
+        this.verticalAmplitudes.length = 0;
+        this.verticalSpeeds.length = 0;
+        this.formationSizes.length = 0;
+        this.modes.length = 0;
+        this.marks.length = 0;
+        this.indices.clear();
+        this.count = 0;
     }
 }

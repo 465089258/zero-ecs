@@ -17,19 +17,30 @@ import {
 } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordFlight,
-    FlyingSwordGroupField,
+    FlyingSwordControl,
+    FlyingSwordFormation,
+    FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
     type CreateFlyingSwordGroupOptions,
     type CreateFlyingSwordOptions,
     type ReadonlyVector3,
 } from "./types";
-import { FlyingSwordRequestState } from "./runtime/request-state";
 import {
+    FocusFlyingSwordRequest,
+    FocusFlyingSwordRequestStorage,
     FlyingSwordFlightStorage,
+    FlyingSwordControlStorage,
+    FlyingSwordFormationStorage,
     FlyingSwordFormationGoal3Storage,
+    FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
+    FlyingSwordGroupTarget3Storage,
     FlyingSwordMemberStorage,
+    SetFlyingSwordCenterRequest,
+    SetFlyingSwordCenterRequestStorage,
+    SetFlyingSwordModeRequest,
+    SetFlyingSwordModeRequestStorage,
 } from "./runtime/storage";
 
 /**
@@ -39,7 +50,6 @@ import {
  */
 export class FlyingSwordService extends Service {
     @Inject.service(Commands) private readonly commands!: Commands;
-    @Inject.state(FlyingSwordRequestState) private readonly requests!: FlyingSwordRequestState;
 
     createGroup(options: CreateFlyingSwordGroupOptions): Entity {
         const center = options.center ?? ZERO_VECTOR;
@@ -63,25 +73,28 @@ export class FlyingSwordService extends Service {
         const entity = command.entity;
         command
             .add(FlyingSwordGroupStorage)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.Owner, options.owner)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.CenterX, center.x)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.CenterY, center.y)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.CenterZ, center.z)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.TargetX, center.x)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.TargetY, center.y)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.TargetZ, center.z)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.OrbitRadius, orbitRadius)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.OrbitHeight, orbitHeight)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.AngularSpeed, angularSpeed)
+            .add(FlyingSwordGroupCenter3Storage)
+            .add(FlyingSwordGroupTarget3Storage)
+            .add(FlyingSwordFormationStorage)
+            .add(FlyingSwordControlStorage)
+            .set(FlyingSwordGroupStorage, FlyingSwordGroup.Owner, options.owner)
+            .set(FlyingSwordGroupCenter3Storage, Float3.X, center.x)
+            .set(FlyingSwordGroupCenter3Storage, Float3.Y, center.y)
+            .set(FlyingSwordGroupCenter3Storage, Float3.Z, center.z)
+            .set(FlyingSwordGroupTarget3Storage, Float3.X, center.x)
+            .set(FlyingSwordGroupTarget3Storage, Float3.Y, center.y)
+            .set(FlyingSwordGroupTarget3Storage, Float3.Z, center.z)
+            .set(FlyingSwordFormationStorage, FlyingSwordFormation.OrbitRadius, orbitRadius)
+            .set(FlyingSwordFormationStorage, FlyingSwordFormation.OrbitHeight, orbitHeight)
+            .set(FlyingSwordFormationStorage, FlyingSwordFormation.AngularSpeed, angularSpeed)
             .set(
-                FlyingSwordGroupStorage,
-                FlyingSwordGroupField.VerticalAmplitude,
+                FlyingSwordFormationStorage,
+                FlyingSwordFormation.VerticalAmplitude,
                 verticalAmplitude,
             )
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.VerticalSpeed, verticalSpeed)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.FormationSize, formationSize)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.Mode, FlyingSwordMode.Orbit)
-            .set(FlyingSwordGroupStorage, FlyingSwordGroupField.Revision, 1)
+            .set(FlyingSwordFormationStorage, FlyingSwordFormation.VerticalSpeed, verticalSpeed)
+            .set(FlyingSwordFormationStorage, FlyingSwordFormation.Size, formationSize)
+            .set(FlyingSwordControlStorage, FlyingSwordControl.Mode, FlyingSwordMode.Orbit)
             .submit();
         return entity;
     }
@@ -158,22 +171,84 @@ export class FlyingSwordService extends Service {
     }
 
     orbit(group: Entity): void {
-        this.requests.setMode(group, FlyingSwordMode.Orbit);
+        this.setMode(group, FlyingSwordMode.Orbit);
     }
 
     recall(group: Entity): void {
-        this.requests.setMode(group, FlyingSwordMode.Recall);
+        this.setMode(group, FlyingSwordMode.Recall);
     }
 
     focus(group: Entity, target: ReadonlyVector3): void {
         vector("target", target);
-        this.requests.setTargetPoint(group, target.x, target.y, target.z);
-        this.requests.setMode(group, FlyingSwordMode.Focus);
+        this.commands
+            .spawn()
+            .add(FocusFlyingSwordRequestStorage)
+            .set(
+                FocusFlyingSwordRequestStorage,
+                FocusFlyingSwordRequest.Group,
+                group,
+            )
+            .set(
+                FocusFlyingSwordRequestStorage,
+                FocusFlyingSwordRequest.TargetX,
+                target.x,
+            )
+            .set(
+                FocusFlyingSwordRequestStorage,
+                FocusFlyingSwordRequest.TargetY,
+                target.y,
+            )
+            .set(
+                FocusFlyingSwordRequestStorage,
+                FocusFlyingSwordRequest.TargetZ,
+                target.z,
+            )
+            .submit();
     }
 
     setCenter(group: Entity, center: ReadonlyVector3): void {
         vector("center", center);
-        this.requests.setCenter(group, center.x, center.y, center.z);
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordCenterRequestStorage)
+            .set(
+                SetFlyingSwordCenterRequestStorage,
+                SetFlyingSwordCenterRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordCenterRequestStorage,
+                SetFlyingSwordCenterRequest.X,
+                center.x,
+            )
+            .set(
+                SetFlyingSwordCenterRequestStorage,
+                SetFlyingSwordCenterRequest.Y,
+                center.y,
+            )
+            .set(
+                SetFlyingSwordCenterRequestStorage,
+                SetFlyingSwordCenterRequest.Z,
+                center.z,
+            )
+            .submit();
+    }
+
+    private setMode(group: Entity, mode: FlyingSwordMode): void {
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordModeRequestStorage)
+            .set(
+                SetFlyingSwordModeRequestStorage,
+                SetFlyingSwordModeRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordModeRequestStorage,
+                SetFlyingSwordModeRequest.Mode,
+                mode,
+            )
+            .submit();
     }
 }
 

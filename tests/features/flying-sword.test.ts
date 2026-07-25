@@ -15,15 +15,18 @@ import {
 import {
     FlyingSwordAction,
     FlyingSwordActionQuery,
-    FlyingSwordGroupField,
+    FlyingSwordControl,
     FlyingSwordGroupQuery,
     FlyingSwordMode,
     FlyingSwordModule,
     PiercingCloudSkillPlan,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillAction,
+    FlyingSwordSkillActionQuery,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
+    FlyingSwordSkillTiming,
 } from "@zero-ecs/flying-sword";
 import {
     Float3,
@@ -75,13 +78,15 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     expect(previousPositions[Float3.Y][0]).toBe(0.5);
 
     flyingSwords.focus(group, { x: 4, y: 0, z: 5 });
+    // 第一次更新提交请求实体，第二次固定帧消费请求。
+    game.update();
     game.update();
     const groupIter = game.world.query(FlyingSwordGroupQuery).iter();
     expect(groupIter.next()).toBe(true);
-    const [, , groups] = groupIter.current;
-    expect(groups[FlyingSwordGroupField.Mode][0]).toBe(FlyingSwordMode.Focus);
-    expect(groups[FlyingSwordGroupField.TargetX][0]).toBe(4);
-    expect(groups[FlyingSwordGroupField.TargetZ][0]).toBe(5);
+    const [, , , , targets, , controls] = groupIter.current;
+    expect(controls[FlyingSwordControl.Mode][0]).toBe(FlyingSwordMode.Focus);
+    expect(targets[Float3.X][0]).toBe(4);
+    expect(targets[Float3.Z][0]).toBe(5);
 
     game.dispose();
 });
@@ -117,22 +122,21 @@ test("flying sword requests update their target groups across multiple chunks", 
         });
     }
     game.update();
+    game.update();
 
     let visited = 0;
     const iter = game.world.query(FlyingSwordGroupQuery).iter();
     while (iter.next()) {
-        const [count, entities, groups] = iter.current;
-        const centerXs = groups[FlyingSwordGroupField.CenterX];
-        const centerYs = groups[FlyingSwordGroupField.CenterY];
-        const centerZs = groups[FlyingSwordGroupField.CenterZ];
-        const revisions = groups[FlyingSwordGroupField.Revision];
+        const [count, entities, , centers] = iter.current;
+        const centerXs = centers[Float3.X];
+        const centerYs = centers[Float3.Y];
+        const centerZs = centers[Float3.Z];
         for (let row = 0; row < count; row++) {
             const expected = expectedCenters.get(entities[row]);
             expect(expected).toBeDefined();
             expect(centerXs[row]).toBe(expected![0]);
             expect(centerYs[row]).toBe(expected![1]);
             expect(centerZs[row]).toBe(expected![2]);
-            expect(revisions[row]).toBe(2);
             visited++;
         }
     }
@@ -177,10 +181,36 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
     });
 
     const observed = new Set<number>();
+    let observedActionEntity = false;
     for (let tick = 0; tick < 600; tick++) {
         game.update();
         const phase = skills.phase(group);
         observed.add(phase);
+        const skillActionIter =
+            game.world.query(FlyingSwordSkillActionQuery).iter();
+        while (skillActionIter.next()) {
+            const [
+                actionCount,
+                ,
+                actionIdentity,
+                ,
+                actionTiming,
+            ] = skillActionIter.current;
+            if (actionCount > 0 && !observedActionEntity) {
+                expect(
+                    actionIdentity[FlyingSwordSkillAction.Group][0],
+                ).toBe(group);
+                expect(
+                    actionIdentity[FlyingSwordSkillAction.Sequence][0],
+                ).toBe(skills.sequence(group));
+                expect(
+                    actionTiming[
+                        FlyingSwordSkillTiming.DisplayPhase
+                    ][0],
+                ).toBe(phase);
+                observedActionEntity = true;
+            }
+        }
         if (phase === FlyingSwordSkillPhase.Idle && tick > 0) break;
     }
     expect(observed.has(FlyingSwordSkillPhase.Gather)).toBe(true);
@@ -188,7 +218,16 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
     expect(observed.has(FlyingSwordSkillPhase.Strike)).toBe(true);
     expect(observed.has(FlyingSwordSkillPhase.Return)).toBe(true);
     expect(observed.has(FlyingSwordSkillPhase.Rejoin)).toBe(true);
+    expect(observedActionEntity).toBe(true);
     expect(skills.phase(group)).toBe(FlyingSwordSkillPhase.Idle);
+
+    const skillActionIter =
+        game.world.query(FlyingSwordSkillActionQuery).iter();
+    let activeActionCount = 0;
+    while (skillActionIter.next()) {
+        activeActionCount += skillActionIter.current[0];
+    }
+    expect(activeActionCount).toBe(0);
 
     const actionIter = game.world.query(FlyingSwordActionQuery).iter();
     let activeSwordCount = 0;
@@ -196,6 +235,40 @@ test("Piercing Cloud releases a multi-sword formation after rejoining", () => {
         activeSwordCount += actionIter.current[0];
     }
     expect(activeSwordCount).toBe(0);
+    game.dispose();
+});
+
+test("flying sword request entities use deterministic command precedence", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        formationSize: 1,
+    });
+    game.update();
+
+    flyingSwords.focus(group, { x: 2, y: 3, z: 4 });
+    flyingSwords.recall(group);
+    game.update();
+    game.update();
+
+    const iter = game.world.query(FlyingSwordGroupQuery).iter();
+    expect(iter.next()).toBe(true);
+    const [, , , , target, , control] = iter.current;
+    expect(target[Float3.X][0]).toBe(2);
+    expect(target[Float3.Y][0]).toBe(3);
+    expect(target[Float3.Z][0]).toBe(4);
+    expect(control[FlyingSwordControl.Mode][0])
+        .toBe(FlyingSwordMode.Recall);
+
     game.dispose();
 });
 

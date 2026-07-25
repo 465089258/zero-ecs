@@ -46,12 +46,16 @@ import {
 import { TimerConfigResource, TimerService } from "@zero-ecs/game/timer";
 import {
     FlyingSwordModule,
+    FlyingSwordControl,
+    FlyingSwordGroupQuery,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordSkillActionQuery,
     FlyingSwordSkillCatalog,
     FlyingSwordSkillPhase,
     FlyingSwordSkillPlanId,
     FlyingSwordSkillService,
+    FlyingSwordSkillTiming,
     FlyingSwordView,
     PiercingCloudSkillPlan,
     type CompiledFlyingSwordSkillPlan,
@@ -151,6 +155,8 @@ new GameBuilder().addModule(new HierarchyModule());
 const flyingSwordProjection:
     QueryProjection<FlyingSwordMemberViewData> = FlyingSwordView;
 componentWorld.query(FlyingSwordQuery);
+componentWorld.query(FlyingSwordGroupQuery);
+componentWorld.query(FlyingSwordSkillActionQuery);
 function verifyFlyingSwordQueryIsReadonly(): void {
     const iter = componentWorld.query(FlyingSwordQuery).iter();
     if (!iter.next()) return;
@@ -158,6 +164,23 @@ function verifyFlyingSwordQueryIsReadonly(): void {
     positions[Float3.X][0];
     // @ts-expect-error FlyingSwordQuery exposes Math storage through a readonly projection.
     positions[Float3.X][0] = 1;
+}
+function verifyFlyingSwordDomainQueriesAreReadonly(): void {
+    const groups = componentWorld.query(FlyingSwordGroupQuery).iter();
+    if (groups.next()) {
+        const controls = groups.current[6];
+        controls[FlyingSwordControl.Mode][0];
+        // @ts-expect-error FlyingSwordGroupQuery exposes readonly projections.
+        controls[FlyingSwordControl.Mode][0] = 1;
+    }
+    const actions =
+        componentWorld.query(FlyingSwordSkillActionQuery).iter();
+    if (actions.next()) {
+        const timings = actions.current[4];
+        timings[FlyingSwordSkillTiming.DisplayPhase][0];
+        // @ts-expect-error Skill action entities are exposed through readonly projections.
+        timings[FlyingSwordSkillTiming.DisplayPhase][0] = 1;
+    }
 }
 new GameBuilder()
     .addModule(new Motion3Module())

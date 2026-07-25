@@ -1,7 +1,9 @@
 import {
     Types,
+    type Component,
     type Entity,
 } from "@zero-ecs/game";
+import type { Float3 } from "@zero-ecs/math/3d";
 
 /** 只读三维坐标输入。 */
 export interface ReadonlyVector3 {
@@ -43,42 +45,41 @@ export interface CreateFlyingSwordOptions {
     readonly acceleration?: number;
 }
 
-/** 飞剑控制组只读视图中的列索引。 */
-export enum FlyingSwordGroupField {
+/** 飞剑控制组的稳定身份。 */
+export enum FlyingSwordGroup {
     Owner,
-    CenterX,
-    CenterY,
-    CenterZ,
-    TargetX,
-    TargetY,
-    TargetZ,
+}
+
+export interface FlyingSwordGroupViewData {
+    readonly [FlyingSwordGroup.Owner]: typeof Types.Entity;
+}
+
+/** 控制组的编队参数。 */
+export enum FlyingSwordFormation {
     OrbitRadius,
     OrbitHeight,
     AngularSpeed,
     VerticalAmplitude,
     VerticalSpeed,
-    FormationSize,
-    Mode,
-    Revision,
+    Size,
 }
 
-/** 飞剑控制组的公开只读数据形状。 */
-export interface FlyingSwordGroupViewData {
-    readonly [FlyingSwordGroupField.Owner]: typeof Types.Entity;
-    readonly [FlyingSwordGroupField.CenterX]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.CenterY]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.CenterZ]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.TargetX]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.TargetY]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.TargetZ]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.OrbitRadius]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.OrbitHeight]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.AngularSpeed]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.VerticalAmplitude]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.VerticalSpeed]: typeof Types.F32;
-    readonly [FlyingSwordGroupField.FormationSize]: typeof Types.U16;
-    readonly [FlyingSwordGroupField.Mode]: typeof Types.U8;
-    readonly [FlyingSwordGroupField.Revision]: typeof Types.U32;
+export interface FlyingSwordFormationViewData {
+    readonly [FlyingSwordFormation.OrbitRadius]: typeof Types.F32;
+    readonly [FlyingSwordFormation.OrbitHeight]: typeof Types.F32;
+    readonly [FlyingSwordFormation.AngularSpeed]: typeof Types.F32;
+    readonly [FlyingSwordFormation.VerticalAmplitude]: typeof Types.F32;
+    readonly [FlyingSwordFormation.VerticalSpeed]: typeof Types.F32;
+    readonly [FlyingSwordFormation.Size]: typeof Types.U16;
+}
+
+/** 控制组当前的基础控制状态。 */
+export enum FlyingSwordControl {
+    Mode,
+}
+
+export interface FlyingSwordControlViewData {
+    readonly [FlyingSwordControl.Mode]: typeof Types.U8;
 }
 
 /** 飞剑在控制组中的稳定成员身份。 */
@@ -100,7 +101,7 @@ export enum FlyingSwordFlight {
 
 /** 技能期间才存在的飞剑动作数据。 */
 export enum FlyingSwordAction {
-    Sequence,
+    Action,
     Phase,
     PhaseStartTick,
     Role,
@@ -110,7 +111,7 @@ export enum FlyingSwordAction {
 }
 
 export interface FlyingSwordActionViewData {
-    readonly [FlyingSwordAction.Sequence]: typeof Types.U32;
+    readonly [FlyingSwordAction.Action]: typeof Types.Entity;
     readonly [FlyingSwordAction.Phase]: typeof Types.U8;
     readonly [FlyingSwordAction.PhaseStartTick]: typeof Types.U32;
     readonly [FlyingSwordAction.Role]: typeof Types.U16;
@@ -118,3 +119,49 @@ export interface FlyingSwordActionViewData {
     readonly [FlyingSwordAction.TrajectoryStartY]: typeof Types.F32;
     readonly [FlyingSwordAction.TrajectoryStartZ]: typeof Types.F32;
 }
+
+/** 一个控制组级技能动作实体的稳定身份。 */
+export enum FlyingSwordSkillAction {
+    Group,
+    Plan,
+    Sequence,
+}
+
+export interface FlyingSwordSkillActionViewData {
+    readonly [FlyingSwordSkillAction.Group]: typeof Types.Entity;
+    readonly [FlyingSwordSkillAction.Plan]: typeof Types.U16;
+    readonly [FlyingSwordSkillAction.Sequence]: typeof Types.U32;
+}
+
+/** 控制组级技能动作的固定帧时序状态。 */
+export enum FlyingSwordSkillTiming {
+    StartTick,
+    PhaseStartTick,
+    Stage,
+    DisplayPhase,
+}
+
+export interface FlyingSwordSkillTimingViewData {
+    readonly [FlyingSwordSkillTiming.StartTick]: typeof Types.U32;
+    readonly [FlyingSwordSkillTiming.PhaseStartTick]: typeof Types.U32;
+    readonly [FlyingSwordSkillTiming.Stage]: typeof Types.U8;
+    readonly [FlyingSwordSkillTiming.DisplayPhase]: typeof Types.U8;
+}
+
+/** 控制组级技能动作的批处理计数。 */
+export enum FlyingSwordSkillProgress {
+    ReservedCount,
+    RemainingCount,
+    GatherArrivedCount,
+    ObservedMaximumPhase,
+}
+
+export interface FlyingSwordSkillProgressViewData {
+    readonly [FlyingSwordSkillProgress.ReservedCount]: typeof Types.U16;
+    readonly [FlyingSwordSkillProgress.RemainingCount]: typeof Types.U16;
+    readonly [FlyingSwordSkillProgress.GatherArrivedCount]: typeof Types.U16;
+    readonly [FlyingSwordSkillProgress.ObservedMaximumPhase]: typeof Types.U8;
+}
+
+/** 公共三维组件数据形状。 */
+export type FlyingSwordVector3ViewData = Component<Float3>;

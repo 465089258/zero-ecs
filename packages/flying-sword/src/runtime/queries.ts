@@ -14,15 +14,58 @@ import {
 import { MoveTowards3Type } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordContactWindowStorage,
+    FlyingSwordControlStorage,
     FlyingSwordFlightStorage,
+    FlyingSwordFormationStorage,
     FlyingSwordFormationGoal3Storage,
+    FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
+    FlyingSwordGroupTarget3Storage,
     FlyingSwordMemberStorage,
+    FlyingSwordSkillActionEntityStorage,
+    FlyingSwordSkillAcquisitionStorage,
     FlyingSwordSkillActionStorage,
+    FlyingSwordSkillProgressStorage,
+    FlyingSwordSkillTarget3Storage,
+    FlyingSwordSkillTimingStorage,
+    SetFlyingSwordCenterRequestStorage,
+    SetFlyingSwordModeRequestStorage,
+    FocusFlyingSwordRequestStorage,
+    CastFlyingSwordSkillRequestStorage,
+    CancelFlyingSwordSkillRequestStorage,
 } from "./storage";
 
-export const FlyingSwordGroupStorageQuery =
-    QueryType.from(With(FlyingSwordGroupStorage));
+export const FlyingSwordGroupStorageQuery = QueryType.from(With(
+    FlyingSwordGroupStorage,
+    FlyingSwordGroupCenter3Storage,
+    FlyingSwordGroupTarget3Storage,
+    FlyingSwordFormationStorage,
+    FlyingSwordControlStorage,
+));
+
+export const SetFlyingSwordCenterRequestStorageQuery =
+    QueryType.from(With(SetFlyingSwordCenterRequestStorage));
+
+export const FocusFlyingSwordRequestStorageQuery =
+    QueryType.from(With(FocusFlyingSwordRequestStorage));
+
+export const SetFlyingSwordModeRequestStorageQuery =
+    QueryType.from(With(SetFlyingSwordModeRequestStorage));
+
+export const CastFlyingSwordSkillRequestStorageQuery =
+    QueryType.from(With(CastFlyingSwordSkillRequestStorage));
+
+export const CancelFlyingSwordSkillRequestStorageQuery =
+    QueryType.from(With(CancelFlyingSwordSkillRequestStorage));
+
+export const FlyingSwordSkillActionEntityStorageQuery =
+    QueryType.from(With(
+        FlyingSwordSkillActionEntityStorage,
+        FlyingSwordSkillTarget3Storage,
+        FlyingSwordSkillTimingStorage,
+        FlyingSwordSkillAcquisitionStorage,
+        FlyingSwordSkillProgressStorage,
+    ));
 
 export const FlyingSwordBaseStorageQuery = QueryType.from(With(
     FlyingSwordMemberStorage,

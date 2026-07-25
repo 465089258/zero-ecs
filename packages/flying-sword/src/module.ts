@@ -2,10 +2,12 @@ import type { GameBuilder, Module } from "@zero-ecs/game";
 import { FlyingSwordService } from "./service";
 import { FlyingSwordSkillCatalog } from "./skill-catalog";
 import { FlyingSwordSkillService } from "./skill-service";
-import { FlyingSwordRequestState } from "./runtime/request-state";
-import { FlyingSwordRuntimeState } from "./runtime/runtime-state";
-import { FlyingSwordSkillActionState } from "./runtime/skill-action-state";
-import { FlyingSwordSkillRequestState } from "./runtime/skill-request-state";
+import { FlyingSwordEntityAccessState } from "./runtime/access-state";
+import { FlyingSwordGroupIndexState } from "./runtime/runtime-state";
+import {
+    FlyingSwordSkillActionIndexState,
+    FlyingSwordSkillSequenceState,
+} from "./runtime/skill-action-state";
 import {
     FlyingSwordSkillSystemOptions,
     acquireFlyingSwordSkillsSystem,
@@ -13,10 +15,13 @@ import {
     cleanupFlyingSwordSkillsSystem,
     guideFlyingSwordSkillsSystem,
     resolveFlyingSwordSkillsSystem,
+    snapshotFlyingSwordSkillActionsSystem,
 } from "./runtime/skill-systems";
 import {
     FlyingSwordSystemOptions,
-    applyFlyingSwordRequestsSystem,
+    applyFlyingSwordCenterRequestsSystem,
+    applyFlyingSwordFocusRequestsSystem,
+    applyFlyingSwordModeRequestsSystem,
     formFlyingSwordGoalsSystem,
     snapshotFlyingSwordGroupsSystem,
 } from "./runtime/systems";
@@ -35,20 +40,39 @@ export class FlyingSwordModule implements Module {
     build(builder: GameBuilder): void {
         builder
             .addResource(FlyingSwordSkillCatalog, this.skillCatalog)
-            .addState(FlyingSwordRequestState)
-            .addState(FlyingSwordRuntimeState)
-            .addState(FlyingSwordSkillRequestState)
-            .addState(FlyingSwordSkillActionState)
+            .addState(FlyingSwordEntityAccessState)
+            .addState(FlyingSwordGroupIndexState)
+            .addState(FlyingSwordSkillActionIndexState)
+            .addState(FlyingSwordSkillSequenceState)
             .addService(FlyingSwordService)
             .addService(FlyingSwordSkillService);
 
-        builder.addSystem(
-            applyFlyingSwordRequestsSystem,
-            FlyingSwordSystemOptions.requests,
+        const centerRequests = builder.addSystem(
+            applyFlyingSwordCenterRequestsSystem,
+            FlyingSwordSystemOptions.centerRequests,
         );
-        builder.addSystem(
+        const focusRequests = builder.addSystem(
+            applyFlyingSwordFocusRequestsSystem,
+            FlyingSwordSystemOptions.focusRequests,
+        );
+        const modeRequests = builder.addSystem(
+            applyFlyingSwordModeRequestsSystem,
+            FlyingSwordSystemOptions.modeRequests,
+        );
+        const actionIndex = builder.addSystem(
+            snapshotFlyingSwordSkillActionsSystem,
+            FlyingSwordSkillSystemOptions.actionIndex,
+        );
+        const skillRequests = builder.addSystem(
             applyFlyingSwordSkillRequestsSystem,
             FlyingSwordSkillSystemOptions.requests,
+        );
+        builder.chain(
+            centerRequests,
+            focusRequests,
+            modeRequests,
+            actionIndex,
+            skillRequests,
         );
         builder.addSystem(
             snapshotFlyingSwordGroupsSystem,
