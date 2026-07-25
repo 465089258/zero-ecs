@@ -17,17 +17,35 @@ import {
     RogueSystemOptions,
     advanceRogueRunClockSystem,
     applyRogueUpgradeRequestsSystem,
-    driveScatterFlyingSwordsSystem,
     collectRogueExperienceSystem,
     collideEnemiesWithPlayerSystem,
-    collideFlyingSwordsWithEnemiesSystem,
     directEnemySpawnsSystem,
     openRogueUpgradeSelectionSystem,
     reactToRogueDeathsSystem,
-    rebuildEnemySpatialIndexSystem,
     resolveRogueDamageSystem,
     updateEnemyIntentSystem,
 } from "./systems";
+import {
+    rebuildEnemySpatialIndexSystem,
+} from "./flying-sword/combat-spatial-index";
+import {
+    snapshotFlyingSwordCombatSystem,
+} from "./flying-sword/combat-snapshot-system";
+import {
+    collideFocusSwordContactsSystem,
+} from "./flying-sword/focus-contact-system";
+import {
+    collideFormationSwordContactsSystem,
+} from "./flying-sword/formation-contact-system";
+import {
+    driveScatterFlyingSwordsSystem,
+} from "./flying-sword/scatter-system";
+import {
+    collideScatterSwordContactsSystem,
+} from "./flying-sword/scatter-contact-system";
+import {
+    collideSwordBodyUnitySystem,
+} from "./flying-sword/sword-body-unity-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -66,7 +84,23 @@ export class FlyingSwordRogueSimulationModule implements Module {
             RogueSystemOptions.spatial,
         );
         builder.addSystem(
-            collideFlyingSwordsWithEnemiesSystem,
+            snapshotFlyingSwordCombatSystem,
+            RogueSystemOptions.combatSnapshot,
+        );
+        builder.addSystem(
+            collideFocusSwordContactsSystem,
+            RogueSystemOptions.swordContact,
+        );
+        builder.addSystem(
+            collideScatterSwordContactsSystem,
+            RogueSystemOptions.swordContact,
+        );
+        builder.addSystem(
+            collideFormationSwordContactsSystem,
+            RogueSystemOptions.swordContact,
+        );
+        builder.addSystem(
+            collideSwordBodyUnitySystem,
             RogueSystemOptions.swordContact,
         );
         builder.addSystem(
