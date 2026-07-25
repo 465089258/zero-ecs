@@ -665,7 +665,6 @@ function startSwordBodyUnity(
                 .entity(scene.cultivator)
                 .add(CultivatorMoveActiveTag)
                 .submit();
-            flyingSwords.cancelGroupAttacks(scene.swordGroup);
             flyingSwords.beginFusionSpiral(
                 scene.swordGroup,
                 directionX,

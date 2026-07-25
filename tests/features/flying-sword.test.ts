@@ -110,7 +110,7 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     game.dispose();
 });
 
-test("group stances and independent sword tasks remain separate lifecycles", () => {
+test("fusion formation interrupts sword tasks without replacing the stance", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
@@ -151,10 +151,21 @@ test("group stances and independent sword tasks remain separate lifecycles", () 
     let activeTasks = 0;
     const taskIter = game.world.query(FlyingSwordTaskQuery).iter();
     while (taskIter.next()) activeTasks += taskIter.current[0];
+    expect(activeTasks).toBe(0);
+
+    flyingSwords.endActiveFormation(group);
+    game.update();
+    game.update();
+    flyingSwords.attack(sword, { x: 0, y: 0.5, z: 6 });
+    game.update();
+    game.update();
+
+    activeTasks = 0;
+    const restartedIter = game.world.query(FlyingSwordTaskQuery).iter();
+    while (restartedIter.next()) activeTasks += restartedIter.current[0];
     expect(activeTasks).toBe(1);
 
     flyingSwords.finishAttack(sword);
-    flyingSwords.endActiveFormation(group);
     for (let tick = 0; tick < 240; tick++) game.update();
 
     activeTasks = 0;
@@ -169,6 +180,113 @@ test("group stances and independent sword tasks remain separate lifecycles", () 
     expect(
         completedBehavior[FlyingSwordBehavior.ActiveFormation][0],
     ).toBe(FlyingSwordActiveFormation.None);
+
+    game.dispose();
+});
+
+test("fusion swords form a forward cone and point along the dash axis", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 7,
+    });
+    for (let slot = 0; slot < 7; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 14,
+            acceleration: 48,
+        });
+    }
+    game.update();
+    flyingSwords.beginFusionSpiral(group, 1, 0);
+    for (let tick = 0; tick < 100; tick++) game.update();
+
+    let minimumX = Number.POSITIVE_INFINITY;
+    let maximumX = Number.NEGATIVE_INFINITY;
+    let minimumForward = Number.POSITIVE_INFINITY;
+    let swordCount = 0;
+    const iter = game.world.query(FlyingSwordQuery).iter();
+    while (iter.next()) {
+        const [count, , , , positions, directions] = iter.current;
+        const xs = positions[Float3.X];
+        const directionXs = directions[Float3.X];
+        for (let row = 0; row < count; row++) {
+            minimumX = Math.min(minimumX, xs[row]);
+            maximumX = Math.max(maximumX, xs[row]);
+            minimumForward = Math.min(
+                minimumForward,
+                directionXs[row],
+            );
+            swordCount++;
+        }
+    }
+    expect(swordCount).toBe(7);
+    expect(minimumX).toBeGreaterThan(0.4);
+    expect(maximumX - minimumX).toBeGreaterThan(2.5);
+    expect(minimumForward).toBeGreaterThan(0.94);
+
+    game.dispose();
+});
+
+test("formation stance distributes swords across interwoven path radii", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 9,
+        orbitRadius: 3,
+        angularSpeed: 0.8,
+    });
+    for (let slot = 0; slot < 9; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 14,
+            acceleration: 48,
+        });
+    }
+    game.update();
+    flyingSwords.setStance(group, FlyingSwordStance.Formation);
+    for (let tick = 0; tick < 180; tick++) game.update();
+
+    let minimumRadius = Number.POSITIVE_INFINITY;
+    let maximumRadius = Number.NEGATIVE_INFINITY;
+    const iter = game.world.query(FlyingSwordQuery).iter();
+    while (iter.next()) {
+        const [count, , , , positions] = iter.current;
+        const xs = positions[Float3.X];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            const radius = Math.sqrt(
+                xs[row] * xs[row] + zs[row] * zs[row],
+            );
+            minimumRadius = Math.min(minimumRadius, radius);
+            maximumRadius = Math.max(maximumRadius, radius);
+        }
+    }
+    expect(maximumRadius - minimumRadius).toBeGreaterThan(0.45);
 
     game.dispose();
 });

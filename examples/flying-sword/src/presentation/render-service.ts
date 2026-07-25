@@ -248,6 +248,7 @@ export class DemoRenderService extends Service {
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
         const tick = this.readRunTick(runs);
+        const fusionActive = this.readFusionActive(cultivators);
         this.followCultivator(
             cultivators,
             scene.cultivator,
@@ -255,7 +256,13 @@ export class DemoRenderService extends Service {
         );
         this.beginFrame();
         this.drawGroundGrid();
-        this.drawGroundTargets(scene, runs, skillPhase, tick);
+        this.drawGroundTargets(
+            scene,
+            runs,
+            skillPhase,
+            tick,
+            fusionActive,
+        );
         this.queue.begin();
         this.collectCultivators(cultivators, interpolation, tick);
         this.collectEnemies(enemies, interpolation, tick);
@@ -330,9 +337,13 @@ export class DemoRenderService extends Service {
         runs: Runs,
         skillPhase: FlyingSwordSkillPhaseValue,
         tick: number,
+        fusionActive: boolean,
     ): void {
         const context = this.view.context;
-        if (scene.stance === FlyingSwordStance.Formation) {
+        if (
+            !fusionActive &&
+            scene.stance === FlyingSwordStance.Formation
+        ) {
             this.camera.project(
                 this.followedX,
                 0,
@@ -374,6 +385,21 @@ export class DemoRenderService extends Service {
             10,
             false,
         );
+    }
+
+    private readFusionActive(cultivators: Cultivators): boolean {
+        const iter = cultivators.iter();
+        while (iter.next()) {
+            const [count, , , , , , , , , , , , actions] =
+                iter.current;
+            if (
+                count > 0 &&
+                actions[SwordBodyUnity.Active][0] !== 0
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private followCultivator(
@@ -1160,34 +1186,59 @@ function drawFormationGroundAura(
     tick: number,
 ): void {
     const pulse = 1 + Math.sin(tick * 0.1) * 0.06;
-    context.globalAlpha = 0.52;
+    context.globalAlpha = 0.42;
     context.strokeStyle = "#69f7d0";
     context.lineWidth = 2;
-    context.beginPath();
-    context.ellipse(
+    drawScreenPolygon(
+        context,
         point.x,
         point.y,
         92 * pulse,
         39 * pulse,
-        0,
-        0,
-        Math.PI * 2,
+        8,
+        Math.PI / 8,
     );
-    context.stroke();
-    context.globalAlpha = 0.18;
-    context.lineWidth = 7;
-    context.beginPath();
-    context.ellipse(
+    context.globalAlpha = 0.22;
+    context.lineWidth = 1.5;
+    drawScreenPolygon(
+        context,
         point.x,
         point.y,
-        75 / pulse,
-        31 / pulse,
-        0,
-        0,
-        Math.PI * 2,
+        72 / pulse,
+        30 / pulse,
+        4,
+        Math.PI / 4,
     );
-    context.stroke();
+    drawScreenPolygon(
+        context,
+        point.x,
+        point.y,
+        72 / pulse,
+        30 / pulse,
+        4,
+        0,
+    );
     context.globalAlpha = 1;
+}
+
+function drawScreenPolygon(
+    context: CanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
+    radiusX: number,
+    radiusY: number,
+    sides: number,
+    rotation: number,
+): void {
+    context.beginPath();
+    for (let vertex = 0; vertex <= sides; vertex++) {
+        const angle = rotation + vertex * Math.PI * 2 / sides;
+        const x = centerX + Math.cos(angle) * radiusX;
+        const y = centerY + Math.sin(angle) * radiusY;
+        if (vertex === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+    }
+    context.stroke();
 }
 
 function drawEnemyTargetIndicator(
@@ -1237,44 +1288,34 @@ function drawFusionAura(
     context: CanvasRenderingContext2D,
     item: Readonly<DemoRenderItem>,
 ): void {
-    const centerY = item.y1 - 38;
-    const previousY = item.y2 - 38;
+    const centerY = item.y1 - 36;
+    const previousY = item.y2 - 36;
+    const deltaX = item.x1 - item.x2;
+    const deltaY = centerY - previousY;
+    const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const inverseLength = length > 1e-5 ? 1 / length : 0;
+    const normalX = -deltaY * inverseLength;
+    const normalY = deltaX * inverseLength;
     context.strokeStyle = "#8ee8ff";
-    context.globalAlpha = 0.2;
-    context.lineWidth = 18;
+    context.globalAlpha = 0.16;
+    context.lineWidth = 22;
     context.beginPath();
     context.moveTo(item.x2, previousY);
     context.lineTo(item.x1, centerY);
     context.stroke();
-    context.globalAlpha = 0.82;
+    context.globalAlpha = 0.72;
     context.lineWidth = 2;
-    const rotation = item.amount * 0.42;
-    for (let index = 0; index < 3; index++) {
-        const angle = rotation + index * Math.PI * 2 / 3;
-        const radiusX = 27;
-        const radiusY = 42;
-        const x = item.x1 + Math.cos(angle) * radiusX;
-        const y = centerY + Math.sin(angle) * radiusY;
-        context.beginPath();
-        context.moveTo(item.x1, centerY);
-        context.lineTo(x, y);
-        context.stroke();
-        context.fillStyle = index === 0 ? "#f2fbff" : "#69f7d0";
-        context.beginPath();
-        context.arc(x, y, 3.5, 0, Math.PI * 2);
-        context.fill();
-    }
-    context.globalAlpha = 0.42;
     context.beginPath();
-    context.ellipse(
-        item.x1,
-        centerY,
-        30,
-        44,
-        rotation * 0.08,
-        0,
-        Math.PI * 2,
-    );
+    context.moveTo(item.x2 + normalX * 8, previousY + normalY * 8);
+    context.lineTo(item.x1 + normalX * 3, centerY + normalY * 3);
+    context.moveTo(item.x2 - normalX * 8, previousY - normalY * 8);
+    context.lineTo(item.x1 - normalX * 3, centerY - normalY * 3);
+    context.stroke();
+    context.globalAlpha =
+        0.28 + Math.sin(item.amount * 0.6) * 0.08;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(item.x1, centerY, 18, 0, Math.PI * 2);
     context.stroke();
     context.globalAlpha = 1;
 }

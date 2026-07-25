@@ -248,6 +248,7 @@ function driveScatterFlyingSwords(
             combat,
         ] = swordIter.current;
         const swordGroups = members[FlyingSwordMember.Group];
+        const swordSlots = members[FlyingSwordMember.Slot];
         const assignedTargets = combat[FlyingSwordCombat.Target];
         const nextAttackTicks =
             combat[FlyingSwordCombat.NextAttackTick];
@@ -256,7 +257,11 @@ function driveScatterFlyingSwords(
             if (
                 swordGroups[row] !== swordGroup ||
                 scratch.activeTaskSwords.has(sword) ||
-                tick < nextAttackTicks[row]
+                tick < nextAttackTicks[row] ||
+                (
+                    tick + swordSlots[row] *
+                        SCATTER_LAUNCH_SLOT_STRIDE
+                ) % SCATTER_LAUNCH_CADENCE_TICKS !== 0
             ) {
                 continue;
             }
@@ -346,3 +351,5 @@ const groupBehavior = {
     activeFormation: FlyingSwordActiveFormation.None as number,
 };
 const TASK_REQUEST_GUARD_TICKS = 2;
+const SCATTER_LAUNCH_CADENCE_TICKS = 5;
+const SCATTER_LAUNCH_SLOT_STRIDE = 3;

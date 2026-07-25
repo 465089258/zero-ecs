@@ -320,6 +320,7 @@ export class FlyingSwordService extends Service {
             forwardX * forwardX + forwardZ * forwardZ,
         );
         const inverse = length > DIRECTION_EPSILON ? 1 / length : 0;
+        this.cancelGroupTasks(group, true);
         this.setActiveFormation(
             group,
             FlyingSwordActiveFormation.FusionSpiral,
@@ -378,6 +379,10 @@ export class FlyingSwordService extends Service {
     }
 
     cancelGroupAttacks(group: Entity): void {
+        this.cancelGroupTasks(group, false);
+    }
+
+    private cancelGroupTasks(group: Entity, immediate: boolean): void {
         this.commands
             .spawn()
             .add(CancelFlyingSwordGroupTasksRequestStorage)
@@ -385,6 +390,11 @@ export class FlyingSwordService extends Service {
                 CancelFlyingSwordGroupTasksRequestStorage,
                 CancelFlyingSwordGroupTasksRequest.Group,
                 group,
+            )
+            .set(
+                CancelFlyingSwordGroupTasksRequestStorage,
+                CancelFlyingSwordGroupTasksRequest.Immediate,
+                immediate ? 1 : 0,
             )
             .submit();
     }

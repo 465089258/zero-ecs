@@ -595,23 +595,28 @@ function formFlyingSwordGoals(
                 const forwardZ = runtime.activeForwardZs[group];
                 const rightX = forwardZ;
                 const rightZ = -forwardX;
-                const slotPhase =
-                    slot * Math.PI * 2 / formationSize;
+                const progress = formationSize <= 1
+                    ? 1
+                    : slot % formationSize / (formationSize - 1);
                 const spiralPhase =
-                    elapsed * FUSION_SPIRAL_SPEED + slotPhase;
-                const longitudinal = formationSize <= 1
-                    ? 0
-                    : (
-                        slot % formationSize /
-                        (formationSize - 1) - 0.5
-                    ) * FUSION_SPIRAL_LENGTH;
+                    elapsed * FUSION_SPIRAL_SPEED +
+                    progress * Math.PI * 2 * FUSION_SPIRAL_TURNS;
+                const longitudinal =
+                    FUSION_SPIRAL_START +
+                    progress * FUSION_SPIRAL_LENGTH;
+                const spiralRadius =
+                    FUSION_SPIRAL_BACK_RADIUS +
+                    (
+                        FUSION_SPIRAL_TIP_RADIUS -
+                        FUSION_SPIRAL_BACK_RADIUS
+                    ) * progress;
                 const radial = Math.cos(spiralPhase) *
-                    FUSION_SPIRAL_RADIUS;
+                    spiralRadius;
                 formationGoalXs[row] =
                     centerX + forwardX * longitudinal + rightX * radial;
                 formationGoalYs[row] =
-                    centerY + FUSION_SPIRAL_HEIGHT +
-                    Math.sin(spiralPhase) * FUSION_SPIRAL_RADIUS;
+                    centerY + FUSION_SPIRAL_AXIS_HEIGHT +
+                    Math.sin(spiralPhase) * spiralRadius;
                 formationGoalZs[row] =
                     centerZ + forwardZ * longitudinal + rightZ * radial;
                 continue;
@@ -667,28 +672,40 @@ function formFlyingSwordGoals(
                 runtime.stances[group] === FlyingSwordStance.Formation &&
                 runtime.modes[group] === FlyingSwordMode.Orbit
             ) {
-                const slotPhase =
-                    slot * Math.PI * 2 / formationSize;
-                const circuitPhase =
-                    elapsed * runtime.angularSpeeds[group] *
-                    FORMATION_SPEED_MULTIPLIER +
-                    slotPhase;
+                const route = slot % FORMATION_ROUTE_COUNT;
+                const routePhase = formationRoutePhase(
+                    elapsed,
+                    runtime.angularSpeeds[group],
+                    slot,
+                    formationSize,
+                    route,
+                );
+                writeFormationPathPoint(
+                    route,
+                    routePhase,
+                    radius,
+                    formationPathPoint,
+                );
                 const forwardX = runtime.forwardXs[group];
                 const forwardZ = runtime.forwardZs[group];
                 const rightX = forwardZ;
                 const rightZ = -forwardX;
-                const lateral = Math.cos(circuitPhase) *
-                    radius * FORMATION_RADIUS_MULTIPLIER;
-                const depth = Math.sin(circuitPhase) *
-                    radius * FORMATION_DEPTH_MULTIPLIER;
                 formationGoalXs[row] =
-                    centerX + rightX * lateral + forwardX * depth;
+                    centerX +
+                    rightX * formationPathPoint.lateral +
+                    forwardX * formationPathPoint.depth;
                 formationGoalYs[row] =
                     centerY + height * FORMATION_HEIGHT_MULTIPLIER +
-                    Math.sin(circuitPhase * 2 + slotPhase) *
-                    Math.max(FORMATION_MINIMUM_WAVE, verticalAmplitude);
+                    formationRouteHeight(route) +
+                    Math.sin(routePhase * 2 + slot * 0.7) *
+                    Math.max(
+                        FORMATION_PATH_WAVE,
+                        verticalAmplitude * 0.35,
+                    );
                 formationGoalZs[row] =
-                    centerZ + rightZ * lateral + forwardZ * depth;
+                    centerZ +
+                    rightZ * formationPathPoint.lateral +
+                    forwardZ * formationPathPoint.depth;
                 continue;
             }
 
@@ -751,55 +768,97 @@ function orientIdleFlyingSwords(
                     runtime.activeFormations[group] ===
                     FlyingSwordActiveFormation.FusionSpiral
                 ) {
+                    const formationSize =
+                        runtime.formationSizes[group];
+                    const progress = formationSize <= 1
+                        ? 1
+                        : slots[row] % formationSize /
+                            (formationSize - 1);
                     const phase =
                         elapsed * FUSION_SPIRAL_SPEED +
-                        slots[row] * Math.PI * 2 /
-                        runtime.formationSizes[group];
+                        progress * Math.PI * 2 *
+                            FUSION_SPIRAL_TURNS;
                     const forwardX = runtime.activeForwardXs[group];
                     const forwardZ = runtime.activeForwardZs[group];
                     const rightX = forwardZ;
                     const rightZ = -forwardX;
+                    const directionWeight =
+                        FUSION_DIRECTION_WEIGHT +
+                        progress * FUSION_TIP_DIRECTION_BONUS;
                     const tangentX =
-                        forwardX * FUSION_DIRECTION_WEIGHT -
-                        rightX * Math.sin(phase);
-                    const tangentY = Math.cos(phase);
+                        forwardX * directionWeight -
+                        rightX * Math.sin(phase) *
+                            FUSION_TANGENT_WEIGHT;
+                    const tangentY =
+                        Math.cos(phase) * FUSION_TANGENT_WEIGHT;
                     const tangentZ =
-                        forwardZ * FUSION_DIRECTION_WEIGHT -
-                        rightZ * Math.sin(phase);
+                        forwardZ * directionWeight -
+                        rightZ * Math.sin(phase) *
+                            FUSION_TANGENT_WEIGHT;
                     const length = Math.sqrt(
                         tangentX * tangentX +
                         tangentY * tangentY +
                         tangentZ * tangentZ,
                     );
-                    directionXs[row] = tangentX / length;
-                    directionYs[row] = tangentY / length;
-                    directionZs[row] = tangentZ / length;
+                    if (length > DIRECTION_EPSILON) {
+                        directionXs[row] = tangentX / length;
+                        directionYs[row] = tangentY / length;
+                        directionZs[row] = tangentZ / length;
+                    }
                     continue;
                 }
                 if (
                     runtime.stances[group] ===
                     FlyingSwordStance.Formation
                 ) {
-                    const phase =
-                        elapsed * runtime.angularSpeeds[group] *
-                        FORMATION_SPEED_MULTIPLIER +
-                        slots[row] * Math.PI * 2 /
+                    const slot = slots[row];
+                    const formationSize =
                         runtime.formationSizes[group];
+                    const route = slot % FORMATION_ROUTE_COUNT;
+                    const phase = formationRoutePhase(
+                        elapsed,
+                        runtime.angularSpeeds[group],
+                        slot,
+                        formationSize,
+                        route,
+                    );
+                    const nextPhase = formationRoutePhase(
+                        elapsed + FORMATION_TANGENT_TIME_STEP,
+                        runtime.angularSpeeds[group],
+                        slot,
+                        formationSize,
+                        route,
+                    );
+                    const radius = runtime.orbitRadii[group];
+                    writeFormationPathPoint(
+                        route,
+                        phase,
+                        radius,
+                        formationPathPoint,
+                    );
+                    writeFormationPathPoint(
+                        route,
+                        nextPhase,
+                        radius,
+                        formationPathPointAhead,
+                    );
                     const forwardX = runtime.forwardXs[group];
                     const forwardZ = runtime.forwardZs[group];
                     const rightX = forwardZ;
                     const rightZ = -forwardX;
+                    const lateral =
+                        formationPathPointAhead.lateral -
+                        formationPathPoint.lateral;
+                    const depth =
+                        formationPathPointAhead.depth -
+                        formationPathPoint.depth;
                     const tangentX =
-                        -rightX * Math.sin(phase) +
-                        forwardX * Math.cos(phase) *
-                        FORMATION_DEPTH_MULTIPLIER;
+                        rightX * lateral + forwardX * depth;
                     const tangentY =
-                        Math.cos(phase * 2) *
-                        FORMATION_TANGENT_VERTICAL_WEIGHT;
+                        Math.sin(nextPhase * 2 + slot * 0.7) -
+                        Math.sin(phase * 2 + slot * 0.7);
                     const tangentZ =
-                        -rightZ * Math.sin(phase) +
-                        forwardZ * Math.cos(phase) *
-                        FORMATION_DEPTH_MULTIPLIER;
+                        rightZ * lateral + forwardZ * depth;
                     const length = Math.sqrt(
                         tangentX * tangentX +
                         tangentY * tangentY +
@@ -882,6 +941,87 @@ function removeGroupIndex(
     runtime.count = last;
 }
 
+function formationRoutePhase(
+    elapsed: number,
+    angularSpeed: number,
+    slot: number,
+    formationSize: number,
+    route: number,
+): number {
+    const routeCount = Math.max(
+        1,
+        Math.floor(
+            (formationSize + FORMATION_ROUTE_COUNT - 1 - route) /
+            FORMATION_ROUTE_COUNT,
+        ),
+    );
+    const routeSlot = Math.floor(slot / FORMATION_ROUTE_COUNT);
+    const offset = routeSlot * Math.PI * 2 / routeCount;
+    const speedScale = route === 0
+        ? 0.86
+        : route === 1
+            ? 1.18
+            : -1.03;
+    return elapsed * angularSpeed *
+        FORMATION_SPEED_MULTIPLIER * speedScale + offset;
+}
+
+function writeFormationPathPoint(
+    route: number,
+    phase: number,
+    radius: number,
+    out: { lateral: number; depth: number },
+): void {
+    if (route === 0) {
+        writeRegularPolygonPoint(
+            phase,
+            8,
+            radius * FORMATION_OUTER_RADIUS_MULTIPLIER,
+            Math.PI / 8,
+            out,
+        );
+        return;
+    }
+    writeRegularPolygonPoint(
+        phase,
+        4,
+        radius * FORMATION_INNER_RADIUS_MULTIPLIER,
+        route === 1 ? Math.PI / 4 : 0,
+        out,
+    );
+}
+
+function writeRegularPolygonPoint(
+    phase: number,
+    sides: number,
+    radius: number,
+    rotation: number,
+    out: { lateral: number; depth: number },
+): void {
+    const turns = phase / (Math.PI * 2);
+    const wrapped = turns - Math.floor(turns);
+    const edgePosition = wrapped * sides;
+    const edge = Math.floor(edgePosition);
+    const progress = edgePosition - edge;
+    const startAngle = rotation + edge * Math.PI * 2 / sides;
+    const endAngle =
+        rotation + (edge + 1) * Math.PI * 2 / sides;
+    out.lateral =
+        (
+            Math.cos(startAngle) +
+            (Math.cos(endAngle) - Math.cos(startAngle)) * progress
+        ) * radius;
+    out.depth =
+        (
+            Math.sin(startAngle) +
+            (Math.sin(endAngle) - Math.sin(startAngle)) * progress
+        ) * radius;
+}
+
+function formationRouteHeight(route: number): number {
+    return route === 0 ? 0 : route === 1 ? 0.18 : -0.12;
+}
+
 const DIRECTION_EPSILON = 1e-6;
 const RECALL_FAN_HALF_ANGLE = Math.PI / 3;
 const RECALL_MINIMUM_RADIUS = 1.2;
@@ -896,14 +1036,22 @@ const RECALL_MAXIMUM_BREATH_RADIUS = 0.12;
 const RECALL_MAXIMUM_TILT = Math.PI * 0.18;
 const RECALL_SWAY_ANGLE = Math.PI / 72;
 const RECALL_SWAY_SPEED = 1.8;
-const FORMATION_SPEED_MULTIPLIER = 2.4;
-const FORMATION_RADIUS_MULTIPLIER = 0.84;
-const FORMATION_DEPTH_MULTIPLIER = 0.48;
+const FORMATION_ROUTE_COUNT = 3;
+const FORMATION_SPEED_MULTIPLIER = 1.15;
+const FORMATION_OUTER_RADIUS_MULTIPLIER = 0.94;
+const FORMATION_INNER_RADIUS_MULTIPLIER = 0.78;
 const FORMATION_HEIGHT_MULTIPLIER = 0.76;
-const FORMATION_MINIMUM_WAVE = 0.42;
-const FORMATION_TANGENT_VERTICAL_WEIGHT = 0.7;
-const FUSION_SPIRAL_SPEED = 10.5;
-const FUSION_SPIRAL_LENGTH = 2.8;
-const FUSION_SPIRAL_RADIUS = 0.72;
-const FUSION_SPIRAL_HEIGHT = 1.05;
-const FUSION_DIRECTION_WEIGHT = 0.9;
+const FORMATION_PATH_WAVE = 0.08;
+const FORMATION_TANGENT_TIME_STEP = 1 / 120;
+const FUSION_SPIRAL_SPEED = 12.5;
+const FUSION_SPIRAL_TURNS = 2.25;
+const FUSION_SPIRAL_START = 0.65;
+const FUSION_SPIRAL_LENGTH = 4.15;
+const FUSION_SPIRAL_BACK_RADIUS = 1.12;
+const FUSION_SPIRAL_TIP_RADIUS = 0.12;
+const FUSION_SPIRAL_AXIS_HEIGHT = 0.92;
+const FUSION_DIRECTION_WEIGHT = 4.8;
+const FUSION_TIP_DIRECTION_BONUS = 2.2;
+const FUSION_TANGENT_WEIGHT = 0.72;
+const formationPathPoint = { lateral: 0, depth: 0 };
+const formationPathPointAhead = { lateral: 0, depth: 0 };

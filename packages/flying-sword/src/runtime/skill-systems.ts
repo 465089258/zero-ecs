@@ -24,8 +24,10 @@ import { FlyingSwordSystemSet } from "../system-set";
 import { FlyingSwordSkillPhase } from "../skill-types";
 import {
     FlyingSwordAction,
+    FlyingSwordActiveFormation,
     FlyingSwordFlight,
     FlyingSwordMember,
+    FlyingSwordStance,
     FlyingSwordSkillAction,
     FlyingSwordSkillProgress,
     FlyingSwordSkillTiming,
@@ -873,6 +875,28 @@ function guideFlyingSwordSkills(
 
         if (!actionsData) {
             for (let row = 0; row < count; row++) {
+                const group = groupIndices.get(groups[row]);
+                let speedMultiplier = 1;
+                let arrivalRadius = DEFAULT_ARRIVAL_RADIUS;
+                if (group !== undefined) {
+                    if (
+                        runtime.activeFormations[group] ===
+                        FlyingSwordActiveFormation.FusionSpiral
+                    ) {
+                        speedMultiplier =
+                            FUSION_FORMATION_SPEED_MULTIPLIER;
+                        arrivalRadius =
+                            FUSION_FORMATION_ARRIVAL_RADIUS;
+                    } else if (
+                        runtime.stances[group] ===
+                        FlyingSwordStance.Formation
+                    ) {
+                        speedMultiplier =
+                            SIGIL_FORMATION_SPEED_MULTIPLIER;
+                        arrivalRadius =
+                            SIGIL_FORMATION_ARRIVAL_RADIUS;
+                    }
+                }
                 writeFormationMotion(
                     formationGoalXs,
                     formationGoalYs,
@@ -886,8 +910,8 @@ function guideFlyingSwordSkills(
                     motionAccelerations,
                     arrivalRadii,
                     row,
-                    1,
-                    DEFAULT_ARRIVAL_RADIUS,
+                    speedMultiplier,
+                    arrivalRadius,
                 );
             }
             continue;
@@ -1761,5 +1785,9 @@ const ACQUIRE_NONE = 0;
 const ACQUIRE_READY = 1;
 const ACQUIRE_PENDING_COMMIT = 2;
 const DEFAULT_ARRIVAL_RADIUS = 0.15;
+const FUSION_FORMATION_SPEED_MULTIPLIER = 3.5;
+const FUSION_FORMATION_ARRIVAL_RADIUS = 0.08;
+const SIGIL_FORMATION_SPEED_MULTIPLIER = 1.3;
+const SIGIL_FORMATION_ARRIVAL_RADIUS = 0.1;
 const SKILL_TARGET_ARRIVAL_RADIUS = 0.62;
 const LAUNCH_CONTACT_START = 0.72;

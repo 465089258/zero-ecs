@@ -7,7 +7,10 @@ import {
     type Entity,
     type QueryOf,
 } from "@zero-ecs/game";
-import { FlyingSwordService } from "@zero-ecs/flying-sword";
+import {
+    FlyingSwordMember,
+    FlyingSwordService,
+} from "@zero-ecs/flying-sword";
 import { TimeState } from "@zero-ecs/game/time";
 import { Float3 } from "@zero-ecs/math/3d";
 import { MoveTowards3 } from "@zero-ecs/motion/3d";
@@ -19,7 +22,10 @@ import {
     SwordBodyUnity,
 } from "../components";
 import { RogueContentService } from "../content-service";
-import { RoguePlayerQuery } from "../queries";
+import {
+    RogueFlyingSwordCombatQuery,
+    RoguePlayerQuery,
+} from "../queries";
 import {
     EnemySpatialIndexState,
     GRID_CELL_SIZE,
@@ -39,6 +45,7 @@ import {
 } from "./combat-spatial-index";
 
 type Players = QueryOf<typeof RoguePlayerQuery>;
+type CombatSwords = QueryOf<typeof RogueFlyingSwordCombatQuery>;
 
 export const collideSwordBodyUnitySystem = defSystem(
     Update.fixed,
@@ -51,6 +58,7 @@ export const collideSwordBodyUnitySystem = defSystem(
         RogueContentService,
         FlyingSwordService,
         RoguePlayerQuery,
+        RogueFlyingSwordCombatQuery,
     ],
 );
 
@@ -62,6 +70,7 @@ function collideSwordBodyUnity(
     content: RogueContentService,
     flyingSwords: FlyingSwordService,
     players: Players,
+    swords: CombatSwords,
 ): void {
     const tick = time.tick;
     const iter = players.iter();
@@ -110,12 +119,23 @@ function collideSwordBodyUnity(
                 index,
                 entities[row],
                 damages[row],
+                FUSION_HIT_RADIUS,
                 previousXs[row],
                 previousYs[row] + FUSION_BODY_HEIGHT,
                 previousZs[row],
                 xs[row],
                 ys[row] + FUSION_BODY_HEIGHT,
                 zs[row],
+            );
+            collideFusionSwords(
+                world,
+                tick,
+                content,
+                index,
+                entities[row],
+                groups[row] as Entity,
+                damages[row],
+                swords,
             );
             const dx = targetXs[row] - xs[row];
             const dy = targetYs[row] - ys[row];
@@ -148,6 +168,54 @@ function collideSwordBodyUnity(
     }
 }
 
+function collideFusionSwords(
+    world: World,
+    tick: number,
+    content: RogueContentService,
+    index: Readonly<EnemySpatialIndexState>,
+    source: Entity,
+    group: Entity,
+    damage: number,
+    swords: CombatSwords,
+): void {
+    if (group === INVALID_ENTITY) return;
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [
+            count,
+            ,
+            members,
+            previousPositions,
+            positions,
+        ] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        const previousXs = previousPositions[Float3.X];
+        const previousYs = previousPositions[Float3.Y];
+        const previousZs = previousPositions[Float3.Z];
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            if (groups[row] !== group) continue;
+            collideFusionSegment(
+                world,
+                tick,
+                content,
+                index,
+                source,
+                damage,
+                FUSION_SWORD_HIT_RADIUS,
+                previousXs[row],
+                previousYs[row],
+                previousZs[row],
+                xs[row],
+                ys[row],
+                zs[row],
+            );
+        }
+    }
+}
+
 function collideFusionSegment(
     world: World,
     tick: number,
@@ -155,6 +223,7 @@ function collideFusionSegment(
     index: Readonly<EnemySpatialIndexState>,
     source: Entity,
     damage: number,
+    hitRadius: number,
     startX: number,
     startY: number,
     startZ: number,
@@ -162,7 +231,7 @@ function collideFusionSegment(
     endY: number,
     endZ: number,
 ): void {
-    const padding = FUSION_HIT_RADIUS + 1.2;
+    const padding = hitRadius + 1.2;
     const minimumCellX = clampGridCell(
         Math.floor(
             (Math.min(startX, endX) - padding - index.originX) /
@@ -198,7 +267,7 @@ function collideFusionSegment(
             while (candidate !== -1) {
                 const enemy = index.entities[candidate] as Entity;
                 const radius =
-                    index.radii[candidate] + FUSION_HIT_RADIUS;
+                    index.radii[candidate] + hitRadius;
                 if (
                     squaredDistanceToSegment3(
                         index.xs[candidate],
@@ -232,3 +301,5 @@ function collideFusionSegment(
         }
     }
 }
+
+const FUSION_SWORD_HIT_RADIUS = 0.34;

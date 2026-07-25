@@ -235,12 +235,14 @@ implements Component<FinishFlyingSwordTaskRequest> {
 
 export enum CancelFlyingSwordGroupTasksRequest {
     Group,
+    Immediate,
 }
 
 /** @internal 取消控制组全部单剑任务的一次性请求实体。 */
 export class CancelFlyingSwordGroupTasksRequestStorage
 implements Component<CancelFlyingSwordGroupTasksRequest> {
     readonly [CancelFlyingSwordGroupTasksRequest.Group] = Types.Entity;
+    readonly [CancelFlyingSwordGroupTasksRequest.Immediate] = Types.U8;
 }
 
 export enum FocusFlyingSwordRequest {
