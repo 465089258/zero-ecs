@@ -9,11 +9,16 @@ import {
     type QueryOf,
 } from "@zero-ecs/game";
 import { TimeState } from "@zero-ecs/game/time";
-import { Float3 } from "@zero-ecs/math/3d";
+import {
+    Direction3Type,
+    Float3,
+} from "@zero-ecs/math/3d";
+import { MotionSystemSet } from "@zero-ecs/motion/3d";
 import { FlyingSwordSystemSet } from "../system-set";
 import {
     FlyingSwordControl,
     FlyingSwordFormation,
+    FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
 } from "../types";
@@ -21,6 +26,7 @@ import { FlyingSwordEntityAccessState } from "./access-state";
 import {
     FlyingSwordBaseStorageQuery,
     FlyingSwordGroupStorageQuery,
+    FlyingSwordOrientationStorageQuery,
     FocusFlyingSwordRequestStorageQuery,
     SetFlyingSwordCenterRequestStorageQuery,
     SetFlyingSwordModeRequestStorageQuery,
@@ -44,6 +50,8 @@ type FocusRequests =
     QueryOf<typeof FocusFlyingSwordRequestStorageQuery>;
 type ModeRequests =
     QueryOf<typeof SetFlyingSwordModeRequestStorageQuery>;
+type OrientedSwords =
+    QueryOf<typeof FlyingSwordOrientationStorageQuery>;
 
 export const applyFlyingSwordCenterRequestsSystem = defSystem(
     Update.fixed,
@@ -83,6 +91,8 @@ export const snapshotFlyingSwordGroupsSystem = defSystem(
     snapshotFlyingSwordGroups,
     [
         TimeState,
+        World,
+        Write(FlyingSwordEntityAccessState),
         Write(FlyingSwordGroupIndexState),
         FlyingSwordGroupStorageQuery,
     ],
@@ -92,6 +102,12 @@ export const formFlyingSwordGoalsSystem = defSystem(
     Update.fixed,
     formFlyingSwordGoals,
     [TimeState, FlyingSwordGroupIndexState, FlyingSwordBaseStorageQuery],
+);
+
+export const orientIdleFlyingSwordsSystem = defSystem(
+    Update.fixed,
+    orientIdleFlyingSwords,
+    [FlyingSwordGroupIndexState, FlyingSwordOrientationStorageQuery],
 );
 
 export const FlyingSwordSystemOptions = Object.freeze({
@@ -105,6 +121,10 @@ export const FlyingSwordSystemOptions = Object.freeze({
     formation: {
         inSet: FlyingSwordSystemSet.Formation,
         after: FlyingSwordSystemSet.Skill,
+    } as const,
+    orientation: {
+        inSet: FlyingSwordSystemSet.Orientation,
+        after: MotionSystemSet.Integrate3,
     } as const,
 });
 
@@ -235,21 +255,26 @@ function applyFlyingSwordModeRequests(
 
 function snapshotFlyingSwordGroups(
     time: Readonly<TimeState>,
+    world: World,
+    scratch: Mut<FlyingSwordEntityAccessState>,
     runtime: Mut<FlyingSwordGroupIndexState>,
     groups: Groups,
 ): void {
     const tick = time.tick;
+    const directionId = world.findComponent(Direction3Type)?.id;
+    const access = scratch.access;
     const iter = groups.iter();
     while (iter.next()) {
         const [
             count,
             entities,
-            ,
+            identities,
             centers,
             targets,
             formations,
             controls,
         ] = iter.current;
+        const owners = identities[FlyingSwordGroup.Owner];
         const centerXs = centers[Float3.X];
         const centerYs = centers[Float3.Y];
         const centerZs = centers[Float3.Z];
@@ -280,6 +305,30 @@ function snapshotFlyingSwordGroups(
             runtime.centerXs[index] = centerXs[row];
             runtime.centerYs[index] = centerYs[row];
             runtime.centerZs[index] = centerZs[row];
+            let forwardX = runtime.forwardXs[index] ?? 0;
+            let forwardZ = runtime.forwardZs[index] ?? 1;
+            if (
+                directionId !== undefined &&
+                world.resolve(owners[row], access)
+            ) {
+                const archetype = access.archetype;
+                const directions = archetype?.getComp(
+                    access.row,
+                    directionId,
+                ) as ComponentColumns<Direction3Type> | null;
+                if (archetype && directions) {
+                    const ownerRow = archetype.rowIdxOf(access.row);
+                    const x = directions[Float3.X][ownerRow];
+                    const z = directions[Float3.Z][ownerRow];
+                    const length = Math.sqrt(x * x + z * z);
+                    if (length > DIRECTION_EPSILON) {
+                        forwardX = x / length;
+                        forwardZ = z / length;
+                    }
+                }
+            }
+            runtime.forwardXs[index] = forwardX;
+            runtime.forwardZs[index] = forwardZ;
             runtime.targetXs[index] = targetXs[row];
             runtime.targetYs[index] = targetYs[row];
             runtime.targetZs[index] = targetZs[row];
@@ -341,6 +390,39 @@ function formFlyingSwordGoals(
             let verticalAmplitude =
                 runtime.verticalAmplitudes[group];
 
+            if (runtime.modes[group] === FlyingSwordMode.Recall) {
+                const normalizedSlot = formationSize <= 1
+                    ? 0
+                    : (
+                        slot % formationSize /
+                        (formationSize - 1) * 2 - 1
+                    );
+                const fanAngle =
+                    normalizedSlot * RECALL_FAN_HALF_ANGLE;
+                const cosine = Math.cos(fanAngle);
+                const sine = Math.sin(fanAngle);
+                const backX = -runtime.forwardXs[group];
+                const backZ = -runtime.forwardZs[group];
+                const fanX = backX * cosine - backZ * sine;
+                const fanZ = backX * sine + backZ * cosine;
+                const fanRadius = Math.min(
+                    RECALL_MAXIMUM_RADIUS,
+                    Math.max(RECALL_MINIMUM_RADIUS, radius),
+                );
+                const fanHeight =
+                    Math.max(RECALL_MINIMUM_HEIGHT, height * 0.65) +
+                    (1 - Math.abs(normalizedSlot)) *
+                    RECALL_CENTER_HEIGHT_BONUS;
+                const wave = Math.sin(
+                    elapsed * runtime.verticalSpeeds[group] +
+                    normalizedSlot * Math.PI,
+                ) * verticalAmplitude * RECALL_WAVE_MULTIPLIER;
+                formationGoalXs[row] = centerX + fanX * fanRadius;
+                formationGoalYs[row] = centerY + fanHeight + wave;
+                formationGoalZs[row] = centerZ + fanZ * fanRadius;
+                continue;
+            }
+
             if (runtime.modes[group] === FlyingSwordMode.Focus) {
                 centerX = runtime.targetXs[group];
                 centerY = runtime.targetYs[group];
@@ -348,12 +430,6 @@ function formFlyingSwordGoals(
                 radius *= 0.28;
                 height *= 0.72;
                 verticalAmplitude *= 0.65;
-            } else if (
-                runtime.modes[group] === FlyingSwordMode.Recall
-            ) {
-                radius = Math.min(radius, 0.85);
-                height *= 0.55;
-                verticalAmplitude *= 0.25;
             }
 
             const slotPhase =
@@ -374,6 +450,37 @@ function formFlyingSwordGoals(
     }
 }
 
+function orientIdleFlyingSwords(
+    runtime: Readonly<FlyingSwordGroupIndexState>,
+    swords: OrientedSwords,
+): void {
+    const groupIndices = runtime.indices;
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, , members, directions, actions] =
+            iter.current;
+        if (actions !== undefined) continue;
+        const groups = members[FlyingSwordMember.Group];
+        const directionXs = directions[Float3.X];
+        const directionYs = directions[Float3.Y];
+        const directionZs = directions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            const group = groupIndices.get(groups[row]);
+            if (group === undefined) continue;
+            const mode = runtime.modes[group];
+            if (
+                mode !== FlyingSwordMode.Orbit &&
+                mode !== FlyingSwordMode.Recall
+            ) {
+                continue;
+            }
+            directionXs[row] = 0;
+            directionYs[row] = 1;
+            directionZs[row] = 0;
+        }
+    }
+}
+
 function removeGroupIndex(
     runtime: Mut<FlyingSwordGroupIndexState>,
     index: number,
@@ -387,6 +494,8 @@ function removeGroupIndex(
         runtime.centerXs[index] = runtime.centerXs[last];
         runtime.centerYs[index] = runtime.centerYs[last];
         runtime.centerZs[index] = runtime.centerZs[last];
+        runtime.forwardXs[index] = runtime.forwardXs[last];
+        runtime.forwardZs[index] = runtime.forwardZs[last];
         runtime.targetXs[index] = runtime.targetXs[last];
         runtime.targetYs[index] = runtime.targetYs[last];
         runtime.targetZs[index] = runtime.targetZs[last];
@@ -405,3 +514,11 @@ function removeGroupIndex(
     }
     runtime.count = last;
 }
+
+const DIRECTION_EPSILON = 1e-6;
+const RECALL_FAN_HALF_ANGLE = Math.PI / 3;
+const RECALL_MINIMUM_RADIUS = 1.2;
+const RECALL_MAXIMUM_RADIUS = 2.4;
+const RECALL_MINIMUM_HEIGHT = 0.9;
+const RECALL_CENTER_HEIGHT_BONUS = 0.35;
+const RECALL_WAVE_MULTIPLIER = 0.12;

@@ -4,6 +4,7 @@ import {
 } from "@rstest/core";
 import {
     CommandModule,
+    Commands,
     GameBuilder,
     INVALID_ENTITY,
     type Entity,
@@ -29,6 +30,7 @@ import {
     FlyingSwordSkillTiming,
 } from "@zero-ecs/flying-sword";
 import {
+    Direction3Type,
     Float3,
     Position3Type,
     Velocity3Type,
@@ -71,11 +73,21 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
 
     const swordIter = game.world.query(FlyingSwordQuery).iter();
     expect(swordIter.next()).toBe(true);
-    const [count, , , previousPositions, positions] =
+    const [
+        count,
+        ,
+        ,
+        previousPositions,
+        positions,
+        directions,
+    ] =
         swordIter.current;
     expect(count).toBe(1);
     expect(positions[Float3.Y][0]).toBeGreaterThan(0.5);
     expect(previousPositions[Float3.Y][0]).toBe(0.5);
+    expect(directions[Float3.X][0]).toBe(0);
+    expect(directions[Float3.Y][0]).toBe(1);
+    expect(directions[Float3.Z][0]).toBe(0);
 
     flyingSwords.focus(group, { x: 4, y: 0, z: 5 });
     // 第一次更新提交请求实体，第二次固定帧消费请求。
@@ -87,6 +99,78 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     expect(controls[FlyingSwordControl.Mode][0]).toBe(FlyingSwordMode.Focus);
     expect(targets[Float3.X][0]).toBe(4);
     expect(targets[Float3.Z][0]).toBe(5);
+
+    game.dispose();
+});
+
+test("recalled flying swords form an upright fan behind their owner", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const ownerCommand = game.service(Commands).spawn();
+    const owner = ownerCommand.entity;
+    ownerCommand
+        .add(Direction3Type)
+        .set(Direction3Type, Float3.X, 0)
+        .set(Direction3Type, Float3.Y, 0)
+        .set(Direction3Type, Float3.Z, 1)
+        .submit();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const swordCount = 7;
+    const group = flyingSwords.createGroup({
+        owner,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: swordCount,
+        orbitRadius: 2,
+        orbitHeight: 1.5,
+    });
+    for (let slot = 0; slot < swordCount; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 20,
+            acceleration: 60,
+        });
+    }
+    game.update();
+    flyingSwords.recall(group);
+    for (let tick = 0; tick < 120; tick++) game.update();
+
+    let minimumX = Number.POSITIVE_INFINITY;
+    let maximumX = Number.NEGATIVE_INFINITY;
+    let maximumZ = Number.NEGATIVE_INFINITY;
+    let visited = 0;
+    const iter = game.world.query(FlyingSwordQuery).iter();
+    while (iter.next()) {
+        const [count, , , , positions, directions] =
+            iter.current;
+        const xs = positions[Float3.X];
+        const zs = positions[Float3.Z];
+        const directionXs = directions[Float3.X];
+        const directionYs = directions[Float3.Y];
+        const directionZs = directions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            minimumX = Math.min(minimumX, xs[row]);
+            maximumX = Math.max(maximumX, xs[row]);
+            maximumZ = Math.max(maximumZ, zs[row]);
+            expect(directionXs[row]).toBe(0);
+            expect(directionYs[row]).toBe(1);
+            expect(directionZs[row]).toBe(0);
+            visited++;
+        }
+    }
+    expect(visited).toBe(swordCount);
+    expect(minimumX).toBeLessThan(-1);
+    expect(maximumX).toBeGreaterThan(1);
+    expect(maximumZ).toBeLessThan(-0.5);
 
     game.dispose();
 });

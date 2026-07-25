@@ -114,3 +114,11 @@ export const FlyingSwordGuidanceStorageQuery = QueryType.from(All(
         FlyingSwordContactWindowStorage,
     ),
 ));
+
+export const FlyingSwordOrientationStorageQuery = QueryType.from(All(
+    With(
+        FlyingSwordMemberStorage,
+        Direction3Type,
+    ),
+    Optional(FlyingSwordSkillActionStorage),
+));

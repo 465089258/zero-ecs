@@ -26,3 +26,7 @@
 `setCenter`、`orbit`、`recall`、`cast` 和 `cancel` 都生成一次性 Request Entity：
 命令在 `Update.post` 提交，请求在下一固定 Tick 消费。控制组级技能动作也是独立
 Entity；State 只保存固定帧派生的紧凑索引和零分配 scratch，不承载请求或动作权威数据。
+
+空闲环绕时，飞剑的 `Direction3Type` 固定朝世界 `+Y`，表现为剑尖向上。基础召回模式
+读取控制组 Owner 可选的通用 `Direction3Type` 水平朝向，在角色身后排列为 ±60° 扇形，
+并同样保持剑尖向上；技能动作期间继续采用 Motion 产生的轨迹朝向。

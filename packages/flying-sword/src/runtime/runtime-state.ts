@@ -14,6 +14,8 @@ export class FlyingSwordGroupIndexState extends State {
     readonly centerXs: number[] = [];
     readonly centerYs: number[] = [];
     readonly centerZs: number[] = [];
+    readonly forwardXs: number[] = [];
+    readonly forwardZs: number[] = [];
     readonly targetXs: number[] = [];
     readonly targetYs: number[] = [];
     readonly targetZs: number[] = [];
@@ -33,6 +35,8 @@ export class FlyingSwordGroupIndexState extends State {
         this.centerXs.length = 0;
         this.centerYs.length = 0;
         this.centerZs.length = 0;
+        this.forwardXs.length = 0;
+        this.forwardZs.length = 0;
         this.targetXs.length = 0;
         this.targetYs.length = 0;
         this.targetZs.length = 0;

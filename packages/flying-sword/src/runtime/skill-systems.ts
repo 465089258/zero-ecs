@@ -161,7 +161,10 @@ export const FlyingSwordSkillSystemOptions = Object.freeze({
     } as const,
     contact: {
         inSet: FlyingSwordSystemSet.Contact,
-        after: MotionSystemSet.Integrate3,
+        after: [
+            MotionSystemSet.Integrate3,
+            FlyingSwordSystemSet.Orientation,
+        ],
     } as const,
     cleanup: {
         inSet: FlyingSwordSystemSet.Cleanup,

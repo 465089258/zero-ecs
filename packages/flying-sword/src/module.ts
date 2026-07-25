@@ -23,6 +23,7 @@ import {
     applyFlyingSwordFocusRequestsSystem,
     applyFlyingSwordModeRequestsSystem,
     formFlyingSwordGoalsSystem,
+    orientIdleFlyingSwordsSystem,
     snapshotFlyingSwordGroupsSystem,
 } from "./runtime/systems";
 
@@ -89,6 +90,10 @@ export class FlyingSwordModule implements Module {
         builder.addSystem(
             guideFlyingSwordSkillsSystem,
             FlyingSwordSkillSystemOptions.guidance,
+        );
+        builder.addSystem(
+            orientIdleFlyingSwordsSystem,
+            FlyingSwordSystemOptions.orientation,
         );
         builder.addSystem(
             resolveFlyingSwordSkillsSystem,
