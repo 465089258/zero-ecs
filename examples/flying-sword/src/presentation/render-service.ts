@@ -5,6 +5,7 @@ import {
 } from "@zero-ecs/game";
 import {
     FlyingSwordMode,
+    FlyingSwordStance,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
     type FlyingSwordSkillPhaseValue,
@@ -51,6 +52,7 @@ import {
     RogueRunStatistics,
     RogueRunStatus,
     RogueRunTarget,
+    SwordBodyUnity,
     UpgradeSelection,
 } from "../simulation/rogue/components";
 import {
@@ -832,6 +834,7 @@ export class DemoRenderService extends Service {
         let level = 1;
         let experience = 0;
         let requiredExperience = 1;
+        let fusionActive = false;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -846,6 +849,8 @@ export class DemoRenderService extends Service {
                 healthData,
                 ,
                 levelData,
+                ,
+                actionData,
             ] = cultivatorIter.current;
             if (count === 0) continue;
             health = healthData[Health.Current][0];
@@ -854,6 +859,8 @@ export class DemoRenderService extends Service {
             experience = levelData[LevelExperience.Current][0];
             requiredExperience =
                 levelData[LevelExperience.Required][0];
+            fusionActive =
+                actionData[SwordBodyUnity.Active][0] !== 0;
             break;
         }
 
@@ -877,7 +884,12 @@ export class DemoRenderService extends Service {
             upgradeC,
         );
 
-        const mode = skillPhaseName(skillPhase, scene.mode);
+        const mode = skillPhaseName(
+            skillPhase,
+            scene.mode,
+            scene.stance,
+            fusionActive,
+        );
         const nearest = Number.isFinite(this.nearestDepth)
             ? this.nearestDepth.toFixed(2)
             : "--";
@@ -943,13 +955,19 @@ export class DemoRenderService extends Service {
 function skillPhaseName(
     phase: FlyingSwordSkillPhaseValue,
     mode: number,
+    stance: number,
+    fusionActive: boolean,
 ): string {
+    if (fusionActive) return "身剑合一 · 螺旋突进";
     if (phase === FlyingSwordSkillPhase.Gather) return "穿云 · 聚剑";
     if (phase === FlyingSwordSkillPhase.Launch) return "穿云 · 弧冲";
     if (phase === FlyingSwordSkillPhase.Strike) return "穿云 · 贯穿";
     if (phase === FlyingSwordSkillPhase.Return) return "穿云 · 归剑";
     if (phase === FlyingSwordSkillPhase.Rejoin) return "穿云 · 入阵";
-    return mode === FlyingSwordMode.Recall ? "召回" : "护体环绕";
+    if (mode === FlyingSwordMode.Recall) return "收剑护卫";
+    return stance === FlyingSwordStance.Formation
+        ? "周天剑阵"
+        : "分散御剑";
 }
 
 const SWORD_COLORS = [

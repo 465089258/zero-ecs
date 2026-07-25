@@ -55,6 +55,7 @@ import {
     FlyingSwordSkillProgressStorage,
     FlyingSwordSkillTarget3Storage,
     FlyingSwordSkillTimingStorage,
+    FlyingSwordTaskStorage,
     FlyingSwordGroupStorage,
     FlyingSwordMemberStorage,
     FlyingSwordPendingSkillTarget3Storage,
@@ -704,6 +705,8 @@ function acquireFlyingSwordSkills(
             ,
             ,
             pendingTargets,
+            tasks,
+            taskContactWindows,
         ] =
             availableIter.current;
         const groups = members[FlyingSwordMember.Group];
@@ -790,6 +793,12 @@ function acquireFlyingSwordSkills(
                 command.remove(
                     FlyingSwordPendingSkillTarget3Storage,
                 );
+            }
+            if (tasks) {
+                command.remove(FlyingSwordTaskStorage);
+            }
+            if (taskContactWindows) {
+                command.remove(FlyingSwordContactWindowStorage);
             }
             command.submit();
             reservedCounts[action] = role + 1;

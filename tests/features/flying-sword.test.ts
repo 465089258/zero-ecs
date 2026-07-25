@@ -16,6 +16,8 @@ import {
 import {
     FlyingSwordAction,
     FlyingSwordActionQuery,
+    FlyingSwordActiveFormation,
+    FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordGroupQuery,
     FlyingSwordMode,
@@ -23,6 +25,8 @@ import {
     PiercingCloudSkillPlan,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordStance,
+    FlyingSwordTaskQuery,
     FlyingSwordSkillAction,
     FlyingSwordSkillActionQuery,
     FlyingSwordSkillPhase,
@@ -99,6 +103,69 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     expect(controls[FlyingSwordControl.Mode][0]).toBe(FlyingSwordMode.Focus);
     expect(targets[Float3.X][0]).toBe(4);
     expect(targets[Float3.Z][0]).toBe(5);
+
+    game.dispose();
+});
+
+test("group stances and independent sword tasks remain separate lifecycles", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 1,
+    });
+    const sword = flyingSwords.createSword({
+        group,
+        position: { x: 0, y: 1, z: 0 },
+        maximumSpeed: 14,
+        acceleration: 48,
+    });
+    game.update();
+
+    flyingSwords.setStance(group, FlyingSwordStance.Formation);
+    flyingSwords.beginFusionSpiral(group, 1, 0);
+    flyingSwords.attack(sword, { x: 0, y: 0.5, z: 6 });
+    game.update();
+    game.update();
+
+    const groupIter = game.world.query(FlyingSwordGroupQuery).iter();
+    expect(groupIter.next()).toBe(true);
+    const [, , , , , , , behavior] = groupIter.current;
+    expect(behavior[FlyingSwordBehavior.Stance][0])
+        .toBe(FlyingSwordStance.Formation);
+    expect(behavior[FlyingSwordBehavior.ActiveFormation][0])
+        .toBe(FlyingSwordActiveFormation.FusionSpiral);
+
+    let activeTasks = 0;
+    const taskIter = game.world.query(FlyingSwordTaskQuery).iter();
+    while (taskIter.next()) activeTasks += taskIter.current[0];
+    expect(activeTasks).toBe(1);
+
+    flyingSwords.finishAttack(sword);
+    flyingSwords.endActiveFormation(group);
+    for (let tick = 0; tick < 240; tick++) game.update();
+
+    activeTasks = 0;
+    const completedIter = game.world.query(FlyingSwordTaskQuery).iter();
+    while (completedIter.next()) activeTasks += completedIter.current[0];
+    expect(activeTasks).toBe(0);
+    const completedGroupIter =
+        game.world.query(FlyingSwordGroupQuery).iter();
+    expect(completedGroupIter.next()).toBe(true);
+    const [, , , , , , , completedBehavior] =
+        completedGroupIter.current;
+    expect(
+        completedBehavior[FlyingSwordBehavior.ActiveFormation][0],
+    ).toBe(FlyingSwordActiveFormation.None);
 
     game.dispose();
 });

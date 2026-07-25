@@ -5,7 +5,9 @@ import {
 } from "@zero-ecs/game";
 import {
     FlyingSwordMode,
+    FlyingSwordStance,
     type FlyingSwordMode as FlyingSwordModeValue,
+    type FlyingSwordStance as FlyingSwordStanceValue,
 } from "@zero-ecs/flying-sword";
 
 export class DemoSceneState extends State {
@@ -19,4 +21,5 @@ export class DemoSceneState extends State {
     targetY = 0;
     targetZ = 5;
     mode: FlyingSwordModeValue = FlyingSwordMode.Orbit;
+    stance: FlyingSwordStanceValue = FlyingSwordStance.Scatter;
 }

@@ -6,6 +6,7 @@ import {
 import { Float3 } from "@zero-ecs/math/3d";
 import {
     FlyingSwordAction,
+    FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordFlight,
     FlyingSwordFormation,
@@ -14,7 +15,9 @@ import {
     FlyingSwordSkillAction,
     FlyingSwordSkillProgress,
     FlyingSwordSkillTiming,
+    FlyingSwordTask,
     type FlyingSwordActionViewData,
+    type FlyingSwordBehaviorViewData,
     type FlyingSwordControlViewData,
     type FlyingSwordFormationViewData,
     type FlyingSwordGroupViewData,
@@ -22,6 +25,7 @@ import {
     type FlyingSwordSkillActionViewData,
     type FlyingSwordSkillProgressViewData,
     type FlyingSwordSkillTimingViewData,
+    type FlyingSwordTaskViewData,
 } from "../types";
 
 /** @internal 飞剑控制组身份。 */
@@ -58,6 +62,15 @@ implements FlyingSwordFormationViewData {
 export class FlyingSwordControlStorage
 implements FlyingSwordControlViewData {
     readonly [FlyingSwordControl.Mode] = Types.U8;
+}
+
+/** @internal 控制组常驻姿态与临时动态编队。 */
+export class FlyingSwordBehaviorStorage
+implements FlyingSwordBehaviorViewData {
+    readonly [FlyingSwordBehavior.Stance] = Types.U8;
+    readonly [FlyingSwordBehavior.ActiveFormation] = Types.U8;
+    readonly [FlyingSwordBehavior.ActiveForwardX] = Types.F32;
+    readonly [FlyingSwordBehavior.ActiveForwardZ] = Types.F32;
 }
 
 /** @internal 飞剑在控制组中的成员身份。 */
@@ -100,6 +113,19 @@ implements FlyingSwordActionViewData {
 
 /** @internal 只有能够生成攻击接触事实时才存在。 */
 export class FlyingSwordContactWindowStorage implements ComponentTag {}
+
+/** @internal 单把飞剑独立执行的攻击任务。 */
+export class FlyingSwordTaskStorage
+implements FlyingSwordTaskViewData {
+    readonly [FlyingSwordTask.Phase] = Types.U8;
+    readonly [FlyingSwordTask.PhaseStartTick] = Types.U32;
+    readonly [FlyingSwordTask.StartX] = Types.F32;
+    readonly [FlyingSwordTask.StartY] = Types.F32;
+    readonly [FlyingSwordTask.StartZ] = Types.F32;
+    readonly [FlyingSwordTask.TargetX] = Types.F32;
+    readonly [FlyingSwordTask.TargetY] = Types.F32;
+    readonly [FlyingSwordTask.TargetZ] = Types.F32;
+}
 
 /**
  * @internal 下一次技能获取时消费的每剑目标。
@@ -151,6 +177,70 @@ export class SetFlyingSwordFormationSizeRequestStorage
 implements Component<SetFlyingSwordFormationSizeRequest> {
     readonly [SetFlyingSwordFormationSizeRequest.Group] = Types.Entity;
     readonly [SetFlyingSwordFormationSizeRequest.Size] = Types.U16;
+}
+
+export enum SetFlyingSwordStanceRequest {
+    Group,
+    Stance,
+}
+
+/** @internal 修改控制组常驻姿态的一次性请求实体。 */
+export class SetFlyingSwordStanceRequestStorage
+implements Component<SetFlyingSwordStanceRequest> {
+    readonly [SetFlyingSwordStanceRequest.Group] = Types.Entity;
+    readonly [SetFlyingSwordStanceRequest.Stance] = Types.U8;
+}
+
+export enum SetFlyingSwordActiveFormationRequest {
+    Group,
+    Formation,
+    ForwardX,
+    ForwardZ,
+}
+
+/** @internal 修改控制组临时动态编队的一次性请求实体。 */
+export class SetFlyingSwordActiveFormationRequestStorage
+implements Component<SetFlyingSwordActiveFormationRequest> {
+    readonly [SetFlyingSwordActiveFormationRequest.Group] = Types.Entity;
+    readonly [SetFlyingSwordActiveFormationRequest.Formation] = Types.U8;
+    readonly [SetFlyingSwordActiveFormationRequest.ForwardX] = Types.F32;
+    readonly [SetFlyingSwordActiveFormationRequest.ForwardZ] = Types.F32;
+}
+
+export enum StartFlyingSwordTaskRequest {
+    Sword,
+    TargetX,
+    TargetY,
+    TargetZ,
+}
+
+/** @internal 启动单剑异步攻击任务的一次性请求实体。 */
+export class StartFlyingSwordTaskRequestStorage
+implements Component<StartFlyingSwordTaskRequest> {
+    readonly [StartFlyingSwordTaskRequest.Sword] = Types.Entity;
+    readonly [StartFlyingSwordTaskRequest.TargetX] = Types.F32;
+    readonly [StartFlyingSwordTaskRequest.TargetY] = Types.F32;
+    readonly [StartFlyingSwordTaskRequest.TargetZ] = Types.F32;
+}
+
+export enum FinishFlyingSwordTaskRequest {
+    Sword,
+}
+
+/** @internal 让一把攻击中的飞剑立即返航的一次性请求实体。 */
+export class FinishFlyingSwordTaskRequestStorage
+implements Component<FinishFlyingSwordTaskRequest> {
+    readonly [FinishFlyingSwordTaskRequest.Sword] = Types.Entity;
+}
+
+export enum CancelFlyingSwordGroupTasksRequest {
+    Group,
+}
+
+/** @internal 取消控制组全部单剑任务的一次性请求实体。 */
+export class CancelFlyingSwordGroupTasksRequestStorage
+implements Component<CancelFlyingSwordGroupTasksRequest> {
+    readonly [CancelFlyingSwordGroupTasksRequest.Group] = Types.Entity;
 }
 
 export enum FocusFlyingSwordRequest {

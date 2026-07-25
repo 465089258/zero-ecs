@@ -84,6 +84,11 @@ export class CombatScratchState extends State {
     reservedCounts = new Uint16Array(4);
     damages = new Float32Array(4);
     actionCount = 0;
+    readonly activeTaskSwords = new Set<Entity>();
+    readonly activeActionSwords = new Set<Entity>();
+    readonly formationGroups = new Set<Entity>();
+    readonly groupDamages = new Map<Entity, number>();
+    readonly groupReattackDelays = new Map<Entity, number>();
 
     reset(required: number): void {
         this.actionCount = 0;
@@ -97,9 +102,24 @@ export class CombatScratchState extends State {
             growUint16(this.reservedCounts, capacity);
         this.damages = growFloat32(this.damages, capacity);
     }
+
+    resetMembership(): void {
+        this.activeTaskSwords.clear();
+        this.activeActionSwords.clear();
+        this.formationGroups.clear();
+    }
+
+    dispose(): void {
+        this.activeTaskSwords.clear();
+        this.activeActionSwords.clear();
+        this.formationGroups.clear();
+        this.groupDamages.clear();
+        this.groupReattackDelays.clear();
+        this.actionCount = 0;
+    }
 }
 
-/** 自动御剑冷却触发时复用的目标候选 SoA。 */
+/** 分散御剑分配空闲飞剑时复用的目标候选 SoA。 */
 export class FlyingSwordTargetingState extends State {
     entities = new Uint32Array(INITIAL_CAPACITY);
     xs = new Float32Array(INITIAL_CAPACITY);

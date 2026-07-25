@@ -136,17 +136,16 @@ export class PlayerPickupType implements Component<PlayerPickup> {
     readonly [PlayerPickup.AttractionSpeed] = Types.F32;
 }
 
+/** 示例层控制组的飞剑战斗数值。 */
 export enum AutoFlyingSwordSkill {
-    CooldownTicks,
-    NextCastTick,
+    ReattackDelayTicks,
     TargetRadius,
     Damage,
 }
 
 export class AutoFlyingSwordSkillType
 implements Component<AutoFlyingSwordSkill> {
-    readonly [AutoFlyingSwordSkill.CooldownTicks] = Types.U16;
-    readonly [AutoFlyingSwordSkill.NextCastTick] = Types.U32;
+    readonly [AutoFlyingSwordSkill.ReattackDelayTicks] = Types.U16;
     readonly [AutoFlyingSwordSkill.TargetRadius] = Types.F32;
     readonly [AutoFlyingSwordSkill.Damage] = Types.F32;
 }
@@ -194,16 +193,58 @@ implements Component<ExperienceReward> {
     readonly [ExperienceReward.Value] = Types.F32;
 }
 
-/** 同一技能动作对同一敌人只结算一次。 */
-export enum FlyingSwordHitMemory {
-    Action,
-    ActionStartTick,
+/** 示例层为每把飞剑维护的目标与命中消费状态。 */
+export enum FlyingSwordCombat {
+    Target,
+    FocusAction,
+    FocusActionStartTick,
+    FocusHitConsumed,
+    NextAttackTick,
 }
 
-export class FlyingSwordHitMemoryType
-implements Component<FlyingSwordHitMemory> {
-    readonly [FlyingSwordHitMemory.Action] = Types.Entity;
-    readonly [FlyingSwordHitMemory.ActionStartTick] = Types.U32;
+export class FlyingSwordCombatType
+implements Component<FlyingSwordCombat> {
+    readonly [FlyingSwordCombat.Target] = Types.Entity;
+    readonly [FlyingSwordCombat.FocusAction] = Types.Entity;
+    readonly [FlyingSwordCombat.FocusActionStartTick] = Types.U32;
+    readonly [FlyingSwordCombat.FocusHitConsumed] = Types.U8;
+    readonly [FlyingSwordCombat.NextAttackTick] = Types.U32;
+}
+
+/** 敌人对持续型剑阵与身剑合一的短冷却。 */
+export enum FlyingSwordContactCooldown {
+    FormationNextTick,
+    FusionNextTick,
+}
+
+export class FlyingSwordContactCooldownType
+implements Component<FlyingSwordContactCooldown> {
+    readonly [FlyingSwordContactCooldown.FormationNextTick] = Types.U32;
+    readonly [FlyingSwordContactCooldown.FusionNextTick] = Types.U32;
+}
+
+/** 玩家身剑合一动作；常驻组件避免动作开始时迁移玩家 Archetype。 */
+export enum SwordBodyUnity {
+    Active,
+    StartTick,
+    EndTick,
+    CooldownEndTick,
+    DirectionX,
+    DirectionZ,
+    Damage,
+    Group,
+}
+
+export class SwordBodyUnityType
+implements Component<SwordBodyUnity> {
+    readonly [SwordBodyUnity.Active] = Types.U8;
+    readonly [SwordBodyUnity.StartTick] = Types.U32;
+    readonly [SwordBodyUnity.EndTick] = Types.U32;
+    readonly [SwordBodyUnity.CooldownEndTick] = Types.U32;
+    readonly [SwordBodyUnity.DirectionX] = Types.F32;
+    readonly [SwordBodyUnity.DirectionZ] = Types.F32;
+    readonly [SwordBodyUnity.Damage] = Types.F32;
+    readonly [SwordBodyUnity.Group] = Types.Entity;
 }
 
 export enum DamageRequest {

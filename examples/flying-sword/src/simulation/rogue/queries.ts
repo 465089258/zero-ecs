@@ -9,6 +9,7 @@ import {
     FlyingSwordPosition3View,
     FlyingSwordPreviousPosition3View,
     FlyingSwordView,
+    FlyingSwordTaskView,
 } from "@zero-ecs/flying-sword";
 import {
     Direction3Type,
@@ -28,7 +29,8 @@ import {
     EnemyIdentityType,
     ExperiencePickupType,
     ExperienceRewardType,
-    FlyingSwordHitMemoryType,
+    FlyingSwordCombatType,
+    FlyingSwordContactCooldownType,
     HealthType,
     LevelExperienceType,
     PlayerMovementType,
@@ -40,6 +42,7 @@ import {
     RogueRunStatusType,
     RogueRunTargetType,
     UpgradeSelectionType,
+    SwordBodyUnityType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -64,6 +67,7 @@ export const RoguePlayerQuery = QueryType.from(With(
     PlayerMovementType,
     LevelExperienceType,
     PlayerPickupType,
+    SwordBodyUnityType,
 ));
 
 export const RogueEnemyQuery = QueryType.from(With(
@@ -77,7 +81,7 @@ export const RogueEnemyQuery = QueryType.from(With(
     EnemyCombatType,
     HealthType,
     ExperienceRewardType,
-    FlyingSwordHitMemoryType,
+    FlyingSwordContactCooldownType,
 ));
 
 export const RogueEnemyRenderQuery = QueryType.from(With(
@@ -115,4 +119,25 @@ export const RogueFlyingSwordContactQuery = QueryType.from(With(
     FlyingSwordPreviousPosition3View,
     FlyingSwordPosition3View,
     FlyingSwordDirection3View,
+    FlyingSwordCombatType,
+));
+
+/** 示例玩法所需的全部飞剑及其宿主侧战斗状态。 */
+export const RogueFlyingSwordCombatQuery = QueryType.from(With(
+    FlyingSwordView,
+    FlyingSwordPreviousPosition3View,
+    FlyingSwordPosition3View,
+    FlyingSwordDirection3View,
+    FlyingSwordCombatType,
+));
+
+/** 单剑异步攻击开放接触窗口时的集成查询。 */
+export const RogueFlyingSwordTaskContactQuery = QueryType.from(With(
+    FlyingSwordView,
+    FlyingSwordTaskView,
+    FlyingSwordContactWindow,
+    FlyingSwordPreviousPosition3View,
+    FlyingSwordPosition3View,
+    FlyingSwordDirection3View,
+    FlyingSwordCombatType,
 ));

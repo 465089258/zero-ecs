@@ -26,6 +26,10 @@ export class FlyingSwordGroupIndexState extends State {
     readonly verticalSpeeds: number[] = [];
     readonly formationSizes: number[] = [];
     readonly modes: number[] = [];
+    readonly stances: number[] = [];
+    readonly activeFormations: number[] = [];
+    readonly activeForwardXs: number[] = [];
+    readonly activeForwardZs: number[] = [];
     readonly marks: number[] = [];
     readonly indices = new Map<Entity, number>();
     count = 0;
@@ -47,6 +51,10 @@ export class FlyingSwordGroupIndexState extends State {
         this.verticalSpeeds.length = 0;
         this.formationSizes.length = 0;
         this.modes.length = 0;
+        this.stances.length = 0;
+        this.activeFormations.length = 0;
+        this.activeForwardXs.length = 0;
+        this.activeForwardZs.length = 0;
         this.marks.length = 0;
         this.indices.clear();
         this.count = 0;

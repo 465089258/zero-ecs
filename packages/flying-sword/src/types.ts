@@ -22,6 +22,35 @@ export const FlyingSwordMode = Object.freeze({
 export type FlyingSwordMode =
     (typeof FlyingSwordMode)[keyof typeof FlyingSwordMode];
 
+/** 控制组的常驻战斗姿态；技能动作可以临时覆盖它。 */
+export const FlyingSwordStance = Object.freeze({
+    Guard: 0,
+    Scatter: 1,
+    Formation: 2,
+} as const);
+
+export type FlyingSwordStance =
+    (typeof FlyingSwordStance)[keyof typeof FlyingSwordStance];
+
+/** 临时覆盖常驻姿态的动态编队。 */
+export const FlyingSwordActiveFormation = Object.freeze({
+    None: 0,
+    FusionSpiral: 1,
+} as const);
+
+export type FlyingSwordActiveFormation =
+    (typeof FlyingSwordActiveFormation)[keyof typeof FlyingSwordActiveFormation];
+
+/** 单把飞剑异步攻击任务的阶段。 */
+export const FlyingSwordTaskPhase = Object.freeze({
+    Rise: 0,
+    Dive: 1,
+    Return: 2,
+} as const);
+
+export type FlyingSwordTaskPhase =
+    (typeof FlyingSwordTaskPhase)[keyof typeof FlyingSwordTaskPhase];
+
 /** 创建一个飞剑控制组所需的基础参数。 */
 export interface CreateFlyingSwordGroupOptions {
     readonly owner: Entity;
@@ -82,6 +111,21 @@ export interface FlyingSwordControlViewData {
     readonly [FlyingSwordControl.Mode]: typeof Types.U8;
 }
 
+/** 控制组的常驻姿态与临时动态编队。 */
+export enum FlyingSwordBehavior {
+    Stance,
+    ActiveFormation,
+    ActiveForwardX,
+    ActiveForwardZ,
+}
+
+export interface FlyingSwordBehaviorViewData {
+    readonly [FlyingSwordBehavior.Stance]: typeof Types.U8;
+    readonly [FlyingSwordBehavior.ActiveFormation]: typeof Types.U8;
+    readonly [FlyingSwordBehavior.ActiveForwardX]: typeof Types.F32;
+    readonly [FlyingSwordBehavior.ActiveForwardZ]: typeof Types.F32;
+}
+
 /** 飞剑在控制组中的稳定成员身份。 */
 export enum FlyingSwordMember {
     Group,
@@ -126,6 +170,29 @@ export interface FlyingSwordActionViewData {
     readonly [FlyingSwordAction.TargetY]: typeof Types.F32;
     readonly [FlyingSwordAction.TargetZ]: typeof Types.F32;
     readonly [FlyingSwordAction.HasIndividualTarget]: typeof Types.U8;
+}
+
+/** 单把飞剑独立执行的短生命周期攻击任务。 */
+export enum FlyingSwordTask {
+    Phase,
+    PhaseStartTick,
+    StartX,
+    StartY,
+    StartZ,
+    TargetX,
+    TargetY,
+    TargetZ,
+}
+
+export interface FlyingSwordTaskViewData {
+    readonly [FlyingSwordTask.Phase]: typeof Types.U8;
+    readonly [FlyingSwordTask.PhaseStartTick]: typeof Types.U32;
+    readonly [FlyingSwordTask.StartX]: typeof Types.F32;
+    readonly [FlyingSwordTask.StartY]: typeof Types.F32;
+    readonly [FlyingSwordTask.StartZ]: typeof Types.F32;
+    readonly [FlyingSwordTask.TargetX]: typeof Types.F32;
+    readonly [FlyingSwordTask.TargetY]: typeof Types.F32;
+    readonly [FlyingSwordTask.TargetZ]: typeof Types.F32;
 }
 
 /** 一个控制组级技能动作实体的稳定身份。 */

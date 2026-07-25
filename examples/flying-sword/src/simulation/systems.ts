@@ -1,8 +1,10 @@
 import {
     Commands,
+    INVALID_ENTITY,
     Startup,
     SystemSet,
     Update,
+    World,
     Write,
     defSystem,
     type Mut,
@@ -25,7 +27,9 @@ import {
     FlyingSwordMember,
     FlyingSwordQuery,
     FlyingSwordService,
+    FlyingSwordStance,
     FlyingSwordSkillService,
+    FlyingSwordSkillPhase,
     FlyingSwordSystemSet,
 } from "@zero-ecs/flying-sword";
 import {
@@ -74,6 +78,10 @@ import {
     RogueRunTargetType,
     UpgradeSelection,
     UpgradeSelectionType,
+    FlyingSwordCombat,
+    FlyingSwordCombatType,
+    SwordBodyUnity,
+    SwordBodyUnityType,
 } from "./rogue/components";
 import { RogueRunQuery } from "./rogue/queries";
 import { DemoSceneState } from "./state";
@@ -99,6 +107,7 @@ export const consumeFlyingSwordInputSystem = defSystem(
     consumeFlyingSwordInput,
     [
         Commands,
+        World,
         DemoInputService,
         DemoRenderService,
         FlyingSwordService,
@@ -173,6 +182,7 @@ function setupFlyingSwordDemo(
         .add(PlayerMovementType)
         .add(LevelExperienceType)
         .add(PlayerPickupType)
+        .add(SwordBodyUnityType)
         .set(Position3Type, Float3.X, 0)
         .set(Position3Type, Float3.Y, 0)
         .set(Position3Type, Float3.Z, 0)
@@ -201,6 +211,18 @@ function setupFlyingSwordDemo(
         .set(PlayerPickupType, PlayerPickup.AttractionRadius, 4.5)
         .set(PlayerPickupType, PlayerPickup.PickupRadius, 0.65)
         .set(PlayerPickupType, PlayerPickup.AttractionSpeed, 8)
+        .set(SwordBodyUnityType, SwordBodyUnity.Active, 0)
+        .set(SwordBodyUnityType, SwordBodyUnity.StartTick, 0)
+        .set(SwordBodyUnityType, SwordBodyUnity.EndTick, 0)
+        .set(SwordBodyUnityType, SwordBodyUnity.CooldownEndTick, 0)
+        .set(SwordBodyUnityType, SwordBodyUnity.DirectionX, 0)
+        .set(SwordBodyUnityType, SwordBodyUnity.DirectionZ, 1)
+        .set(SwordBodyUnityType, SwordBodyUnity.Damage, 42)
+        .set(
+            SwordBodyUnityType,
+            SwordBodyUnity.Group,
+            INVALID_ENTITY,
+        )
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
@@ -213,6 +235,10 @@ function setupFlyingSwordDemo(
         verticalAmplitude: 0.35,
         verticalSpeed: 2.7,
     });
+    commands
+        .entity(cultivator)
+        .set(SwordBodyUnityType, SwordBodyUnity.Group, group)
+        .submit();
     for (let slot = 0; slot < flyingSwordCount; slot++) {
         const sword = flyingSwords.createSword({
             group,
@@ -228,7 +254,33 @@ function setupFlyingSwordDemo(
         commands
             .entity(sword)
             .add(FlyingSwordVisualType)
+            .add(FlyingSwordCombatType)
             .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
+            .set(
+                FlyingSwordCombatType,
+                FlyingSwordCombat.Target,
+                INVALID_ENTITY,
+            )
+            .set(
+                FlyingSwordCombatType,
+                FlyingSwordCombat.FocusAction,
+                INVALID_ENTITY,
+            )
+            .set(
+                FlyingSwordCombatType,
+                FlyingSwordCombat.FocusActionStartTick,
+                0,
+            )
+            .set(
+                FlyingSwordCombatType,
+                FlyingSwordCombat.FocusHitConsumed,
+                0,
+            )
+            .set(
+                FlyingSwordCombatType,
+                FlyingSwordCombat.NextAttackTick,
+                0,
+            )
             .submit();
     }
     commands
@@ -236,13 +288,8 @@ function setupFlyingSwordDemo(
         .add(AutoFlyingSwordSkillType)
         .set(
             AutoFlyingSwordSkillType,
-            AutoFlyingSwordSkill.CooldownTicks,
-            150,
-        )
-        .set(
-            AutoFlyingSwordSkillType,
-            AutoFlyingSwordSkill.NextCastTick,
-            45,
+            AutoFlyingSwordSkill.ReattackDelayTicks,
+            6,
         )
         .set(
             AutoFlyingSwordSkillType,
@@ -338,9 +385,16 @@ const target = { x: 0, y: 0, z: 0 };
 const groupCenter = { x: 0, y: 0, z: 0 };
 const DEFAULT_FLYING_SWORD_COUNT = 7;
 const MAX_FLYING_SWORD_COUNT = 2000;
+const FUSION_DASH_DISTANCE = 7.5;
+const FUSION_DASH_SPEED = 30;
+const FUSION_DASH_ACCELERATION = 180;
+const FUSION_DASH_ARRIVAL_RADIUS = 0.08;
+const FUSION_DASH_TICKS = 22;
+const FUSION_COOLDOWN_TICKS = 150;
 
 function consumeFlyingSwordInput(
     commands: Commands,
+    world: World,
     inputService: DemoInputService,
     renderer: DemoRenderService,
     flyingSwords: FlyingSwordService,
@@ -350,7 +404,13 @@ function consumeFlyingSwordInput(
     runs: Runs,
     swords: FlyingSwords,
 ): void {
-    const keyboardMoving = inputService.readMovement(movement);
+    const fusionActive = world.get(
+        scene.cultivator,
+        SwordBodyUnityType,
+        SwordBodyUnity.Active,
+    ) === 1;
+    const keyboardMoving = !fusionActive &&
+        inputService.readMovement(movement);
     if (keyboardMoving) {
         setCultivatorKeyboardMovement(
             commands,
@@ -359,7 +419,7 @@ function consumeFlyingSwordInput(
             movement.right,
             movement.forward,
         );
-    } else if (keyboardWasMoving) {
+    } else if (keyboardWasMoving && !fusionActive) {
         stopCultivatorKeyboardMovement(commands, cultivators, scene);
     }
     keyboardWasMoving = keyboardMoving;
@@ -399,7 +459,7 @@ function consumeFlyingSwordInput(
         ) {
             return;
         }
-        flyingSwords.orbit(scene.swordGroup);
+        flyingSwords.cancelGroupAttacks(scene.swordGroup);
         assignFlyingSwordSkillTarget(
             skills,
             swords,
@@ -415,20 +475,179 @@ function consumeFlyingSwordInput(
         scene.targetX = target.x;
         scene.targetY = target.y;
         scene.targetZ = target.z;
-        scene.mode = FlyingSwordMode.Orbit;
         setRogueSkillTarget(runs, target.x, target.y, target.z);
-    } else if (input.action === DemoInputAction.Orbit) {
+    } else if (input.action === DemoInputAction.ToggleFormation) {
         skills.cancel(scene.swordGroup);
+        flyingSwords.cancelGroupAttacks(scene.swordGroup);
         flyingSwords.orbit(scene.swordGroup);
+        scene.stance = scene.stance === FlyingSwordStance.Formation
+            ? FlyingSwordStance.Scatter
+            : scene.stance === FlyingSwordStance.Scatter
+                ? FlyingSwordStance.Formation
+                : FlyingSwordStance.Scatter;
+        flyingSwords.setStance(scene.swordGroup, scene.stance);
         scene.mode = FlyingSwordMode.Orbit;
     } else if (input.action === DemoInputAction.Recall) {
         skills.cancel(scene.swordGroup);
+        flyingSwords.cancelGroupAttacks(scene.swordGroup);
         flyingSwords.recall(scene.swordGroup);
+        flyingSwords.setStance(
+            scene.swordGroup,
+            FlyingSwordStance.Guard,
+        );
+        scene.stance = FlyingSwordStance.Guard;
         scene.mode = FlyingSwordMode.Recall;
+    } else if (input.action === DemoInputAction.Fusion) {
+        if (
+            !renderer.clientToGround(
+                input.clientX,
+                input.clientY,
+                target,
+            )
+        ) {
+            return;
+        }
+        startSwordBodyUnity(
+            commands,
+            world,
+            flyingSwords,
+            skills,
+            scene,
+            cultivators,
+            runs,
+            target.x,
+            target.z,
+        );
     }
 }
 
 let keyboardWasMoving = false;
+
+function startSwordBodyUnity(
+    commands: Commands,
+    world: World,
+    flyingSwords: FlyingSwordService,
+    skills: FlyingSwordSkillService,
+    scene: Mut<DemoSceneState>,
+    cultivators: Cultivators,
+    runs: Runs,
+    targetX: number,
+    targetZ: number,
+): void {
+    const tick = readRogueTick(runs);
+    const active = world.get(
+        scene.cultivator,
+        SwordBodyUnityType,
+        SwordBodyUnity.Active,
+    );
+    const cooldownEndTick = world.get(
+        scene.cultivator,
+        SwordBodyUnityType,
+        SwordBodyUnity.CooldownEndTick,
+    );
+    if (
+        active !== 0 ||
+        cooldownEndTick === null ||
+        tick < cooldownEndTick ||
+        skills.phase(scene.swordGroup) !== FlyingSwordSkillPhase.Idle
+    ) {
+        return;
+    }
+    const iter = cultivators.iter();
+    while (iter.next()) {
+        const [count, entities, positions, motion] = iter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        const motionTargetXs = motion[MoveTowards3.TargetX];
+        const motionTargetYs = motion[MoveTowards3.TargetY];
+        const motionTargetZs = motion[MoveTowards3.TargetZ];
+        const maximumSpeeds = motion[MoveTowards3.MaximumSpeed];
+        const accelerations = motion[MoveTowards3.Acceleration];
+        const arrivalRadii = motion[MoveTowards3.ArrivalRadius];
+        for (let row = 0; row < count; row++) {
+            if (entities[row] !== scene.cultivator) continue;
+            const dx = targetX - xs[row];
+            const dz = targetZ - zs[row];
+            const length = Math.sqrt(dx * dx + dz * dz);
+            if (length <= 1e-5) return;
+            const inverseLength = 1 / length;
+            const directionX = dx * inverseLength;
+            const directionZ = dz * inverseLength;
+            motionTargetXs[row] =
+                xs[row] + directionX * FUSION_DASH_DISTANCE;
+            motionTargetYs[row] = ys[row];
+            motionTargetZs[row] =
+                zs[row] + directionZ * FUSION_DASH_DISTANCE;
+            maximumSpeeds[row] = FUSION_DASH_SPEED;
+            accelerations[row] = FUSION_DASH_ACCELERATION;
+            arrivalRadii[row] = FUSION_DASH_ARRIVAL_RADIUS;
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.Active,
+                1,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.StartTick,
+                tick,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.EndTick,
+                tick + FUSION_DASH_TICKS,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.CooldownEndTick,
+                tick + FUSION_COOLDOWN_TICKS,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.DirectionX,
+                directionX,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.DirectionZ,
+                directionZ,
+            );
+            world.set(
+                scene.cultivator,
+                SwordBodyUnityType,
+                SwordBodyUnity.Group,
+                scene.swordGroup,
+            );
+            commands
+                .entity(scene.cultivator)
+                .add(CultivatorMoveActiveTag)
+                .submit();
+            flyingSwords.cancelGroupAttacks(scene.swordGroup);
+            flyingSwords.beginFusionSpiral(
+                scene.swordGroup,
+                directionX,
+                directionZ,
+            );
+            scene.hasMoveTarget = false;
+            return;
+        }
+    }
+}
+
+function readRogueTick(runs: Runs): number {
+    const iter = runs.iter();
+    while (iter.next()) {
+        const [count, , , clocks] = iter.current;
+        if (count > 0) return clocks[RogueRunClock.Tick][0];
+    }
+    return 0;
+}
 
 function setRogueSkillTarget(
     runs: Runs,

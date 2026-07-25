@@ -22,8 +22,18 @@
 接触窗口只在对应生命周期内通过 `Commands` 添加和移除；视觉素材编号属于宿主内容层，
 不进入飞剑包。
 
-控制组本身由身份、中心、基础目标、编队参数和控制状态五类组件组成。`focus`、
-`setCenter`、`orbit`、`recall`、`cast` 和 `cancel` 都生成一次性 Request Entity：
+控制组还把常驻战斗姿态与临时动态编队分开保存。`Guard`、`Scatter`、`Formation`
+是常驻姿态；`FusionSpiral` 是动作期间覆盖常驻姿态的动态编队，结束后无需重建原姿态。
+`setStance`、`beginFusionSpiral` 和 `endActiveFormation` 只修改控制组领域数据，不包含
+角色位移、敌人选择或伤害规则。
+
+`attack` 为单把飞剑创建短生命周期的异步攻击任务，依次经历升空、俯冲和返航。
+`finishAttack` 让命中的飞剑立即返航，`cancelGroupAttacks` 让整组尚在独立行动的飞剑
+回归当前编队。任务、技能动作与接触窗口都是临时组件；集火仍使用控制组级技能动作，
+因此不会把“所有剑等待同一阶段”的同步屏障带入分散攻击。
+
+`focus`、`setCenter`、`orbit`、`recall`、`attack`、`cast` 和 `cancel` 都生成一次性
+Request Entity：
 命令在 `Update.post` 提交，请求在下一固定 Tick 消费。控制组级技能动作也是独立
 Entity；State 只保存固定帧派生的紧凑索引和零分配 scratch，不承载请求或动作权威数据。
 

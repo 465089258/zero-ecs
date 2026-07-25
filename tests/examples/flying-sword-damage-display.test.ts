@@ -33,7 +33,18 @@ import {
 import {
     DamageRequest,
     DamageRequestType,
+    Health,
+    HealthType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
+import {
+    RogueDamageRequestQuery,
+} from "../../examples/flying-sword/src/simulation/rogue/queries";
+import {
+    RogueEntityAccessState,
+} from "../../examples/flying-sword/src/simulation/rogue/state";
+import {
+    resolveRogueDamageSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/systems";
 
 const setupDamageDisplaySystem = defSystem(
     Startup,
@@ -42,9 +53,12 @@ const setupDamageDisplaySystem = defSystem(
         target
             .add(Position3Type)
             .add(CultivatorTag)
+            .add(HealthType)
             .set(Position3Type, Float3.X, 2)
             .set(Position3Type, Float3.Y, 0)
             .set(Position3Type, Float3.Z, -1)
+            .set(HealthType, Health.Current, 100)
+            .set(HealthType, Health.Maximum, 100)
             .submit();
         commands
             .spawn()
@@ -61,8 +75,10 @@ test("damage display module captures one number and expires it", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addState(RogueEntityAccessState)
         .addModule(new FlyingSwordDamageDisplayModule());
     builder.addSystem(setupDamageDisplaySystem);
+    builder.addSystem(resolveRogueDamageSystem);
     const game = builder.build();
     game.init();
     game.start();
@@ -78,6 +94,10 @@ test("damage display module captures one number and expires it", () => {
     expect(displays[DamageDisplay.Style][0]).toBe(
         DamageDisplayStyle.Taken,
     );
+    let requests = 0;
+    const requestIter = game.world.query(RogueDamageRequestQuery).iter();
+    while (requestIter.next()) requests += requestIter.current[0];
+    expect(requests).toBe(0);
 
     for (let tick = 0; tick < 45; tick++) game.update();
     let remaining = 0;

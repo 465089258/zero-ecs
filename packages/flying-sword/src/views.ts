@@ -11,6 +11,7 @@ import {
 } from "@zero-ecs/math/3d";
 import {
     FlyingSwordContactWindowStorage,
+    FlyingSwordBehaviorStorage,
     FlyingSwordControlStorage,
     FlyingSwordFormationStorage,
     FlyingSwordGroupCenter3Storage,
@@ -22,9 +23,11 @@ import {
     FlyingSwordSkillProgressStorage,
     FlyingSwordSkillTarget3Storage,
     FlyingSwordSkillTimingStorage,
+    FlyingSwordTaskStorage,
 } from "./runtime/storage";
 import type {
     FlyingSwordActionViewData,
+    FlyingSwordBehaviorViewData,
     FlyingSwordControlViewData,
     FlyingSwordFormationViewData,
     FlyingSwordGroupViewData,
@@ -33,6 +36,7 @@ import type {
     FlyingSwordSkillProgressViewData,
     FlyingSwordSkillTimingViewData,
     FlyingSwordVector3ViewData,
+    FlyingSwordTaskViewData,
 } from "./types";
 
 /** 控制组公开只读投影；调用方不能借此修改内部存储。 */
@@ -70,6 +74,13 @@ export const FlyingSwordControlView =
         "FlyingSwordControlView",
     );
 
+/** 控制组常驻姿态和临时动态编队的公开只读投影。 */
+export const FlyingSwordBehaviorView =
+    defineQueryProjection<FlyingSwordBehaviorViewData>(
+        FlyingSwordBehaviorStorage,
+        "FlyingSwordBehaviorView",
+    );
+
 /** 飞剑领域身份的公开只读投影。 */
 export const FlyingSwordView =
     defineQueryProjection<FlyingSwordMemberViewData>(
@@ -82,6 +93,13 @@ export const FlyingSwordActionView =
     defineQueryProjection<FlyingSwordActionViewData>(
         FlyingSwordSkillActionStorage,
         "FlyingSwordActionView",
+    );
+
+/** 单把飞剑异步攻击任务的公开只读投影。 */
+export const FlyingSwordTaskView =
+    defineQueryProjection<FlyingSwordTaskViewData>(
+        FlyingSwordTaskStorage,
+        "FlyingSwordTaskView",
     );
 
 /** 控制组级技能动作身份的公开只读投影。 */
@@ -148,6 +166,7 @@ export const FlyingSwordGroupQuery =
         FlyingSwordGroupTarget3View,
         FlyingSwordFormationView,
         FlyingSwordControlView,
+        FlyingSwordBehaviorView,
     ));
 
 /** 表现层所需的最小飞剑查询。 */
@@ -162,6 +181,22 @@ export const FlyingSwordQuery = QueryType.from(With(
 export const FlyingSwordActionQuery = QueryType.from(With(
     FlyingSwordView,
     FlyingSwordActionView,
+));
+
+/** 遍历正在独立执行攻击任务的飞剑。 */
+export const FlyingSwordTaskQuery = QueryType.from(With(
+    FlyingSwordView,
+    FlyingSwordTaskView,
+));
+
+/** 遍历独立攻击任务当前开放的接触窗口。 */
+export const FlyingSwordTaskContactQuery = QueryType.from(With(
+    FlyingSwordView,
+    FlyingSwordTaskView,
+    FlyingSwordContactWindow,
+    FlyingSwordPreviousPosition3View,
+    FlyingSwordPosition3View,
+    FlyingSwordDirection3View,
 ));
 
 /** 遍历控制组级技能动作实体。 */

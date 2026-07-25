@@ -16,11 +16,14 @@ import {
 import { MotionSystemSet } from "@zero-ecs/motion/3d";
 import { FlyingSwordSystemSet } from "../system-set";
 import {
+    FlyingSwordActiveFormation,
+    FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordFormation,
     FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
+    FlyingSwordStance,
 } from "../types";
 import { FlyingSwordEntityAccessState } from "./access-state";
 import {
@@ -31,9 +34,12 @@ import {
     SetFlyingSwordCenterRequestStorageQuery,
     SetFlyingSwordFormationSizeRequestStorageQuery,
     SetFlyingSwordModeRequestStorageQuery,
+    SetFlyingSwordActiveFormationRequestStorageQuery,
+    SetFlyingSwordStanceRequestStorageQuery,
 } from "./queries";
 import { FlyingSwordGroupIndexState } from "./runtime-state";
 import {
+    FlyingSwordBehaviorStorage,
     FlyingSwordControlStorage,
     FlyingSwordFormationStorage,
     FlyingSwordGroupCenter3Storage,
@@ -42,6 +48,8 @@ import {
     SetFlyingSwordCenterRequest,
     SetFlyingSwordFormationSizeRequest,
     SetFlyingSwordModeRequest,
+    SetFlyingSwordActiveFormationRequest,
+    SetFlyingSwordStanceRequest,
 } from "./storage";
 
 type Groups = QueryOf<typeof FlyingSwordGroupStorageQuery>;
@@ -54,6 +62,10 @@ type ModeRequests =
     QueryOf<typeof SetFlyingSwordModeRequestStorageQuery>;
 type FormationSizeRequests =
     QueryOf<typeof SetFlyingSwordFormationSizeRequestStorageQuery>;
+type StanceRequests =
+    QueryOf<typeof SetFlyingSwordStanceRequestStorageQuery>;
+type ActiveFormationRequests =
+    QueryOf<typeof SetFlyingSwordActiveFormationRequestStorageQuery>;
 type OrientedSwords =
     QueryOf<typeof FlyingSwordOrientationStorageQuery>;
 
@@ -101,6 +113,28 @@ export const applyFlyingSwordFormationSizeRequestsSystem = defSystem(
     ],
 );
 
+export const applyFlyingSwordStanceRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordStanceRequests,
+    [
+        Commands,
+        World,
+        Write(FlyingSwordEntityAccessState),
+        SetFlyingSwordStanceRequestStorageQuery,
+    ],
+);
+
+export const applyFlyingSwordActiveFormationRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordActiveFormationRequests,
+    [
+        Commands,
+        World,
+        Write(FlyingSwordEntityAccessState),
+        SetFlyingSwordActiveFormationRequestStorageQuery,
+    ],
+);
+
 export const snapshotFlyingSwordGroupsSystem = defSystem(
     Update.fixed,
     snapshotFlyingSwordGroups,
@@ -134,6 +168,12 @@ export const FlyingSwordSystemOptions = Object.freeze({
     focusRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     modeRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     formationSizeRequests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
+    stanceRequests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
+    activeFormationRequests: {
         inSet: FlyingSwordSystemSet.Request,
     } as const,
     groups: {
@@ -313,6 +353,88 @@ function applyFlyingSwordFormationSizeRequests(
     }
 }
 
+function applyFlyingSwordStanceRequests(
+    commands: Commands,
+    world: World,
+    scratch: Mut<FlyingSwordEntityAccessState>,
+    requests: StanceRequests,
+): void {
+    const componentId = world.findComponent(
+        FlyingSwordBehaviorStorage,
+    )?.id;
+    const access = scratch.access;
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const groups = data[SetFlyingSwordStanceRequest.Group];
+        const stances = data[SetFlyingSwordStanceRequest.Stance];
+        for (let row = 0; row < count; row++) {
+            if (
+                componentId !== undefined &&
+                world.resolve(groups[row], access)
+            ) {
+                const archetype = access.archetype;
+                const behaviors = archetype?.getComp(
+                    access.row,
+                    componentId,
+                ) as ComponentColumns<FlyingSwordBehaviorStorage> | null;
+                if (archetype && behaviors) {
+                    const groupRow = archetype.rowIdxOf(access.row);
+                    behaviors[FlyingSwordBehavior.Stance][groupRow] =
+                        stances[row];
+                }
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
+function applyFlyingSwordActiveFormationRequests(
+    commands: Commands,
+    world: World,
+    scratch: Mut<FlyingSwordEntityAccessState>,
+    requests: ActiveFormationRequests,
+): void {
+    const componentId = world.findComponent(
+        FlyingSwordBehaviorStorage,
+    )?.id;
+    const access = scratch.access;
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const groups =
+            data[SetFlyingSwordActiveFormationRequest.Group];
+        const formations =
+            data[SetFlyingSwordActiveFormationRequest.Formation];
+        const forwardXs =
+            data[SetFlyingSwordActiveFormationRequest.ForwardX];
+        const forwardZs =
+            data[SetFlyingSwordActiveFormationRequest.ForwardZ];
+        for (let row = 0; row < count; row++) {
+            if (
+                componentId !== undefined &&
+                world.resolve(groups[row], access)
+            ) {
+                const archetype = access.archetype;
+                const behaviors = archetype?.getComp(
+                    access.row,
+                    componentId,
+                ) as ComponentColumns<FlyingSwordBehaviorStorage> | null;
+                if (archetype && behaviors) {
+                    const groupRow = archetype.rowIdxOf(access.row);
+                    behaviors[FlyingSwordBehavior.ActiveFormation][groupRow] =
+                        formations[row];
+                    behaviors[FlyingSwordBehavior.ActiveForwardX][groupRow] =
+                        forwardXs[row];
+                    behaviors[FlyingSwordBehavior.ActiveForwardZ][groupRow] =
+                        forwardZs[row];
+                }
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
 function snapshotFlyingSwordGroups(
     time: Readonly<TimeState>,
     world: World,
@@ -333,6 +455,7 @@ function snapshotFlyingSwordGroups(
             targets,
             formations,
             controls,
+            behaviors,
         ] = iter.current;
         const owners = identities[FlyingSwordGroup.Owner];
         const centerXs = centers[Float3.X];
@@ -354,6 +477,13 @@ function snapshotFlyingSwordGroups(
         const formationSizes =
             formations[FlyingSwordFormation.Size];
         const modes = controls[FlyingSwordControl.Mode];
+        const stances = behaviors[FlyingSwordBehavior.Stance];
+        const activeFormations =
+            behaviors[FlyingSwordBehavior.ActiveFormation];
+        const activeForwardXs =
+            behaviors[FlyingSwordBehavior.ActiveForwardX];
+        const activeForwardZs =
+            behaviors[FlyingSwordBehavior.ActiveForwardZ];
         for (let row = 0; row < count; row++) {
             const group = entities[row];
             let index = runtime.indices.get(group);
@@ -401,6 +531,13 @@ function snapshotFlyingSwordGroups(
             runtime.formationSizes[index] =
                 Math.max(1, formationSizes[row]);
             runtime.modes[index] = modes[row];
+            runtime.stances[index] = stances[row];
+            runtime.activeFormations[index] =
+                activeFormations[row];
+            runtime.activeForwardXs[index] =
+                activeForwardXs[row];
+            runtime.activeForwardZs[index] =
+                activeForwardZs[row];
             runtime.marks[index] = tick;
         }
     }
@@ -450,6 +587,36 @@ function formFlyingSwordGoals(
             let verticalAmplitude =
                 runtime.verticalAmplitudes[group];
 
+            if (
+                runtime.activeFormations[group] ===
+                FlyingSwordActiveFormation.FusionSpiral
+            ) {
+                const forwardX = runtime.activeForwardXs[group];
+                const forwardZ = runtime.activeForwardZs[group];
+                const rightX = forwardZ;
+                const rightZ = -forwardX;
+                const slotPhase =
+                    slot * Math.PI * 2 / formationSize;
+                const spiralPhase =
+                    elapsed * FUSION_SPIRAL_SPEED + slotPhase;
+                const longitudinal = formationSize <= 1
+                    ? 0
+                    : (
+                        slot % formationSize /
+                        (formationSize - 1) - 0.5
+                    ) * FUSION_SPIRAL_LENGTH;
+                const radial = Math.cos(spiralPhase) *
+                    FUSION_SPIRAL_RADIUS;
+                formationGoalXs[row] =
+                    centerX + forwardX * longitudinal + rightX * radial;
+                formationGoalYs[row] =
+                    centerY + FUSION_SPIRAL_HEIGHT +
+                    Math.sin(spiralPhase) * FUSION_SPIRAL_RADIUS;
+                formationGoalZs[row] =
+                    centerZ + forwardZ * longitudinal + rightZ * radial;
+                continue;
+            }
+
             if (runtime.modes[group] === FlyingSwordMode.Recall) {
                 const normalizedSlot = formationSize <= 1
                     ? 0
@@ -496,6 +663,35 @@ function formFlyingSwordGoals(
                 continue;
             }
 
+            if (
+                runtime.stances[group] === FlyingSwordStance.Formation &&
+                runtime.modes[group] === FlyingSwordMode.Orbit
+            ) {
+                const slotPhase =
+                    slot * Math.PI * 2 / formationSize;
+                const circuitPhase =
+                    elapsed * runtime.angularSpeeds[group] *
+                    FORMATION_SPEED_MULTIPLIER +
+                    slotPhase;
+                const forwardX = runtime.forwardXs[group];
+                const forwardZ = runtime.forwardZs[group];
+                const rightX = forwardZ;
+                const rightZ = -forwardX;
+                const lateral = Math.cos(circuitPhase) *
+                    radius * FORMATION_RADIUS_MULTIPLIER;
+                const depth = Math.sin(circuitPhase) *
+                    radius * FORMATION_DEPTH_MULTIPLIER;
+                formationGoalXs[row] =
+                    centerX + rightX * lateral + forwardX * depth;
+                formationGoalYs[row] =
+                    centerY + height * FORMATION_HEIGHT_MULTIPLIER +
+                    Math.sin(circuitPhase * 2 + slotPhase) *
+                    Math.max(FORMATION_MINIMUM_WAVE, verticalAmplitude);
+                formationGoalZs[row] =
+                    centerZ + rightZ * lateral + forwardZ * depth;
+                continue;
+            }
+
             if (runtime.modes[group] === FlyingSwordMode.Focus) {
                 centerX = runtime.targetXs[group];
                 centerY = runtime.targetYs[group];
@@ -532,9 +728,9 @@ function orientIdleFlyingSwords(
     const groupIndices = runtime.indices;
     const iter = swords.iter();
     while (iter.next()) {
-        const [count, , members, directions, actions] =
+        const [count, , members, directions, actions, tasks] =
             iter.current;
-        if (actions !== undefined) continue;
+        if (actions !== undefined || tasks !== undefined) continue;
         const groups = members[FlyingSwordMember.Group];
         const slots = members[FlyingSwordMember.Slot];
         const directionXs = directions[Float3.X];
@@ -551,6 +747,69 @@ function orientIdleFlyingSwords(
                 continue;
             }
             if (mode === FlyingSwordMode.Orbit) {
+                if (
+                    runtime.activeFormations[group] ===
+                    FlyingSwordActiveFormation.FusionSpiral
+                ) {
+                    const phase =
+                        elapsed * FUSION_SPIRAL_SPEED +
+                        slots[row] * Math.PI * 2 /
+                        runtime.formationSizes[group];
+                    const forwardX = runtime.activeForwardXs[group];
+                    const forwardZ = runtime.activeForwardZs[group];
+                    const rightX = forwardZ;
+                    const rightZ = -forwardX;
+                    const tangentX =
+                        forwardX * FUSION_DIRECTION_WEIGHT -
+                        rightX * Math.sin(phase);
+                    const tangentY = Math.cos(phase);
+                    const tangentZ =
+                        forwardZ * FUSION_DIRECTION_WEIGHT -
+                        rightZ * Math.sin(phase);
+                    const length = Math.sqrt(
+                        tangentX * tangentX +
+                        tangentY * tangentY +
+                        tangentZ * tangentZ,
+                    );
+                    directionXs[row] = tangentX / length;
+                    directionYs[row] = tangentY / length;
+                    directionZs[row] = tangentZ / length;
+                    continue;
+                }
+                if (
+                    runtime.stances[group] ===
+                    FlyingSwordStance.Formation
+                ) {
+                    const phase =
+                        elapsed * runtime.angularSpeeds[group] *
+                        FORMATION_SPEED_MULTIPLIER +
+                        slots[row] * Math.PI * 2 /
+                        runtime.formationSizes[group];
+                    const forwardX = runtime.forwardXs[group];
+                    const forwardZ = runtime.forwardZs[group];
+                    const rightX = forwardZ;
+                    const rightZ = -forwardX;
+                    const tangentX =
+                        -rightX * Math.sin(phase) +
+                        forwardX * Math.cos(phase) *
+                        FORMATION_DEPTH_MULTIPLIER;
+                    const tangentY =
+                        Math.cos(phase * 2) *
+                        FORMATION_TANGENT_VERTICAL_WEIGHT;
+                    const tangentZ =
+                        -rightZ * Math.sin(phase) +
+                        forwardZ * Math.cos(phase) *
+                        FORMATION_DEPTH_MULTIPLIER;
+                    const length = Math.sqrt(
+                        tangentX * tangentX +
+                        tangentY * tangentY +
+                        tangentZ * tangentZ,
+                    );
+                    directionXs[row] = tangentX / length;
+                    directionYs[row] = tangentY / length;
+                    directionZs[row] = tangentZ / length;
+                    continue;
+                }
                 directionXs[row] = 0;
                 directionYs[row] = 1;
                 directionZs[row] = 0;
@@ -610,6 +869,13 @@ function removeGroupIndex(
         runtime.formationSizes[index] =
             runtime.formationSizes[last];
         runtime.modes[index] = runtime.modes[last];
+        runtime.stances[index] = runtime.stances[last];
+        runtime.activeFormations[index] =
+            runtime.activeFormations[last];
+        runtime.activeForwardXs[index] =
+            runtime.activeForwardXs[last];
+        runtime.activeForwardZs[index] =
+            runtime.activeForwardZs[last];
         runtime.marks[index] = runtime.marks[last];
         runtime.indices.set(moved, index);
     }
@@ -630,3 +896,14 @@ const RECALL_MAXIMUM_BREATH_RADIUS = 0.12;
 const RECALL_MAXIMUM_TILT = Math.PI * 0.18;
 const RECALL_SWAY_ANGLE = Math.PI / 72;
 const RECALL_SWAY_SPEED = 1.8;
+const FORMATION_SPEED_MULTIPLIER = 2.4;
+const FORMATION_RADIUS_MULTIPLIER = 0.84;
+const FORMATION_DEPTH_MULTIPLIER = 0.48;
+const FORMATION_HEIGHT_MULTIPLIER = 0.76;
+const FORMATION_MINIMUM_WAVE = 0.42;
+const FORMATION_TANGENT_VERTICAL_WEIGHT = 0.7;
+const FUSION_SPIRAL_SPEED = 10.5;
+const FUSION_SPIRAL_LENGTH = 2.8;
+const FUSION_SPIRAL_RADIUS = 0.72;
+const FUSION_SPIRAL_HEIGHT = 1.05;
+const FUSION_DIRECTION_WEIGHT = 0.9;

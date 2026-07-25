@@ -17,7 +17,7 @@ import {
     RogueSystemOptions,
     advanceRogueRunClockSystem,
     applyRogueUpgradeRequestsSystem,
-    autoCastFlyingSwordSystem,
+    driveScatterFlyingSwordsSystem,
     collectRogueExperienceSystem,
     collideEnemiesWithPlayerSystem,
     collideFlyingSwordsWithEnemiesSystem,
@@ -58,7 +58,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
             RogueSystemOptions.intent,
         );
         builder.addSystem(
-            autoCastFlyingSwordSystem,
+            driveScatterFlyingSwordsSystem,
             RogueSystemOptions.targeting,
         );
         builder.addSystem(

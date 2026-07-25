@@ -14,6 +14,7 @@ import {
 import { MoveTowards3Type } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordContactWindowStorage,
+    FlyingSwordBehaviorStorage,
     FlyingSwordControlStorage,
     FlyingSwordFlightStorage,
     FlyingSwordFormationStorage,
@@ -29,6 +30,12 @@ import {
     FlyingSwordSkillProgressStorage,
     FlyingSwordSkillTarget3Storage,
     FlyingSwordSkillTimingStorage,
+    FlyingSwordTaskStorage,
+    FinishFlyingSwordTaskRequestStorage,
+    StartFlyingSwordTaskRequestStorage,
+    CancelFlyingSwordGroupTasksRequestStorage,
+    SetFlyingSwordActiveFormationRequestStorage,
+    SetFlyingSwordStanceRequestStorage,
     SetFlyingSwordCenterRequestStorage,
     SetFlyingSwordModeRequestStorage,
     SetFlyingSwordFormationSizeRequestStorage,
@@ -44,6 +51,7 @@ export const FlyingSwordGroupStorageQuery = QueryType.from(With(
     FlyingSwordGroupTarget3Storage,
     FlyingSwordFormationStorage,
     FlyingSwordControlStorage,
+    FlyingSwordBehaviorStorage,
 ));
 
 export const SetFlyingSwordCenterRequestStorageQuery =
@@ -57,6 +65,21 @@ export const SetFlyingSwordModeRequestStorageQuery =
 
 export const SetFlyingSwordFormationSizeRequestStorageQuery =
     QueryType.from(With(SetFlyingSwordFormationSizeRequestStorage));
+
+export const SetFlyingSwordStanceRequestStorageQuery =
+    QueryType.from(With(SetFlyingSwordStanceRequestStorage));
+
+export const SetFlyingSwordActiveFormationRequestStorageQuery =
+    QueryType.from(With(SetFlyingSwordActiveFormationRequestStorage));
+
+export const StartFlyingSwordTaskRequestStorageQuery =
+    QueryType.from(With(StartFlyingSwordTaskRequestStorage));
+
+export const FinishFlyingSwordTaskRequestStorageQuery =
+    QueryType.from(With(FinishFlyingSwordTaskRequestStorage));
+
+export const CancelFlyingSwordGroupTasksRequestStorageQuery =
+    QueryType.from(With(CancelFlyingSwordGroupTasksRequestStorage));
 
 export const CastFlyingSwordSkillRequestStorageQuery =
     QueryType.from(With(CastFlyingSwordSkillRequestStorage));
@@ -96,7 +119,11 @@ export const AvailableFlyingSwordStorageQuery = QueryType.from(All(
         MoveTowards3Type,
     ),
     Without(FlyingSwordSkillActionStorage),
-    Optional(FlyingSwordPendingSkillTarget3Storage),
+    Optional(
+        FlyingSwordPendingSkillTarget3Storage,
+        FlyingSwordTaskStorage,
+        FlyingSwordContactWindowStorage,
+    ),
 ));
 
 export const ActiveFlyingSwordSkillStorageQuery = QueryType.from(All(
@@ -133,5 +160,31 @@ export const FlyingSwordOrientationStorageQuery = QueryType.from(All(
         FlyingSwordMemberStorage,
         Direction3Type,
     ),
-    Optional(FlyingSwordSkillActionStorage),
+    Optional(
+        FlyingSwordSkillActionStorage,
+        FlyingSwordTaskStorage,
+    ),
+));
+
+export const FlyingSwordTaskStorageQuery = QueryType.from(All(
+    With(
+        FlyingSwordMemberStorage,
+        FlyingSwordFlightStorage,
+        Position3Type,
+        FlyingSwordFormationGoal3Storage,
+        MoveTowards3Type,
+        FlyingSwordTaskStorage,
+    ),
+    Optional(FlyingSwordContactWindowStorage),
+));
+
+export const ActiveFlyingSwordTaskStorageQuery = QueryType.from(All(
+    With(
+        FlyingSwordMemberStorage,
+        FlyingSwordTaskStorage,
+        PreviousPosition3Type,
+        Position3Type,
+        Direction3Type,
+    ),
+    Optional(FlyingSwordContactWindowStorage),
 ));

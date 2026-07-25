@@ -8,8 +8,9 @@ export const DemoInputAction = Object.freeze({
     None: 0,
     Move: 1,
     Focus: 2,
-    Orbit: 3,
+    ToggleFormation: 3,
     Recall: 4,
+    Fusion: 5,
 } as const);
 
 export interface DemoInputOut {
@@ -48,6 +49,11 @@ export class DemoInputService extends Service {
         this.clientY = event.clientY;
     };
 
+    private readonly onPointerMove = (event: PointerEvent): void => {
+        this.clientX = event.clientX;
+        this.clientY = event.clientY;
+    };
+
     private readonly onContextMenu = (event: MouseEvent): void => {
         event.preventDefault();
     };
@@ -67,8 +73,12 @@ export class DemoInputService extends Service {
             event.preventDefault();
         } else if (event.code === "Space") {
             event.preventDefault();
-            this.action = DemoInputAction.Orbit;
+            this.action = DemoInputAction.Fusion;
+        } else if (event.code === "KeyQ") {
+            event.preventDefault();
+            this.action = DemoInputAction.ToggleFormation;
         } else if (event.code === "KeyR") {
+            event.preventDefault();
             this.action = DemoInputAction.Recall;
         }
     };
@@ -90,6 +100,7 @@ export class DemoInputService extends Service {
 
     start(): void {
         this.view.canvas.addEventListener("pointerdown", this.onPointerDown);
+        this.view.canvas.addEventListener("pointermove", this.onPointerMove);
         this.view.canvas.addEventListener("contextmenu", this.onContextMenu);
         window.addEventListener("keydown", this.onKeyDown);
         window.addEventListener("keyup", this.onKeyUp);
@@ -97,6 +108,7 @@ export class DemoInputService extends Service {
 
     stop(): void {
         this.view.canvas.removeEventListener("pointerdown", this.onPointerDown);
+        this.view.canvas.removeEventListener("pointermove", this.onPointerMove);
         this.view.canvas.removeEventListener("contextmenu", this.onContextMenu);
         window.removeEventListener("keydown", this.onKeyDown);
         window.removeEventListener("keyup", this.onKeyUp);

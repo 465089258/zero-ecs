@@ -17,11 +17,14 @@ import {
 } from "@zero-ecs/motion/3d";
 import {
     FlyingSwordFlight,
+    FlyingSwordActiveFormation,
+    FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordFormation,
     FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
+    FlyingSwordStance,
     type CreateFlyingSwordGroupOptions,
     type CreateFlyingSwordOptions,
     type ReadonlyVector3,
@@ -31,6 +34,7 @@ import {
     FocusFlyingSwordRequestStorage,
     FlyingSwordFlightStorage,
     FlyingSwordControlStorage,
+    FlyingSwordBehaviorStorage,
     FlyingSwordFormationStorage,
     FlyingSwordFormationGoal3Storage,
     FlyingSwordGroupCenter3Storage,
@@ -43,6 +47,16 @@ import {
     SetFlyingSwordModeRequestStorage,
     SetFlyingSwordFormationSizeRequest,
     SetFlyingSwordFormationSizeRequestStorage,
+    SetFlyingSwordStanceRequest,
+    SetFlyingSwordStanceRequestStorage,
+    SetFlyingSwordActiveFormationRequest,
+    SetFlyingSwordActiveFormationRequestStorage,
+    StartFlyingSwordTaskRequest,
+    StartFlyingSwordTaskRequestStorage,
+    FinishFlyingSwordTaskRequest,
+    FinishFlyingSwordTaskRequestStorage,
+    CancelFlyingSwordGroupTasksRequest,
+    CancelFlyingSwordGroupTasksRequestStorage,
 } from "./runtime/storage";
 
 /**
@@ -79,6 +93,7 @@ export class FlyingSwordService extends Service {
             .add(FlyingSwordGroupTarget3Storage)
             .add(FlyingSwordFormationStorage)
             .add(FlyingSwordControlStorage)
+            .add(FlyingSwordBehaviorStorage)
             .set(FlyingSwordGroupStorage, FlyingSwordGroup.Owner, options.owner)
             .set(FlyingSwordGroupCenter3Storage, Float3.X, center.x)
             .set(FlyingSwordGroupCenter3Storage, Float3.Y, center.y)
@@ -97,6 +112,26 @@ export class FlyingSwordService extends Service {
             .set(FlyingSwordFormationStorage, FlyingSwordFormation.VerticalSpeed, verticalSpeed)
             .set(FlyingSwordFormationStorage, FlyingSwordFormation.Size, formationSize)
             .set(FlyingSwordControlStorage, FlyingSwordControl.Mode, FlyingSwordMode.Orbit)
+            .set(
+                FlyingSwordBehaviorStorage,
+                FlyingSwordBehavior.Stance,
+                FlyingSwordStance.Scatter,
+            )
+            .set(
+                FlyingSwordBehaviorStorage,
+                FlyingSwordBehavior.ActiveFormation,
+                FlyingSwordActiveFormation.None,
+            )
+            .set(
+                FlyingSwordBehaviorStorage,
+                FlyingSwordBehavior.ActiveForwardX,
+                0,
+            )
+            .set(
+                FlyingSwordBehaviorStorage,
+                FlyingSwordBehavior.ActiveForwardZ,
+                1,
+            )
             .submit();
         return entity;
     }
@@ -259,6 +294,133 @@ export class FlyingSwordService extends Service {
             .submit();
     }
 
+    setStance(group: Entity, stance: FlyingSwordStance): void {
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordStanceRequestStorage)
+            .set(
+                SetFlyingSwordStanceRequestStorage,
+                SetFlyingSwordStanceRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordStanceRequestStorage,
+                SetFlyingSwordStanceRequest.Stance,
+                stance,
+            )
+            .submit();
+    }
+
+    beginFusionSpiral(
+        group: Entity,
+        forwardX: number,
+        forwardZ: number,
+    ): void {
+        const length = Math.sqrt(
+            forwardX * forwardX + forwardZ * forwardZ,
+        );
+        const inverse = length > DIRECTION_EPSILON ? 1 / length : 0;
+        this.setActiveFormation(
+            group,
+            FlyingSwordActiveFormation.FusionSpiral,
+            length > DIRECTION_EPSILON ? forwardX * inverse : 0,
+            length > DIRECTION_EPSILON ? forwardZ * inverse : 1,
+        );
+    }
+
+    endActiveFormation(group: Entity): void {
+        this.setActiveFormation(
+            group,
+            FlyingSwordActiveFormation.None,
+            0,
+            1,
+        );
+    }
+
+    attack(sword: Entity, target: ReadonlyVector3): void {
+        vector("target", target);
+        this.commands
+            .spawn()
+            .add(StartFlyingSwordTaskRequestStorage)
+            .set(
+                StartFlyingSwordTaskRequestStorage,
+                StartFlyingSwordTaskRequest.Sword,
+                sword,
+            )
+            .set(
+                StartFlyingSwordTaskRequestStorage,
+                StartFlyingSwordTaskRequest.TargetX,
+                target.x,
+            )
+            .set(
+                StartFlyingSwordTaskRequestStorage,
+                StartFlyingSwordTaskRequest.TargetY,
+                target.y,
+            )
+            .set(
+                StartFlyingSwordTaskRequestStorage,
+                StartFlyingSwordTaskRequest.TargetZ,
+                target.z,
+            )
+            .submit();
+    }
+
+    finishAttack(sword: Entity): void {
+        this.commands
+            .spawn()
+            .add(FinishFlyingSwordTaskRequestStorage)
+            .set(
+                FinishFlyingSwordTaskRequestStorage,
+                FinishFlyingSwordTaskRequest.Sword,
+                sword,
+            )
+            .submit();
+    }
+
+    cancelGroupAttacks(group: Entity): void {
+        this.commands
+            .spawn()
+            .add(CancelFlyingSwordGroupTasksRequestStorage)
+            .set(
+                CancelFlyingSwordGroupTasksRequestStorage,
+                CancelFlyingSwordGroupTasksRequest.Group,
+                group,
+            )
+            .submit();
+    }
+
+    private setActiveFormation(
+        group: Entity,
+        formation: FlyingSwordActiveFormation,
+        forwardX: number,
+        forwardZ: number,
+    ): void {
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordActiveFormationRequestStorage)
+            .set(
+                SetFlyingSwordActiveFormationRequestStorage,
+                SetFlyingSwordActiveFormationRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordActiveFormationRequestStorage,
+                SetFlyingSwordActiveFormationRequest.Formation,
+                formation,
+            )
+            .set(
+                SetFlyingSwordActiveFormationRequestStorage,
+                SetFlyingSwordActiveFormationRequest.ForwardX,
+                forwardX,
+            )
+            .set(
+                SetFlyingSwordActiveFormationRequestStorage,
+                SetFlyingSwordActiveFormationRequest.ForwardZ,
+                forwardZ,
+            )
+            .submit();
+    }
+
     private setMode(group: Entity, mode: FlyingSwordMode): void {
         this.commands
             .spawn()
@@ -279,6 +441,7 @@ export class FlyingSwordService extends Service {
 
 const ZERO_VECTOR: ReadonlyVector3 = Object.freeze({ x: 0, y: 0, z: 0 });
 const DEFAULT_ARRIVAL_RADIUS = 0.15;
+const DIRECTION_EPSILON = 1e-6;
 
 function finite(name: string, value: number): number {
     if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);

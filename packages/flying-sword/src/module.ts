@@ -22,12 +22,20 @@ import {
     FlyingSwordSystemOptions,
     applyFlyingSwordCenterRequestsSystem,
     applyFlyingSwordFormationSizeRequestsSystem,
+    applyFlyingSwordActiveFormationRequestsSystem,
     applyFlyingSwordFocusRequestsSystem,
     applyFlyingSwordModeRequestsSystem,
+    applyFlyingSwordStanceRequestsSystem,
     formFlyingSwordGoalsSystem,
     orientIdleFlyingSwordsSystem,
     snapshotFlyingSwordGroupsSystem,
 } from "./runtime/systems";
+import {
+    FlyingSwordTaskSystemOptions,
+    applyFlyingSwordTaskRequestsSystem,
+    guideFlyingSwordTasksSystem,
+} from "./runtime/task-systems";
+import { FlyingSwordTaskCancellationState } from "./runtime/task-state";
 
 /**
  * 安装飞剑领域基础运行时。
@@ -47,6 +55,7 @@ export class FlyingSwordModule implements Module {
             .addState(FlyingSwordGroupIndexState)
             .addState(FlyingSwordSkillActionIndexState)
             .addState(FlyingSwordSkillSequenceState)
+            .addState(FlyingSwordTaskCancellationState)
             .addService(FlyingSwordService)
             .addService(FlyingSwordSkillService);
 
@@ -66,6 +75,18 @@ export class FlyingSwordModule implements Module {
             applyFlyingSwordFormationSizeRequestsSystem,
             FlyingSwordSystemOptions.formationSizeRequests,
         );
+        const stanceRequests = builder.addSystem(
+            applyFlyingSwordStanceRequestsSystem,
+            FlyingSwordSystemOptions.stanceRequests,
+        );
+        const activeFormationRequests = builder.addSystem(
+            applyFlyingSwordActiveFormationRequestsSystem,
+            FlyingSwordSystemOptions.activeFormationRequests,
+        );
+        const taskRequests = builder.addSystem(
+            applyFlyingSwordTaskRequestsSystem,
+            FlyingSwordTaskSystemOptions.requests,
+        );
         const actionIndex = builder.addSystem(
             snapshotFlyingSwordSkillActionsSystem,
             FlyingSwordSkillSystemOptions.actionIndex,
@@ -83,6 +104,9 @@ export class FlyingSwordModule implements Module {
             focusRequests,
             modeRequests,
             formationSizeRequests,
+            stanceRequests,
+            activeFormationRequests,
+            taskRequests,
             actionIndex,
             skillTargetRequests,
             skillRequests,
@@ -102,6 +126,10 @@ export class FlyingSwordModule implements Module {
         builder.addSystem(
             guideFlyingSwordSkillsSystem,
             FlyingSwordSkillSystemOptions.guidance,
+        );
+        builder.addSystem(
+            guideFlyingSwordTasksSystem,
+            FlyingSwordTaskSystemOptions.guidance,
         );
         builder.addSystem(
             orientIdleFlyingSwordsSystem,
