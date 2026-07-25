@@ -141,6 +141,9 @@ export enum AutoFlyingSwordSkill {
     ReattackDelayTicks,
     TargetRadius,
     Damage,
+    FocusDamageMultiplier,
+    FormationDamageMultiplier,
+    FormationContactCooldownTicks,
 }
 
 export class AutoFlyingSwordSkillType
@@ -148,6 +151,9 @@ implements Component<AutoFlyingSwordSkill> {
     readonly [AutoFlyingSwordSkill.ReattackDelayTicks] = Types.U16;
     readonly [AutoFlyingSwordSkill.TargetRadius] = Types.F32;
     readonly [AutoFlyingSwordSkill.Damage] = Types.F32;
+    readonly [AutoFlyingSwordSkill.FocusDamageMultiplier] = Types.F32;
+    readonly [AutoFlyingSwordSkill.FormationDamageMultiplier] = Types.F32;
+    readonly [AutoFlyingSwordSkill.FormationContactCooldownTicks] = Types.U16;
 }
 
 export enum EnemyIdentity {
@@ -245,6 +251,8 @@ export enum SwordBodyUnity {
     DirectionZ,
     Damage,
     Group,
+    CooldownTicks,
+    DashDistance,
 }
 
 export class SwordBodyUnityType
@@ -257,6 +265,8 @@ implements Component<SwordBodyUnity> {
     readonly [SwordBodyUnity.DirectionZ] = Types.F32;
     readonly [SwordBodyUnity.Damage] = Types.F32;
     readonly [SwordBodyUnity.Group] = Types.Entity;
+    readonly [SwordBodyUnity.CooldownTicks] = Types.U16;
+    readonly [SwordBodyUnity.DashDistance] = Types.F32;
 }
 
 export enum DamageRequest {

@@ -89,10 +89,11 @@ function collideFormationSwordContacts(
                 content,
                 index,
                 sword,
-                (
-                    scratch.groupDamages.get(group) ??
-                    DEFAULT_SWORD_DAMAGE
-                ) * FORMATION_DAMAGE_MULTIPLIER,
+                scratch.groupFormationDamages.get(group) ??
+                    DEFAULT_SWORD_DAMAGE *
+                        FORMATION_DAMAGE_MULTIPLIER,
+                scratch.groupFormationContactCooldowns.get(group) ??
+                    FORMATION_CONTACT_COOLDOWN_TICKS,
                 previousXs[row],
                 previousYs[row],
                 previousZs[row],
@@ -111,6 +112,7 @@ function collideFormationSegment(
     index: Readonly<EnemySpatialIndexState>,
     source: Entity,
     damage: number,
+    contactCooldownTicks: number,
     startX: number,
     startY: number,
     startZ: number,
@@ -178,7 +180,7 @@ function collideFormationSegment(
                             enemy,
                             FlyingSwordContactCooldownType,
                             FlyingSwordContactCooldown.FormationNextTick,
-                            tick + FORMATION_CONTACT_COOLDOWN_TICKS,
+                            tick + contactCooldownTicks,
                         );
                         content.requestDamage(source, enemy, damage);
                     }

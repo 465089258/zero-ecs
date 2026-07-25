@@ -223,6 +223,16 @@ function setupFlyingSwordDemo(
             SwordBodyUnity.Group,
             INVALID_ENTITY,
         )
+        .set(
+            SwordBodyUnityType,
+            SwordBodyUnity.CooldownTicks,
+            FUSION_COOLDOWN_TICKS,
+        )
+        .set(
+            SwordBodyUnityType,
+            SwordBodyUnity.DashDistance,
+            FUSION_DASH_DISTANCE,
+        )
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
@@ -300,6 +310,21 @@ function setupFlyingSwordDemo(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.Damage,
             18,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.FocusDamageMultiplier,
+            1,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.FormationDamageMultiplier,
+            0.38,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.FormationContactCooldownTicks,
+            9,
         )
         .submit();
 
@@ -545,9 +570,21 @@ function startSwordBodyUnity(
         SwordBodyUnityType,
         SwordBodyUnity.CooldownEndTick,
     );
+    const cooldownTicks = world.get(
+        scene.cultivator,
+        SwordBodyUnityType,
+        SwordBodyUnity.CooldownTicks,
+    );
+    const dashDistance = world.get(
+        scene.cultivator,
+        SwordBodyUnityType,
+        SwordBodyUnity.DashDistance,
+    );
     if (
         active !== 0 ||
         cooldownEndTick === null ||
+        cooldownTicks === null ||
+        dashDistance === null ||
         tick < cooldownEndTick ||
         skills.phase(scene.swordGroup) !== FlyingSwordSkillPhase.Idle
     ) {
@@ -575,10 +612,10 @@ function startSwordBodyUnity(
             const directionX = dx * inverseLength;
             const directionZ = dz * inverseLength;
             motionTargetXs[row] =
-                xs[row] + directionX * FUSION_DASH_DISTANCE;
+                xs[row] + directionX * dashDistance;
             motionTargetYs[row] = ys[row];
             motionTargetZs[row] =
-                zs[row] + directionZ * FUSION_DASH_DISTANCE;
+                zs[row] + directionZ * dashDistance;
             maximumSpeeds[row] = FUSION_DASH_SPEED;
             accelerations[row] = FUSION_DASH_ACCELERATION;
             arrivalRadii[row] = FUSION_DASH_ARRIVAL_RADIUS;
@@ -604,7 +641,7 @@ function startSwordBodyUnity(
                 scene.cultivator,
                 SwordBodyUnityType,
                 SwordBodyUnity.CooldownEndTick,
-                tick + FUSION_COOLDOWN_TICKS,
+                tick + cooldownTicks,
             );
             world.set(
                 scene.cultivator,

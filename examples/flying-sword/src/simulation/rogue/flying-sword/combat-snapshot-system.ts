@@ -107,18 +107,39 @@ function buildActionSnapshots(
     while (countIter.next()) required += countIter.current[0];
     scratch.reset(required);
     scratch.groupDamages.clear();
+    scratch.groupFocusDamages.clear();
+    scratch.groupFormationDamages.clear();
     scratch.groupReattackDelays.clear();
+    scratch.groupFormationContactCooldowns.clear();
     const groupIter = groups.iter();
     while (groupIter.next()) {
         const [count, entities, data] = groupIter.current;
         const damages = data[AutoFlyingSwordSkill.Damage];
+        const focusDamageMultipliers =
+            data[AutoFlyingSwordSkill.FocusDamageMultiplier];
+        const formationDamageMultipliers =
+            data[AutoFlyingSwordSkill.FormationDamageMultiplier];
         const reattackDelays =
             data[AutoFlyingSwordSkill.ReattackDelayTicks];
+        const formationContactCooldowns =
+            data[AutoFlyingSwordSkill.FormationContactCooldownTicks];
         for (let row = 0; row < count; row++) {
             scratch.groupDamages.set(entities[row], damages[row]);
+            scratch.groupFocusDamages.set(
+                entities[row],
+                damages[row] * focusDamageMultipliers[row],
+            );
+            scratch.groupFormationDamages.set(
+                entities[row],
+                damages[row] * formationDamageMultipliers[row],
+            );
             scratch.groupReattackDelays.set(
                 entities[row],
                 reattackDelays[row],
+            );
+            scratch.groupFormationContactCooldowns.set(
+                entities[row],
+                formationContactCooldowns[row],
             );
         }
     }
@@ -145,7 +166,7 @@ function buildActionSnapshots(
             scratch.startTicks[index] = startTicks[row];
             scratch.reservedCounts[index] = reserved[row];
             scratch.damages[index] =
-                scratch.groupDamages.get(group) ??
+                scratch.groupFocusDamages.get(group) ??
                 DEFAULT_SWORD_DAMAGE;
         }
     }

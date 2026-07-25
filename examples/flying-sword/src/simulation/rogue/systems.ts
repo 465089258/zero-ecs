@@ -575,6 +575,7 @@ function applyUpgradeToPlayer(
             movement,
             ,
             pickup,
+            actions,
         ] = iter.current;
         if (count === 0) continue;
         if (upgrade === RogueUpgrade.BodyTechnique) {
@@ -589,6 +590,17 @@ function applyUpgradeToPlayer(
             );
         } else if (upgrade === RogueUpgrade.GatherSpirit) {
             pickup[PlayerPickup.AttractionRadius][0] *= 1.25;
+        } else if (upgrade === RogueUpgrade.FusionPower) {
+            actions[SwordBodyUnity.Damage][0] *= 1.3;
+        } else if (upgrade === RogueUpgrade.FusionCooldown) {
+            actions[SwordBodyUnity.CooldownTicks][0] = Math.max(
+                MINIMUM_FUSION_COOLDOWN_TICKS,
+                Math.floor(
+                    actions[SwordBodyUnity.CooldownTicks][0] * 0.85,
+                ),
+            );
+        } else if (upgrade === RogueUpgrade.FusionDistance) {
+            actions[SwordBodyUnity.DashDistance][0] += 1.25;
         }
         return;
     }
@@ -610,6 +622,25 @@ function applyUpgradeToSwordGroup(
                 Math.floor(
                     auto[AutoFlyingSwordSkill.ReattackDelayTicks][0] *
                     0.9,
+                ),
+            );
+        } else if (upgrade === RogueUpgrade.ScatterRange) {
+            auto[AutoFlyingSwordSkill.TargetRadius][0] *= 1.2;
+        } else if (upgrade === RogueUpgrade.FocusPower) {
+            auto[AutoFlyingSwordSkill.FocusDamageMultiplier][0] *= 1.35;
+        } else if (upgrade === RogueUpgrade.FormationPower) {
+            auto[AutoFlyingSwordSkill.FormationDamageMultiplier][0] *=
+                1.25;
+        } else if (upgrade === RogueUpgrade.FormationTempo) {
+            auto[
+                AutoFlyingSwordSkill.FormationContactCooldownTicks
+            ][0] = Math.max(
+                MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS,
+                Math.floor(
+                    auto[
+                        AutoFlyingSwordSkill
+                            .FormationContactCooldownTicks
+                    ][0] * 0.85,
                 ),
             );
         }
@@ -1160,3 +1191,5 @@ const PLAYER_MOVEMENT_ARRIVAL_RADIUS = 0.04;
 const PLAYER_RADIUS = 0.48;
 const MAX_FLYING_SWORD_UPGRADE_COUNT = 49;
 const HIT_FLASH_TICKS = 5;
+const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
+const MINIMUM_FUSION_COOLDOWN_TICKS = 45;

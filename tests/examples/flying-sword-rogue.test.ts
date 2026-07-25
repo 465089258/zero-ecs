@@ -13,6 +13,10 @@ import {
     GRID_HALF_EXTENT,
     GRID_WIDTH,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
+import {
+    RogueUpgrade,
+    RogueUpgradeCatalog,
+} from "../../examples/flying-sword/src/content/upgrades";
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -33,6 +37,17 @@ test("experience requirement rises with level", () => {
     expect(rogueRequiredExperienceFor(20)).toBeGreaterThan(
         rogueRequiredExperienceFor(10),
     );
+});
+
+test("upgrade catalog covers every combat route without missing metadata", () => {
+    const catalog = new RogueUpgradeCatalog();
+    expect(catalog.count).toBe(RogueUpgrade.FusionDistance + 1);
+    expect(catalog.names).toHaveLength(catalog.count);
+    expect(catalog.descriptions).toHaveLength(catalog.count);
+    expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
+    expect(catalog.names[RogueUpgrade.ScatterRange]).toContain("分光");
+    expect(catalog.names[RogueUpgrade.FormationPower]).toContain("周天");
+    expect(catalog.names[RogueUpgrade.FusionPower]).toContain("合一");
 });
 
 test("swept sword contact measures the whole segment", () => {
