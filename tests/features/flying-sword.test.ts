@@ -27,6 +27,9 @@ import {
     FlyingSwordService,
     FlyingSwordStance,
     FlyingSwordTaskQuery,
+    FlyingSwordTask,
+    FlyingSwordTaskContactQuery,
+    FlyingSwordTaskPhase,
     FlyingSwordSkillAction,
     FlyingSwordSkillActionQuery,
     FlyingSwordSkillPhase,
@@ -166,6 +169,122 @@ test("group stances and independent sword tasks remain separate lifecycles", () 
     expect(
         completedBehavior[FlyingSwordBehavior.ActiveFormation][0],
     ).toBe(FlyingSwordActiveFormation.None);
+
+    game.dispose();
+});
+
+test("independent attack rises, opens a dive contact window, and returns on time", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 1,
+        angularSpeed: 0,
+    });
+    const sword = flyingSwords.createSword({
+        group,
+        position: { x: 0, y: 1, z: 0 },
+        maximumSpeed: 14,
+        acceleration: 48,
+    });
+    game.update();
+    flyingSwords.attack(sword, { x: 0, y: 0.5, z: 8 });
+
+    const observedPhases = new Set<number>();
+    let peakY = 1;
+    let firstDiveTick = -1;
+    let firstContactTick = -1;
+    let completionTick = -1;
+    for (let tick = 0; tick < 200; tick++) {
+        game.update();
+        peakY = Math.max(
+            peakY,
+            game.world.get(sword, Position3Type, Float3.Y) ?? peakY,
+        );
+        const taskIter = game.world.query(FlyingSwordTaskQuery).iter();
+        let active = false;
+        while (taskIter.next()) {
+            const [count, entities, , tasks] = taskIter.current;
+            const phases = tasks[FlyingSwordTask.Phase];
+            for (let row = 0; row < count; row++) {
+                if (entities[row] !== sword) continue;
+                active = true;
+                observedPhases.add(phases[row]);
+                if (
+                    phases[row] === FlyingSwordTaskPhase.Dive &&
+                    firstDiveTick < 0
+                ) {
+                    firstDiveTick = tick;
+                }
+            }
+        }
+        const contactIter =
+            game.world.query(FlyingSwordTaskContactQuery).iter();
+        while (contactIter.next()) {
+            const [count, entities] = contactIter.current;
+            for (let row = 0; row < count; row++) {
+                if (entities[row] === sword && firstContactTick < 0) {
+                    firstContactTick = tick;
+                }
+            }
+        }
+        if (!active && observedPhases.size > 0) {
+            completionTick = tick;
+            break;
+        }
+    }
+
+    expect(observedPhases.has(FlyingSwordTaskPhase.Rise)).toBe(true);
+    expect(observedPhases.has(FlyingSwordTaskPhase.Dive)).toBe(true);
+    expect(observedPhases.has(FlyingSwordTaskPhase.Return)).toBe(true);
+    expect(firstDiveTick).toBeGreaterThanOrEqual(12);
+    expect(firstDiveTick).toBeLessThanOrEqual(20);
+    expect(firstContactTick).toBeGreaterThanOrEqual(firstDiveTick);
+    expect(peakY).toBeGreaterThan(3.4);
+    expect(completionTick).toBeGreaterThan(0);
+    expect(completionTick).toBeLessThan(190);
+
+    game.dispose();
+});
+
+test("group cancellation wins over an attack requested in the same tick", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        formationSize: 1,
+    });
+    const sword = flyingSwords.createSword({
+        group,
+        position: { x: 0, y: 1, z: 0 },
+    });
+    game.update();
+    flyingSwords.attack(sword, { x: 0, y: 0, z: 6 });
+    flyingSwords.cancelGroupAttacks(group);
+    game.update();
+    game.update();
+
+    const taskIter = game.world.query(FlyingSwordTaskQuery).iter();
+    let taskCount = 0;
+    while (taskIter.next()) taskCount += taskIter.current[0];
+    expect(taskCount).toBe(0);
 
     game.dispose();
 });
