@@ -103,7 +103,7 @@ test("flying sword runtime commits entities and advances authoritative XYZ motio
     game.dispose();
 });
 
-test("recalled flying swords form an upright fan behind their owner", () => {
+test("recalled flying swords form an animated directional fan behind their owner", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
@@ -147,12 +147,16 @@ test("recalled flying swords form an upright fan behind their owner", () => {
     let minimumX = Number.POSITIVE_INFINITY;
     let maximumX = Number.NEGATIVE_INFINITY;
     let maximumZ = Number.NEGATIVE_INFINITY;
+    let minimumDirectionX = Number.POSITIVE_INFINITY;
+    let maximumDirectionX = Number.NEGATIVE_INFINITY;
+    const initialYs = new Map<Entity, number>();
     let visited = 0;
     const iter = game.world.query(FlyingSwordQuery).iter();
     while (iter.next()) {
-        const [count, , , , positions, directions] =
+        const [count, entities, , , positions, directions] =
             iter.current;
         const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
         const directionXs = directions[Float3.X];
         const directionYs = directions[Float3.Y];
@@ -161,9 +165,17 @@ test("recalled flying swords form an upright fan behind their owner", () => {
             minimumX = Math.min(minimumX, xs[row]);
             maximumX = Math.max(maximumX, xs[row]);
             maximumZ = Math.max(maximumZ, zs[row]);
-            expect(directionXs[row]).toBe(0);
-            expect(directionYs[row]).toBe(1);
-            expect(directionZs[row]).toBe(0);
+            minimumDirectionX = Math.min(
+                minimumDirectionX,
+                directionXs[row],
+            );
+            maximumDirectionX = Math.max(
+                maximumDirectionX,
+                directionXs[row],
+            );
+            expect(directionYs[row]).toBeGreaterThan(0.8);
+            expect(Math.abs(directionZs[row])).toBeLessThan(1e-6);
+            initialYs.set(entities[row], ys[row]);
             visited++;
         }
     }
@@ -171,6 +183,26 @@ test("recalled flying swords form an upright fan behind their owner", () => {
     expect(minimumX).toBeLessThan(-1);
     expect(maximumX).toBeGreaterThan(1);
     expect(maximumZ).toBeLessThan(-0.5);
+    expect(minimumDirectionX).toBeLessThan(-0.4);
+    expect(maximumDirectionX).toBeGreaterThan(0.4);
+
+    for (let tick = 0; tick < 18; tick++) game.update();
+    let maximumVerticalChange = 0;
+    const animatedIter = game.world.query(FlyingSwordQuery).iter();
+    while (animatedIter.next()) {
+        const [count, entities, , , positions] =
+            animatedIter.current;
+        const ys = positions[Float3.Y];
+        for (let row = 0; row < count; row++) {
+            const initialY = initialYs.get(entities[row]);
+            expect(initialY).toBeDefined();
+            maximumVerticalChange = Math.max(
+                maximumVerticalChange,
+                Math.abs(ys[row] - initialY!),
+            );
+        }
+    }
+    expect(maximumVerticalChange).toBeGreaterThan(0.03);
 
     game.dispose();
 });

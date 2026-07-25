@@ -107,7 +107,11 @@ export const formFlyingSwordGoalsSystem = defSystem(
 export const orientIdleFlyingSwordsSystem = defSystem(
     Update.fixed,
     orientIdleFlyingSwords,
-    [FlyingSwordGroupIndexState, FlyingSwordOrientationStorageQuery],
+    [
+        TimeState,
+        FlyingSwordGroupIndexState,
+        FlyingSwordOrientationStorageQuery,
+    ],
 );
 
 export const FlyingSwordSystemOptions = Object.freeze({
@@ -409,17 +413,30 @@ function formFlyingSwordGoals(
                     RECALL_MAXIMUM_RADIUS,
                     Math.max(RECALL_MINIMUM_RADIUS, radius),
                 );
+                const fanPhase =
+                    slot * Math.PI * 2 / formationSize;
+                const radialBreath = Math.sin(
+                    elapsed * RECALL_BREATH_SPEED +
+                    fanPhase * RECALL_BREATH_PHASE_SCALE,
+                ) * Math.min(
+                    RECALL_MAXIMUM_BREATH_RADIUS,
+                    verticalAmplitude *
+                    RECALL_BREATH_AMPLITUDE_MULTIPLIER,
+                );
                 const fanHeight =
                     Math.max(RECALL_MINIMUM_HEIGHT, height * 0.65) +
                     (1 - Math.abs(normalizedSlot)) *
                     RECALL_CENTER_HEIGHT_BONUS;
                 const wave = Math.sin(
                     elapsed * runtime.verticalSpeeds[group] +
-                    normalizedSlot * Math.PI,
+                    fanPhase,
                 ) * verticalAmplitude * RECALL_WAVE_MULTIPLIER;
-                formationGoalXs[row] = centerX + fanX * fanRadius;
+                const animatedRadius = fanRadius + radialBreath;
+                formationGoalXs[row] =
+                    centerX + fanX * animatedRadius;
                 formationGoalYs[row] = centerY + fanHeight + wave;
-                formationGoalZs[row] = centerZ + fanZ * fanRadius;
+                formationGoalZs[row] =
+                    centerZ + fanZ * animatedRadius;
                 continue;
             }
 
@@ -451,9 +468,11 @@ function formFlyingSwordGoals(
 }
 
 function orientIdleFlyingSwords(
+    time: Readonly<TimeState>,
     runtime: Readonly<FlyingSwordGroupIndexState>,
     swords: OrientedSwords,
 ): void {
+    const elapsed = time.elapsed;
     const groupIndices = runtime.indices;
     const iter = swords.iter();
     while (iter.next()) {
@@ -461,6 +480,7 @@ function orientIdleFlyingSwords(
             iter.current;
         if (actions !== undefined) continue;
         const groups = members[FlyingSwordMember.Group];
+        const slots = members[FlyingSwordMember.Slot];
         const directionXs = directions[Float3.X];
         const directionYs = directions[Float3.Y];
         const directionZs = directions[Float3.Z];
@@ -474,9 +494,34 @@ function orientIdleFlyingSwords(
             ) {
                 continue;
             }
-            directionXs[row] = 0;
-            directionYs[row] = 1;
-            directionZs[row] = 0;
+            if (mode === FlyingSwordMode.Orbit) {
+                directionXs[row] = 0;
+                directionYs[row] = 1;
+                directionZs[row] = 0;
+                continue;
+            }
+            const formationSize = runtime.formationSizes[group];
+            const slot = slots[row];
+            const normalizedSlot = formationSize <= 1
+                ? 0
+                : (
+                    slot % formationSize /
+                    (formationSize - 1) * 2 - 1
+                );
+            const slotPhase =
+                slot * Math.PI * 2 / formationSize;
+            const sway = Math.sin(
+                elapsed * RECALL_SWAY_SPEED + slotPhase,
+            ) * RECALL_SWAY_ANGLE;
+            const angle =
+                normalizedSlot * RECALL_MAXIMUM_TILT + sway;
+            const horizontal = Math.sin(angle);
+            const upward = Math.cos(angle);
+            const rightX = runtime.forwardZs[group];
+            const rightZ = -runtime.forwardXs[group];
+            directionXs[row] = rightX * horizontal;
+            directionYs[row] = upward;
+            directionZs[row] = rightZ * horizontal;
         }
     }
 }
@@ -521,4 +566,11 @@ const RECALL_MINIMUM_RADIUS = 1.2;
 const RECALL_MAXIMUM_RADIUS = 2.4;
 const RECALL_MINIMUM_HEIGHT = 0.9;
 const RECALL_CENTER_HEIGHT_BONUS = 0.35;
-const RECALL_WAVE_MULTIPLIER = 0.12;
+const RECALL_WAVE_MULTIPLIER = 0.32;
+const RECALL_BREATH_SPEED = 1.35;
+const RECALL_BREATH_PHASE_SCALE = 0.65;
+const RECALL_BREATH_AMPLITUDE_MULTIPLIER = 0.14;
+const RECALL_MAXIMUM_BREATH_RADIUS = 0.12;
+const RECALL_MAXIMUM_TILT = Math.PI * 0.18;
+const RECALL_SWAY_ANGLE = Math.PI / 72;
+const RECALL_SWAY_SPEED = 1.8;
