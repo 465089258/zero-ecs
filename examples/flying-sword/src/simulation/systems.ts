@@ -30,6 +30,7 @@ import {
     FlyingSwordVisual,
     FlyingSwordVisualType,
 } from "../content/components";
+import { RogueRunTuning } from "../content/run-tuning";
 import { DemoRenderService } from "../presentation/render-service";
 import {
     CultivatorControlQuery,
@@ -41,7 +42,37 @@ import {
     DemoInputAction,
     DemoInputService,
     type DemoInputOut,
+    type DemoMovementOut,
 } from "./input-service";
+import {
+    AutoFlyingSwordSkill,
+    AutoFlyingSwordSkillType,
+    EnemyDirector,
+    EnemyDirectorType,
+    Health,
+    HealthType,
+    LevelExperience,
+    LevelExperienceType,
+    PlayerMovement,
+    PlayerMovementType,
+    PlayerPickup,
+    PlayerPickupType,
+    RogueRunClock,
+    RogueRunClockType,
+    RogueRunIdentity,
+    RogueRunIdentityType,
+    RogueRunPhase,
+    RogueRunRandom,
+    RogueRunRandomType,
+    RogueRunStatistics,
+    RogueRunStatisticsType,
+    RogueRunStatus,
+    RogueRunStatusType,
+    RogueRunTarget,
+    RogueRunTargetType,
+    UpgradeSelection,
+    UpgradeSelectionType,
+} from "./rogue/components";
 import { DemoSceneState } from "./state";
 
 type Cultivators = QueryOf<typeof CultivatorControlQuery>;
@@ -50,7 +81,12 @@ type MovingCultivators = QueryOf<typeof MovingCultivatorQuery>;
 export const setupFlyingSwordDemoSystem = defSystem(
     Startup,
     setupFlyingSwordDemo,
-    [Commands, FlyingSwordService, Write(DemoSceneState)],
+    [
+        Commands,
+        FlyingSwordService,
+        RogueRunTuning,
+        Write(DemoSceneState),
+    ],
 );
 
 export const consumeFlyingSwordInputSystem = defSystem(
@@ -114,6 +150,7 @@ export const DemoMovementResultSystemOptions = Object.freeze({
 function setupFlyingSwordDemo(
     commands: Commands,
     flyingSwords: FlyingSwordService,
+    tuning: Readonly<RogueRunTuning>,
     scene: Mut<DemoSceneState>,
 ): void {
     const cultivatorCommand = commands.spawn();
@@ -125,6 +162,10 @@ function setupFlyingSwordDemo(
         .add(Direction3Type)
         .add(MoveTowards3Type)
         .add(CultivatorTag)
+        .add(HealthType)
+        .add(PlayerMovementType)
+        .add(LevelExperienceType)
+        .add(PlayerPickupType)
         .set(Position3Type, Float3.X, 0)
         .set(Position3Type, Float3.Y, 0)
         .set(Position3Type, Float3.Z, 0)
@@ -143,6 +184,16 @@ function setupFlyingSwordDemo(
         .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 5.4)
         .set(MoveTowards3Type, MoveTowards3.Acceleration, 48)
         .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.04)
+        .set(HealthType, Health.Current, 100)
+        .set(HealthType, Health.Maximum, 100)
+        .set(PlayerMovementType, PlayerMovement.Speed, 5.4)
+        .set(LevelExperienceType, LevelExperience.Level, 1)
+        .set(LevelExperienceType, LevelExperience.Current, 0)
+        .set(LevelExperienceType, LevelExperience.Required, 13)
+        .set(LevelExperienceType, LevelExperience.PendingChoices, 0)
+        .set(PlayerPickupType, PlayerPickup.AttractionRadius, 4.5)
+        .set(PlayerPickupType, PlayerPickup.PickupRadius, 0.65)
+        .set(PlayerPickupType, PlayerPickup.AttractionSpeed, 8)
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
@@ -173,6 +224,84 @@ function setupFlyingSwordDemo(
             .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
             .submit();
     }
+    commands
+        .entity(group)
+        .add(AutoFlyingSwordSkillType)
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.CooldownTicks,
+            150,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.NextCastTick,
+            45,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.TargetRadius,
+            28,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.Damage,
+            18,
+        )
+        .submit();
+
+    commands
+        .spawn()
+        .add(RogueRunIdentityType)
+        .add(RogueRunClockType)
+        .add(RogueRunStatusType)
+        .add(RogueRunRandomType)
+        .add(RogueRunStatisticsType)
+        .add(EnemyDirectorType)
+        .add(RogueRunTargetType)
+        .add(UpgradeSelectionType)
+        .set(
+            RogueRunIdentityType,
+            RogueRunIdentity.Player,
+            cultivator,
+        )
+        .set(
+            RogueRunIdentityType,
+            RogueRunIdentity.SwordGroup,
+            group,
+        )
+        .set(RogueRunClockType, RogueRunClock.Tick, 0)
+        .set(
+            RogueRunStatusType,
+            RogueRunStatus.Phase,
+            RogueRunPhase.Playing,
+        )
+        .set(RogueRunRandomType, RogueRunRandom.Seed, tuning.seed)
+        .set(RogueRunRandomType, RogueRunRandom.State, tuning.seed)
+        .set(RogueRunStatisticsType, RogueRunStatistics.Kills, 0)
+        .set(
+            RogueRunStatisticsType,
+            RogueRunStatistics.ActiveEnemies,
+            0,
+        )
+        .set(EnemyDirectorType, EnemyDirector.Budget, 0)
+        .set(
+            EnemyDirectorType,
+            EnemyDirector.InitialTarget,
+            tuning.initialEnemyTarget,
+        )
+        .set(EnemyDirectorType, EnemyDirector.SpawnSerial, 0)
+        .set(RogueRunTargetType, RogueRunTarget.MoveX, 0)
+        .set(RogueRunTargetType, RogueRunTarget.MoveY, 0)
+        .set(RogueRunTargetType, RogueRunTarget.MoveZ, 0)
+        .set(RogueRunTargetType, RogueRunTarget.HasMove, 0)
+        .set(RogueRunTargetType, RogueRunTarget.SkillX, 0)
+        .set(RogueRunTargetType, RogueRunTarget.SkillY, 0)
+        .set(RogueRunTargetType, RogueRunTarget.SkillZ, 5)
+        .set(UpgradeSelectionType, UpgradeSelection.Active, 0)
+        .set(UpgradeSelectionType, UpgradeSelection.OptionA, 0)
+        .set(UpgradeSelectionType, UpgradeSelection.OptionB, 1)
+        .set(UpgradeSelectionType, UpgradeSelection.OptionC, 2)
+        .submit();
 
     scene.cultivator = cultivator;
     scene.swordGroup = group;
@@ -197,9 +326,10 @@ const input: DemoInputOut = {
     clientX: 0,
     clientY: 0,
 };
+const movement: DemoMovementOut = { right: 0, forward: 0 };
 const target = { x: 0, y: 0, z: 0 };
 const groupCenter = { x: 0, y: 0, z: 0 };
-const DEFAULT_FLYING_SWORD_COUNT = 81;
+const DEFAULT_FLYING_SWORD_COUNT = 7;
 const MAX_FLYING_SWORD_COUNT = 2000;
 
 function consumeFlyingSwordInput(
@@ -211,6 +341,19 @@ function consumeFlyingSwordInput(
     scene: Mut<DemoSceneState>,
     cultivators: Cultivators,
 ): void {
+    const keyboardMoving = inputService.readMovement(movement);
+    if (keyboardMoving) {
+        setCultivatorKeyboardMovement(
+            commands,
+            cultivators,
+            scene,
+            movement.right,
+            movement.forward,
+        );
+    } else if (keyboardWasMoving) {
+        stopCultivatorKeyboardMovement(commands, cultivators, scene);
+    }
+    keyboardWasMoving = keyboardMoving;
     if (!inputService.consume(input)) return;
     if (input.action === DemoInputAction.Move) {
         if (
@@ -264,6 +407,76 @@ function consumeFlyingSwordInput(
         skills.cancel(scene.swordGroup);
         flyingSwords.recall(scene.swordGroup);
         scene.mode = FlyingSwordMode.Recall;
+    }
+}
+
+let keyboardWasMoving = false;
+
+function setCultivatorKeyboardMovement(
+    commands: Commands,
+    cultivators: Cultivators,
+    scene: Mut<DemoSceneState>,
+    right: number,
+    forward: number,
+): void {
+    const length = Math.sqrt(right * right + forward * forward);
+    if (length <= 1e-6) return;
+    const normalizedRight = right / length;
+    const normalizedForward = forward / length;
+    const worldX =
+        (normalizedForward + normalizedRight) * Math.SQRT1_2;
+    const worldZ =
+        (normalizedForward - normalizedRight) * Math.SQRT1_2;
+    const iter = cultivators.iter();
+    while (iter.next()) {
+        const [count, entities, positions, motion] = iter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        const targetXs = motion[MoveTowards3.TargetX];
+        const targetYs = motion[MoveTowards3.TargetY];
+        const targetZs = motion[MoveTowards3.TargetZ];
+        for (let row = 0; row < count; row++) {
+            if (entities[row] !== scene.cultivator) continue;
+            targetXs[row] = xs[row] + worldX * 12;
+            targetYs[row] = ys[row];
+            targetZs[row] = zs[row] + worldZ * 12;
+            commands
+                .entity(entities[row])
+                .add(CultivatorMoveActiveTag)
+                .submit();
+            scene.hasMoveTarget = false;
+            return;
+        }
+    }
+}
+
+function stopCultivatorKeyboardMovement(
+    commands: Commands,
+    cultivators: Cultivators,
+    scene: Mut<DemoSceneState>,
+): void {
+    const iter = cultivators.iter();
+    while (iter.next()) {
+        const [count, entities, positions, motion] = iter.current;
+        const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        const targetXs = motion[MoveTowards3.TargetX];
+        const targetYs = motion[MoveTowards3.TargetY];
+        const targetZs = motion[MoveTowards3.TargetZ];
+        for (let row = 0; row < count; row++) {
+            if (entities[row] !== scene.cultivator) continue;
+            targetXs[row] = xs[row];
+            targetYs[row] = ys[row];
+            targetZs[row] = zs[row];
+            commands
+                .entity(entities[row])
+                .remove(CultivatorMoveActiveTag)
+                .submit();
+            scene.hasMoveTarget = false;
+            return;
+        }
     }
 }
 

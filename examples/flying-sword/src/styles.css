@@ -83,12 +83,199 @@ h1 {
     box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
 }
 
+.world {
+    position: relative;
+    min-width: 0;
+}
+
 canvas {
     display: block;
     width: 100%;
     aspect-ratio: 3 / 2;
     cursor: crosshair;
     touch-action: none;
+}
+
+.game-hud {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    left: 16px;
+    pointer-events: none;
+    text-shadow: 0 2px 4px #000;
+}
+
+.hud-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 8px;
+    color: #dff9f0;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.hud-row span:nth-child(2) {
+    margin-left: auto;
+    font-family: "Cascadia Mono", monospace;
+}
+
+.meter {
+    width: min(320px, 42%);
+    height: 9px;
+    overflow: hidden;
+    border: 1px solid rgba(228, 255, 245, 0.26);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.meter + .meter {
+    margin-top: 5px;
+}
+
+.meter span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transition: width 80ms linear;
+}
+
+.health-meter span {
+    background: linear-gradient(90deg, #8d2530, #f15d64);
+}
+
+.experience-meter {
+    height: 6px;
+}
+
+.experience-meter span {
+    background: linear-gradient(90deg, #3aa890, #7bf2d0);
+}
+
+.result-overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    padding: 24px;
+    text-align: center;
+    background: rgba(3, 8, 9, 0.8);
+    backdrop-filter: blur(3px);
+}
+
+.result-overlay[hidden] {
+    display: none;
+}
+
+.upgrade-panel {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    padding: 24px;
+    background: rgba(3, 9, 10, 0.84);
+    backdrop-filter: blur(4px);
+}
+
+.upgrade-panel[hidden] {
+    display: none;
+}
+
+.upgrade-panel > h2 {
+    margin: 8px 0 20px;
+    text-align: center;
+    font: 500 34px/1.1 "STKaiti", "KaiTi", serif;
+    letter-spacing: 0.14em;
+}
+
+.upgrade-panel > .eyebrow {
+    text-align: center;
+}
+
+.upgrade-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 180px));
+    gap: 12px;
+}
+
+.upgrade-options button {
+    position: relative;
+    min-height: 138px;
+    border: 1px solid rgba(101, 221, 191, 0.32);
+    border-radius: 12px;
+    padding: 24px 14px 16px;
+    color: #e9fff8;
+    background: linear-gradient(
+        160deg,
+        rgba(31, 83, 75, 0.86),
+        rgba(8, 24, 24, 0.96)
+    );
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.upgrade-options button:hover,
+.upgrade-options button:focus-visible {
+    outline: none;
+    border-color: #77e9cb;
+    box-shadow: 0 0 0 3px rgba(101, 221, 191, 0.13);
+    transform: translateY(-2px);
+}
+
+.upgrade-key {
+    position: absolute;
+    top: 9px;
+    right: 10px;
+    color: #70cdb5;
+    font: 700 12px/1 "Cascadia Mono", monospace;
+}
+
+.upgrade-options strong,
+.upgrade-options small {
+    display: block;
+}
+
+.upgrade-options strong {
+    margin-bottom: 10px;
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 20px;
+    letter-spacing: 0.08em;
+}
+
+.upgrade-options small {
+    color: #9bbcb4;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.result-overlay h2 {
+    margin: 8px 0;
+    font: 500 42px/1.1 "STKaiti", "KaiTi", serif;
+    letter-spacing: 0.16em;
+}
+
+.result-overlay > p:not(.eyebrow) {
+    color: #9dbab3;
+}
+
+.result-overlay button {
+    margin-top: 22px;
+    border: 1px solid rgba(101, 221, 191, 0.55);
+    border-radius: 999px;
+    padding: 10px 24px;
+    color: #e9fff8;
+    background: rgba(35, 113, 96, 0.72);
+    font: inherit;
+    cursor: pointer;
+}
+
+.result-overlay button:hover,
+.result-overlay button:focus-visible {
+    outline: none;
+    background: rgba(48, 146, 125, 0.9);
+    box-shadow: 0 0 0 3px rgba(101, 221, 191, 0.18);
 }
 
 aside {

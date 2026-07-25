@@ -1,8 +1,13 @@
 import {
     defSystem,
 } from "@zero-ecs/game";
-import { CultivatorQuery } from "../simulation/components";
 import { DemoSceneState } from "../simulation/state";
+import {
+    RogueEnemyRenderQuery,
+    RogueExperiencePickupQuery,
+    RoguePlayerQuery,
+    RogueRunQuery,
+} from "../simulation/rogue/queries";
 import {
     DemoRenderFrameState,
 } from "./render-frame";
@@ -20,7 +25,10 @@ export const renderFlyingSwordDemoSystem = defSystem(
         DemoRenderService,
         DemoRenderFrameState,
         DemoSceneState,
-        CultivatorQuery,
+        RogueRunQuery,
+        RoguePlayerQuery,
+        RogueEnemyRenderQuery,
+        RogueExperiencePickupQuery,
         DemoFlyingSwordRenderQuery,
     ],
 );
@@ -33,8 +41,19 @@ function renderFlyingSwordDemo(
     renderer: DemoRenderService,
     frame: Readonly<DemoRenderFrameState>,
     scene: Readonly<DemoSceneState>,
-    cultivators: Parameters<DemoRenderService["render"]>[2],
-    swords: Parameters<DemoRenderService["render"]>[3],
+    runs: Parameters<DemoRenderService["render"]>[2],
+    cultivators: Parameters<DemoRenderService["render"]>[3],
+    enemies: Parameters<DemoRenderService["render"]>[4],
+    pickups: Parameters<DemoRenderService["render"]>[5],
+    swords: Parameters<DemoRenderService["render"]>[6],
 ): void {
-    renderer.render(frame.interpolation, scene, cultivators, swords);
+    renderer.render(
+        frame.interpolation,
+        scene,
+        runs,
+        cultivators,
+        enemies,
+        pickups,
+        swords,
+    );
 }

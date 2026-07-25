@@ -7,6 +7,20 @@ export class DemoViewResource extends Resource {
     constructor(
         readonly canvas: HTMLCanvasElement,
         readonly status: HTMLElement,
+        readonly healthFill: HTMLElement,
+        readonly experienceFill: HTMLElement,
+        readonly level: HTMLElement,
+        readonly elapsed: HTMLElement,
+        readonly kills: HTMLElement,
+        readonly enemyCount: HTMLElement,
+        readonly defeatOverlay: HTMLElement,
+        readonly restartButton: HTMLButtonElement,
+        readonly upgradePanel: HTMLElement,
+        readonly upgradeButtons: readonly [
+            HTMLButtonElement,
+            HTMLButtonElement,
+            HTMLButtonElement,
+        ],
     ) {
         super();
         const context = canvas.getContext("2d", {

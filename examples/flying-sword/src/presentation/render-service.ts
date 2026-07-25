@@ -25,22 +25,50 @@ import swordFlameUrl from "../assets/swords/sword-flame-render.png";
 import swordFrostUrl from "../assets/swords/sword-frost-render.png";
 import swordJadeUrl from "../assets/swords/sword-jade-render.png";
 import swordThunderUrl from "../assets/swords/sword-thunder-render.png";
+import cultivatorUrl from "../assets/characters/cultivator-render.png";
+import bonePuppetUrl from "../assets/monsters/bone-puppet-render.png";
+import corruptedBatUrl from "../assets/monsters/corrupted-bat-render.png";
+import stoneGolemUrl from "../assets/monsters/stone-golem-render.png";
+import swordWraithUrl from "../assets/monsters/sword-wraith-render.png";
 import {
     FlyingSwordVisual,
 } from "../content/components";
-import {
-    CultivatorQuery,
-} from "../simulation/components";
+import { RogueUpgradeCatalog } from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
+import {
+    EnemyBody,
+    EnemyIdentity,
+    ExperiencePickup,
+    Health,
+    LevelExperience,
+    RogueRunClock,
+    RogueRunPhase,
+    RogueRunStatistics,
+    RogueRunStatus,
+    RogueRunTarget,
+    UpgradeSelection,
+} from "../simulation/rogue/components";
+import {
+    RogueEnemyRenderQuery,
+    RogueExperiencePickupQuery,
+    RoguePlayerQuery,
+    RogueRunQuery,
+} from "../simulation/rogue/queries";
 import { DemoFlyingSwordRenderQuery } from "./queries";
 import type { Vector3Out } from "./types";
 
 type Swords = QueryOf<typeof DemoFlyingSwordRenderQuery>;
-type Cultivators = QueryOf<typeof CultivatorQuery>;
+type Runs = QueryOf<typeof RogueRunQuery>;
+type Cultivators = QueryOf<typeof RoguePlayerQuery>;
+type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
+type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 
-const enum RenderKind {
-    Shadow,
+enum RenderKind {
+    SwordShadow,
+    ActorShadow,
     Cultivator,
+    Enemy,
+    Experience,
     Sword,
 }
 
@@ -53,6 +81,9 @@ interface DemoRenderItem extends DepthRenderItem {
     y2: number;
     colorIndex: number;
     color: string;
+    width: number;
+    height: number;
+    health: number;
 }
 
 /** 示例专属 Canvas 表现后端。 */
@@ -60,6 +91,8 @@ export class DemoRenderService extends Service {
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
     @Inject.service(FlyingSwordSkillService)
     private readonly skills!: FlyingSwordSkillService;
+    @Inject.resource(RogueUpgradeCatalog)
+    private readonly upgrades!: RogueUpgradeCatalog;
 
     private readonly logicalWidth = 960;
     private readonly logicalHeight = 640;
@@ -84,6 +117,9 @@ export class DemoRenderService extends Service {
         y2: 0,
         colorIndex: 0,
         color: "#ffffff",
+        width: 0,
+        height: 0,
+        health: 1,
     }));
     private readonly swordSprites: SwordSprite[] = SWORD_SPRITES.map(definition => ({
         ...definition,
@@ -94,12 +130,29 @@ export class DemoRenderService extends Service {
         shadow: null,
         glowVariants: [],
     }));
+    private readonly actorSprites: ActorSprite[] = ACTOR_SPRITES.map(
+        definition => ({
+            ...definition,
+            image: new Image(),
+        }),
+    );
     private readonly groundLayer = document.createElement("canvas");
     private readonly projected: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly projectedSecond: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly clientPoint = { x: 0, y: 0 };
+    private readonly upgradeNames: Array<HTMLElement | null> = [
+        null,
+        null,
+        null,
+    ];
+    private readonly upgradeDescriptions: Array<HTMLElement | null> = [
+        null,
+        null,
+        null,
+    ];
     private totalSwordCount = 0;
     private visibleSwordCount = 0;
+    private visibleEnemyCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -130,6 +183,16 @@ export class DemoRenderService extends Service {
             );
             sprite.image.src = sprite.url;
         }
+        for (let index = 0; index < this.actorSprites.length; index++) {
+            const sprite = this.actorSprites[index];
+            sprite.image.decoding = "async";
+            sprite.image.src = sprite.url;
+        }
+        for (let index = 0; index < this.view.upgradeButtons.length; index++) {
+            const button = this.view.upgradeButtons[index];
+            this.upgradeNames[index] = button.querySelector("strong");
+            this.upgradeDescriptions[index] = button.querySelector("small");
+        }
     }
 
     clientToGround(clientX: number, clientY: number, out: Vector3Out): boolean {
@@ -148,7 +211,10 @@ export class DemoRenderService extends Service {
     render(
         interpolation: number,
         scene: Readonly<DemoSceneState>,
+        runs: Runs,
         cultivators: Cultivators,
+        enemies: Enemies,
+        pickups: Pickups,
         swords: Swords,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
@@ -159,14 +225,16 @@ export class DemoRenderService extends Service {
         );
         this.beginFrame();
         this.drawGroundGrid();
-        this.drawGroundTargets(scene, skillPhase);
+        this.drawGroundTargets(scene, runs, skillPhase);
         this.queue.begin();
         this.collectCultivators(cultivators, interpolation);
+        this.collectEnemies(enemies, interpolation);
+        this.collectExperience(pickups, interpolation);
         this.collectSwords(swords, interpolation);
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
-            this.drawStatus(scene, skillPhase);
+            this.drawStatus(scene, runs, cultivators, skillPhase);
             this.statusCountdown = STATUS_UPDATE_INTERVAL_FRAMES - 1;
         } else {
             this.statusCountdown--;
@@ -179,6 +247,7 @@ export class DemoRenderService extends Service {
         context.globalAlpha = 1;
         this.totalSwordCount = 0;
         this.visibleSwordCount = 0;
+        this.visibleEnemyCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -222,6 +291,7 @@ export class DemoRenderService extends Service {
 
     private drawGroundTargets(
         scene: Readonly<DemoSceneState>,
+        runs: Runs,
         skillPhase: FlyingSwordSkillPhaseValue,
     ): void {
         const context = this.view.context;
@@ -235,7 +305,19 @@ export class DemoRenderService extends Service {
             drawGroundMarker(context, this.projected, "#65ddbf", 18, 8, true);
         }
         if (skillPhase === FlyingSwordSkillPhase.Idle) return;
-        this.camera.project(scene.targetX, 0, scene.targetZ, this.projected);
+        let targetX = scene.targetX;
+        let targetY = scene.targetY;
+        let targetZ = scene.targetZ;
+        const iter = runs.iter();
+        while (iter.next()) {
+            const [count, , , , , , , , targets] = iter.current;
+            if (count === 0) continue;
+            targetX = targets[RogueRunTarget.SkillX][0];
+            targetY = targets[RogueRunTarget.SkillY][0];
+            targetZ = targets[RogueRunTarget.SkillZ][0];
+            break;
+        }
+        this.camera.project(targetX, targetY, targetZ, this.projected);
         drawGroundMarker(
             context,
             this.projected,
@@ -297,21 +379,156 @@ export class DemoRenderService extends Service {
                 const y = lerp(previousYs[row], ys[row], interpolation);
                 const z = lerp(previousZs[row], zs[row], interpolation);
                 this.camera.project(x, y, z, this.projected);
-                this.camera.project(x, y + 1.75, z, this.projectedSecond);
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
+                    continue;
+                }
+                const shadow = this.queue.acquire();
+                shadow.kind = RenderKind.ActorShadow;
+                shadow.sprite = 0;
+                shadow.layer = DemoRenderLayer.Shadow;
+                shadow.depth = this.projected.depth;
+                shadow.subOrder = 0;
+                shadow.stableId = entities[row] * 8;
+                shadow.x1 = this.projected.x;
+                shadow.y1 = this.projected.y + 2;
+                shadow.width = 38;
+                shadow.height = 12;
+
                 const item = this.queue.acquire();
                 item.kind = RenderKind.Cultivator;
                 item.sprite = 0;
                 item.layer = DemoRenderLayer.World;
                 item.depth = this.projected.depth;
                 item.subOrder = 0;
-                item.stableId = entities[row] * 4 + 2;
+                item.stableId = entities[row] * 8 + 1;
                 item.x1 = this.projected.x;
                 item.y1 = this.projected.y;
-                item.x2 = this.projectedSecond.x;
-                item.y2 = this.projectedSecond.y;
+                item.width = CULTIVATOR_WIDTH;
+                item.height = CULTIVATOR_HEIGHT;
                 item.color = "#c9f5e7";
             }
         }
+    }
+
+    private collectEnemies(
+        enemies: Enemies,
+        interpolation: number,
+    ): void {
+        const iter = enemies.iter();
+        while (iter.next()) {
+            const [
+                count,
+                entities,
+                positions,
+                previousPositions,
+                identities,
+                bodies,
+                health,
+            ] = iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const visuals = identities[EnemyIdentity.Visual];
+            const radii = bodies[EnemyBody.Radius];
+            const currentHealth = health[Health.Current];
+            const maximumHealth = health[Health.Maximum];
+            for (let row = 0; row < count; row++) {
+                if (currentHealth[row] <= 0) continue;
+                const x = lerp(previousXs[row], xs[row], interpolation);
+                const y = lerp(previousYs[row], ys[row], interpolation);
+                const z = lerp(previousZs[row], zs[row], interpolation);
+                this.camera.project(x, y, z, this.projected);
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
+                    continue;
+                }
+                const entity = entities[row];
+                const radius = radii[row];
+                const shadow = this.queue.acquire();
+                shadow.kind = RenderKind.ActorShadow;
+                shadow.sprite = 0;
+                shadow.layer = DemoRenderLayer.Shadow;
+                shadow.depth = this.projected.depth;
+                shadow.subOrder = 0;
+                shadow.stableId = entity * 8;
+                shadow.x1 = this.projected.x;
+                shadow.y1 = this.projected.y + 2;
+                shadow.width = 34 + radius * 24;
+                shadow.height = 10 + radius * 7;
+
+                const item = this.queue.acquire();
+                item.kind = RenderKind.Enemy;
+                item.sprite = 1 + visuals[row] % (this.actorSprites.length - 1);
+                item.layer = DemoRenderLayer.World;
+                item.depth = this.projected.depth;
+                item.subOrder = 0;
+                item.stableId = entity * 8 + 1;
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                const sprite = this.actorSprites[item.sprite];
+                item.width = sprite.width;
+                item.height = sprite.height;
+                item.health = maximumHealth[row] > 0
+                    ? currentHealth[row] / maximumHealth[row]
+                    : 0;
+                this.visibleEnemyCount++;
+            }
+        }
+    }
+
+    private collectExperience(
+        pickups: Pickups,
+        interpolation: number,
+    ): void {
+        const iter = pickups.iter();
+        while (iter.next()) {
+            const [
+                count,
+                entities,
+                positions,
+                previousPositions,
+                ,
+                values,
+            ] = iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const experience = values[ExperiencePickup.Value];
+            for (let row = 0; row < count; row++) {
+                const x = lerp(previousXs[row], xs[row], interpolation);
+                const y = lerp(previousYs[row], ys[row], interpolation);
+                const z = lerp(previousZs[row], zs[row], interpolation);
+                this.camera.project(x, y, z, this.projected);
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
+                    continue;
+                }
+                const item = this.queue.acquire();
+                item.kind = RenderKind.Experience;
+                item.sprite = 0;
+                item.layer = DemoRenderLayer.World;
+                item.depth = this.projected.depth;
+                item.subOrder = 1;
+                item.stableId = entities[row] * 8 + 4;
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                item.width = Math.min(12, 5 + experience[row] * 0.35);
+                item.height = item.width;
+            }
+        }
+    }
+
+    private isVisible(x: number, y: number): boolean {
+        return !(
+            x < -VIEW_CULLING_MARGIN ||
+            x > this.logicalWidth + VIEW_CULLING_MARGIN ||
+            y < -VIEW_CULLING_MARGIN ||
+            y > this.logicalHeight + VIEW_CULLING_MARGIN
+        );
     }
 
     private collectSwords(swords: Swords, interpolation: number): void {
@@ -354,12 +571,7 @@ export class DemoRenderService extends Service {
                 );
                 this.totalSwordCount++;
                 this.camera.project(x, y, z, this.projected);
-                if (
-                    this.projected.x < -VIEW_CULLING_MARGIN ||
-                    this.projected.x > this.logicalWidth + VIEW_CULLING_MARGIN ||
-                    this.projected.y < -VIEW_CULLING_MARGIN ||
-                    this.projected.y > this.logicalHeight + VIEW_CULLING_MARGIN
-                ) {
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
                     continue;
                 }
 
@@ -394,7 +606,7 @@ export class DemoRenderService extends Service {
                     this.projectedSecond,
                 );
                 const shadow = this.queue.acquire();
-                shadow.kind = RenderKind.Shadow;
+                shadow.kind = RenderKind.SwordShadow;
                 shadow.sprite = spriteIndex;
                 shadow.layer = DemoRenderLayer.Shadow;
                 shadow.depth = (this.projected.depth + this.projectedSecond.depth) * 0.5;
@@ -447,31 +659,42 @@ export class DemoRenderService extends Service {
         const length = this.queue.length;
         for (let index = 0; index < length; index++) {
             const item = items[index];
-            if (item.kind === RenderKind.Shadow) {
+            if (item.kind === RenderKind.SwordShadow) {
                 const sprite = this.swordSprites[item.sprite];
                 if (sprite.shadow) {
                     drawSwordSprite(context, item, sprite, true);
                 } else {
                     drawSwordFallback(context, item, true);
                 }
-            } else if (item.kind === RenderKind.Cultivator) {
-                context.strokeStyle = "rgba(15, 29, 29, 0.88)";
-                context.lineWidth = 16;
+            } else if (item.kind === RenderKind.ActorShadow) {
+                context.fillStyle = "rgba(0, 0, 0, 0.32)";
                 context.beginPath();
-                context.moveTo(item.x1, item.y1);
-                context.lineTo(item.x2, item.y2 + 7);
-                context.stroke();
-                context.strokeStyle = item.color;
-                context.lineWidth = 9;
-                context.beginPath();
-                context.moveTo(item.x1, item.y1 - 2);
-                context.lineTo(item.x2, item.y2 + 8);
-                context.stroke();
-                context.fillStyle = "#eafdf6";
-                context.beginPath();
-                context.arc(item.x2, item.y2, 6, 0, Math.PI * 2);
+                context.ellipse(
+                    item.x1,
+                    item.y1,
+                    item.width * 0.5,
+                    item.height * 0.5,
+                    0,
+                    0,
+                    Math.PI * 2,
+                );
                 context.fill();
-            } else {
+            } else if (item.kind === RenderKind.Cultivator) {
+                drawActorSprite(
+                    context,
+                    item,
+                    this.actorSprites[item.sprite],
+                );
+            } else if (item.kind === RenderKind.Enemy) {
+                drawActorSprite(
+                    context,
+                    item,
+                    this.actorSprites[item.sprite],
+                );
+                if (item.health < 0.999) drawEnemyHealth(context, item);
+            } else if (item.kind === RenderKind.Experience) {
+                drawExperience(context, item);
+            } else if (item.kind === RenderKind.Sword) {
                 const sprite = this.swordSprites[item.sprite];
                 if (sprite.glowVariants[item.colorIndex]) {
                     drawSwordSprite(context, item, sprite);
@@ -484,8 +707,95 @@ export class DemoRenderService extends Service {
 
     private drawStatus(
         scene: Readonly<DemoSceneState>,
+        runs: Runs,
+        cultivators: Cultivators,
         skillPhase: FlyingSwordSkillPhaseValue,
     ): void {
+        let tick = 0;
+        let kills = 0;
+        let activeEnemies = 0;
+        let runPhase = RogueRunPhase.Playing;
+        let upgradeActive = false;
+        let upgradeA = 0;
+        let upgradeB = 1;
+        let upgradeC = 2;
+        const runIter = runs.iter();
+        while (runIter.next()) {
+            const [
+                count,
+                ,
+                ,
+                clocks,
+                statuses,
+                ,
+                statistics,
+                ,
+                ,
+                selection,
+            ] = runIter.current;
+            if (count === 0) continue;
+            tick = clocks[RogueRunClock.Tick][0];
+            runPhase = statuses[RogueRunStatus.Phase][0];
+            kills = statistics[RogueRunStatistics.Kills][0];
+            activeEnemies =
+                statistics[RogueRunStatistics.ActiveEnemies][0];
+            upgradeActive =
+                selection[UpgradeSelection.Active][0] !== 0;
+            upgradeA = selection[UpgradeSelection.OptionA][0];
+            upgradeB = selection[UpgradeSelection.OptionB][0];
+            upgradeC = selection[UpgradeSelection.OptionC][0];
+            break;
+        }
+        let health = 0;
+        let maximumHealth = 1;
+        let level = 1;
+        let experience = 0;
+        let requiredExperience = 1;
+        const cultivatorIter = cultivators.iter();
+        while (cultivatorIter.next()) {
+            const [
+                count,
+                ,
+                ,
+                ,
+                ,
+                ,
+                ,
+                ,
+                healthData,
+                ,
+                levelData,
+            ] = cultivatorIter.current;
+            if (count === 0) continue;
+            health = healthData[Health.Current][0];
+            maximumHealth = healthData[Health.Maximum][0];
+            level = levelData[LevelExperience.Level][0];
+            experience = levelData[LevelExperience.Current][0];
+            requiredExperience =
+                levelData[LevelExperience.Required][0];
+            break;
+        }
+
+        this.view.healthFill.style.width =
+            `${Math.max(0, Math.min(100, health / maximumHealth * 100))}%`;
+        this.view.experienceFill.style.width =
+            `${Math.max(
+                0,
+                Math.min(100, experience / requiredExperience * 100),
+            )}%`;
+        this.view.level.textContent = `炼气 ${level} 层`;
+        this.view.elapsed.textContent = formatRunTime(tick);
+        this.view.kills.textContent = String(kills);
+        this.view.enemyCount.textContent = String(activeEnemies);
+        this.view.defeatOverlay.hidden =
+            runPhase !== RogueRunPhase.Defeat;
+        this.updateUpgradePanel(
+            upgradeActive,
+            upgradeA,
+            upgradeB,
+            upgradeC,
+        );
+
         const mode = skillPhaseName(skillPhase, scene.mode);
         const nearest = Number.isFinite(this.nearestDepth)
             ? this.nearestDepth.toFixed(2)
@@ -502,8 +812,13 @@ export class DemoRenderService extends Service {
         this.view.status.textContent = [
             `飞剑数量  ${this.totalSwordCount}`,
             `当前可见  ${this.visibleSwordCount}`,
+            `可见妖物  ${this.visibleEnemyCount}`,
+            `场上妖物  ${activeEnemies}`,
+            `累计斩妖  ${kills}`,
             `当前状态  ${mode}`,
             `剑诀阶段  ${skillPhase}`,
+            `生命      ${Math.ceil(health)} / ${Math.ceil(maximumHealth)}`,
+            `修为      ${experience.toFixed(0)} / ${requiredExperience.toFixed(0)}`,
             "",
             `角色 X    ${this.followedX.toFixed(2)}`,
             `角色 Y    ${this.followedY.toFixed(2)}`,
@@ -520,6 +835,27 @@ export class DemoRenderService extends Service {
             "排序规则",
             "layer → depth↓ → stableId",
         ].join("\n");
+    }
+
+    private updateUpgradePanel(
+        active: boolean,
+        first: number,
+        second: number,
+        third: number,
+    ): void {
+        this.view.upgradePanel.hidden = !active;
+        if (!active) return;
+        const buttons = this.view.upgradeButtons;
+        for (let index = 0; index < buttons.length; index++) {
+            const name = this.upgradeNames[index];
+            const description = this.upgradeDescriptions[index];
+            const id = index === 0 ? first : index === 1 ? second : third;
+            if (name) name.textContent = this.upgrades.names[id] ?? "未知剑途";
+            if (description) {
+                description.textContent =
+                    this.upgrades.descriptions[id] ?? "此道尚未明悟";
+            }
+        }
     }
 }
 
@@ -555,12 +891,91 @@ interface SwordSprite {
     glowVariants: HTMLCanvasElement[];
 }
 
+interface ActorSprite {
+    readonly url: string;
+    readonly width: number;
+    readonly height: number;
+    readonly image: HTMLImageElement;
+}
+
 const SWORD_SPRITES = [
     { url: swordJadeUrl },
     { url: swordFlameUrl },
     { url: swordFrostUrl },
     { url: swordThunderUrl },
 ] as const;
+
+const ACTOR_SPRITES = [
+    { url: cultivatorUrl, width: 44, height: 96 },
+    { url: corruptedBatUrl, width: 91, height: 80 },
+    { url: bonePuppetUrl, width: 66, height: 88 },
+    { url: stoneGolemUrl, width: 105, height: 112 },
+    { url: swordWraithUrl, width: 89, height: 104 },
+] as const;
+
+function drawActorSprite(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+    sprite: Readonly<ActorSprite>,
+): void {
+    if (sprite.image.complete && sprite.image.naturalWidth > 0) {
+        context.drawImage(
+            sprite.image,
+            Math.round(item.x1 - item.width * 0.5),
+            Math.round(item.y1 - item.height + ACTOR_FOOT_OFFSET),
+            item.width,
+            item.height,
+        );
+        return;
+    }
+    context.fillStyle = item.kind === RenderKind.Cultivator
+        ? "#d9fff3"
+        : "#8d4c57";
+    context.beginPath();
+    context.arc(item.x1, item.y1 - 18, 12, 0, Math.PI * 2);
+    context.fill();
+}
+
+function drawEnemyHealth(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const width = Math.min(54, Math.max(28, item.width * 0.55));
+    const x = item.x1 - width * 0.5;
+    const y = item.y1 - item.height + ACTOR_FOOT_OFFSET - 7;
+    context.fillStyle = "rgba(0, 0, 0, 0.72)";
+    context.fillRect(x - 1, y - 1, width + 2, 5);
+    context.fillStyle = "#c94c55";
+    context.fillRect(x, y, width * Math.max(0, item.health), 3);
+}
+
+function drawExperience(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const radius = item.width * 0.5;
+    context.fillStyle = "rgba(62, 238, 202, 0.18)";
+    context.beginPath();
+    context.arc(item.x1, item.y1, radius + 3, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#65e5c4";
+    context.beginPath();
+    context.moveTo(item.x1, item.y1 - radius);
+    context.lineTo(item.x1 + radius * 0.7, item.y1);
+    context.lineTo(item.x1, item.y1 + radius);
+    context.lineTo(item.x1 - radius * 0.7, item.y1);
+    context.closePath();
+    context.fill();
+}
+
+function formatRunTime(tick: number): string {
+    const totalSeconds = Math.floor(tick / 60);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds - minutes * 60;
+    return `${String(minutes).padStart(2, "0")}:${
+        String(seconds).padStart(2, "0")
+    }`;
+}
 
 function drawGroundMarker(
     context: CanvasRenderingContext2D,
@@ -712,6 +1127,9 @@ function drawSwordFallback(
 }
 
 const NOMINAL_SWORD_SPRITE_WIDTH = 84;
+const CULTIVATOR_WIDTH = 44;
+const CULTIVATOR_HEIGHT = 96;
+const ACTOR_FOOT_OFFSET = 7;
 const VIEW_CULLING_MARGIN = 192;
 const GRID_HALF_SPAN = 24;
 const CAMERA_TARGET_HEIGHT = 0.9;

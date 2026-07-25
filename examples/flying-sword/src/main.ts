@@ -12,6 +12,7 @@ import {
 } from "@zero-ecs/flying-sword";
 import { Motion3Module } from "@zero-ecs/motion/3d";
 import { DemoViewResource } from "./app/resources";
+import { RogueRunControlService } from "./app/run-control-service";
 import {
     FlyingSwordDemoPresentationModule,
 } from "./presentation/module";
@@ -22,6 +23,9 @@ import { FlyingSwordRender } from "./presentation/render-stage";
 import {
     FlyingSwordDemoSimulationModule,
 } from "./simulation/module";
+import {
+    FlyingSwordRogueSimulationModule,
+} from "./simulation/rogue/module";
 import "./styles.css";
 
 const FIXED_STEP = 1 / 60;
@@ -31,7 +35,22 @@ const MAX_CATCH_UP_STEPS = 8;
 const view = new DemoViewResource(
     element("scene", HTMLCanvasElement),
     element("status", HTMLElement),
+    element("health-fill", HTMLElement),
+    element("experience-fill", HTMLElement),
+    element("hud-level", HTMLElement),
+    element("hud-time", HTMLElement),
+    element("hud-kills", HTMLElement),
+    element("hud-enemies", HTMLElement),
+    element("defeat-overlay", HTMLElement),
+    element("restart-button", HTMLButtonElement),
+    element("upgrade-panel", HTMLElement),
+    [
+        element("upgrade-1", HTMLButtonElement),
+        element("upgrade-2", HTMLButtonElement),
+        element("upgrade-3", HTMLButtonElement),
+    ],
 );
+view.restartButton.addEventListener("click", () => window.location.reload());
 
 const game = new GameBuilder()
     .addResource(DemoViewResource, view)
@@ -40,6 +59,7 @@ const game = new GameBuilder()
     .addModule(new Motion3Module())
     .addModule(new FlyingSwordModule())
     .addModule(new FlyingSwordDemoSimulationModule())
+    .addModule(new FlyingSwordRogueSimulationModule())
     .addModule(new FlyingSwordDemoPresentationModule())
     .build();
 
@@ -50,6 +70,7 @@ game.service(ErrorHandlerService).setHandler((error, source) => {
 game.start();
 
 const renderFrame = game.service(DemoRenderFrameService);
+const runControl = game.service(RogueRunControlService);
 let previous = performance.now();
 let accumulator = FIXED_STEP;
 let animationFrame = 0;
@@ -63,11 +84,16 @@ function frame(now: number): void {
 
     let steps = 0;
     try {
-        while (accumulator >= FIXED_STEP && steps < MAX_CATCH_UP_STEPS) {
+        while (
+            !runControl.paused &&
+            accumulator >= FIXED_STEP &&
+            steps < MAX_CATCH_UP_STEPS
+        ) {
             game.update();
             accumulator -= FIXED_STEP;
             steps++;
         }
+        if (runControl.paused) accumulator = 0;
         if (steps === MAX_CATCH_UP_STEPS) accumulator = 0;
         renderFrame.begin(accumulator / FIXED_STEP);
         game.runStage(FlyingSwordRender);

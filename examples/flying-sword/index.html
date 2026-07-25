@@ -4,32 +4,75 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#071012" />
-    <title>Zero ECS · 飞剑基础设施示例</title>
+    <title>Zero ECS · 万剑试炼</title>
 </head>
 <body>
     <main class="shell">
         <header>
             <div>
-                <p class="eyebrow">ZERO ECS / FLYING SWORD</p>
-                <h1>剑阵 · 周天试演</h1>
+                <p class="eyebrow">ZERO ECS / SWORD ROGUELITE</p>
+                <h1>万剑试炼</h1>
             </div>
             <div class="legend">
-                <span>鼠标左键：角色移动</span>
-                <span>鼠标右键：御剑诀·穿云</span>
+                <span>WASD / 左键：移动</span>
+                <span>自动御剑 / 右键强制施放</span>
                 <span>空格：环绕</span>
                 <span>R：召回</span>
             </div>
         </header>
         <section class="stage">
-            <canvas id="scene" aria-label="飞剑三维投影示例"></canvas>
+            <div class="world">
+                <canvas id="scene" aria-label="飞剑肉鸽游戏场景"></canvas>
+                <div class="game-hud" aria-label="单局状态">
+                    <div class="hud-row">
+                        <span id="hud-level">炼气一层</span>
+                        <span id="hud-time">00:00</span>
+                        <span>斩妖 <strong id="hud-kills">0</strong></span>
+                        <span>妖潮 <strong id="hud-enemies">0</strong></span>
+                    </div>
+                    <div class="meter health-meter" aria-label="生命">
+                        <span id="health-fill"></span>
+                    </div>
+                    <div class="meter experience-meter" aria-label="灵蕴">
+                        <span id="experience-fill"></span>
+                    </div>
+                </div>
+                <div id="upgrade-panel" class="upgrade-panel" hidden>
+                    <p class="eyebrow">BREAKTHROUGH</p>
+                    <h2>择一剑途</h2>
+                    <div class="upgrade-options">
+                        <button id="upgrade-1" type="button">
+                            <span class="upgrade-key">1</span>
+                            <strong>正在推演</strong>
+                            <small>请稍候……</small>
+                        </button>
+                        <button id="upgrade-2" type="button">
+                            <span class="upgrade-key">2</span>
+                            <strong>正在推演</strong>
+                            <small>请稍候……</small>
+                        </button>
+                        <button id="upgrade-3" type="button">
+                            <span class="upgrade-key">3</span>
+                            <strong>正在推演</strong>
+                            <small>请稍候……</small>
+                        </button>
+                    </div>
+                </div>
+                <div id="defeat-overlay" class="result-overlay" hidden>
+                    <p class="eyebrow">TRIAL ENDED</p>
+                    <h2>道躯溃散</h2>
+                    <p>此番试炼已终，重整剑意再入妖潮。</p>
+                    <button id="restart-button" type="button">重新试炼</button>
+                </div>
+            </div>
             <aside>
                 <p class="label">运行状态</p>
                 <pre id="status">正在初始化……</pre>
                 <p class="note">
                     数据层：X 左右 / Y 高度 / Z 前后<br />
                     相机：角色后上方跟随 / 水平偏角 45° / 俯角 50°<br />
-                    穿云：角色聚剑 → 弧线升空 → 转向俯冲<br />
-                    压测：地址追加 ?swords=500
+                    穿云：自动索敌 → 聚剑升空 → 转向俯冲<br />
+                    压测：?swords=500&amp;enemies=2000&amp;seed=12345
                 </p>
             </aside>
         </section>

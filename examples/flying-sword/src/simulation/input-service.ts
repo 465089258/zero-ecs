@@ -18,6 +18,11 @@ export interface DemoInputOut {
     clientY: number;
 }
 
+export interface DemoMovementOut {
+    right: number;
+    forward: number;
+}
+
 /** 浏览器事件只进入缓存，由固定 Tick Input System 消费。 */
 export class DemoInputService extends Service {
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
@@ -25,6 +30,10 @@ export class DemoInputService extends Service {
     private action: number = DemoInputAction.None;
     private clientX = 0;
     private clientY = 0;
+    private moveLeft = false;
+    private moveRight = false;
+    private moveForward = false;
+    private moveBackward = false;
 
     private readonly onPointerDown = (event: PointerEvent): void => {
         if (event.button === 0) {
@@ -44,7 +53,19 @@ export class DemoInputService extends Service {
     };
 
     private readonly onKeyDown = (event: KeyboardEvent): void => {
-        if (event.code === "Space") {
+        if (event.code === "KeyA") {
+            this.moveLeft = true;
+            event.preventDefault();
+        } else if (event.code === "KeyD") {
+            this.moveRight = true;
+            event.preventDefault();
+        } else if (event.code === "KeyW") {
+            this.moveForward = true;
+            event.preventDefault();
+        } else if (event.code === "KeyS") {
+            this.moveBackward = true;
+            event.preventDefault();
+        } else if (event.code === "Space") {
             event.preventDefault();
             this.action = DemoInputAction.Orbit;
         } else if (event.code === "KeyR") {
@@ -52,17 +73,38 @@ export class DemoInputService extends Service {
         }
     };
 
+    private readonly onKeyUp = (event: KeyboardEvent): void => {
+        if (event.code === "KeyA") {
+            this.moveLeft = false;
+        } else if (event.code === "KeyD") {
+            this.moveRight = false;
+        } else if (event.code === "KeyW") {
+            this.moveForward = false;
+        } else if (event.code === "KeyS") {
+            this.moveBackward = false;
+        } else {
+            return;
+        }
+        event.preventDefault();
+    };
+
     start(): void {
         this.view.canvas.addEventListener("pointerdown", this.onPointerDown);
         this.view.canvas.addEventListener("contextmenu", this.onContextMenu);
         window.addEventListener("keydown", this.onKeyDown);
+        window.addEventListener("keyup", this.onKeyUp);
     }
 
     stop(): void {
         this.view.canvas.removeEventListener("pointerdown", this.onPointerDown);
         this.view.canvas.removeEventListener("contextmenu", this.onContextMenu);
         window.removeEventListener("keydown", this.onKeyDown);
+        window.removeEventListener("keyup", this.onKeyUp);
         this.action = DemoInputAction.None;
+        this.moveLeft = false;
+        this.moveRight = false;
+        this.moveForward = false;
+        this.moveBackward = false;
     }
 
     consume(out: DemoInputOut): boolean {
@@ -72,5 +114,12 @@ export class DemoInputService extends Service {
         out.clientY = this.clientY;
         this.action = DemoInputAction.None;
         return true;
+    }
+
+    readMovement(out: DemoMovementOut): boolean {
+        out.right = Number(this.moveRight) - Number(this.moveLeft);
+        out.forward =
+            Number(this.moveForward) - Number(this.moveBackward);
+        return out.right !== 0 || out.forward !== 0;
     }
 }
