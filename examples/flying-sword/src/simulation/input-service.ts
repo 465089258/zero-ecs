@@ -10,7 +10,6 @@ export const DemoInputAction = Object.freeze({
     Focus: 2,
     ToggleFormation: 3,
     Recall: 4,
-    Fusion: 5,
 } as const);
 
 export interface DemoInputOut {
@@ -24,6 +23,11 @@ export interface DemoMovementOut {
     forward: number;
 }
 
+export interface DemoPointerOut {
+    clientX: number;
+    clientY: number;
+}
+
 /** 浏览器事件只进入缓存，由固定 Tick Input System 消费。 */
 export class DemoInputService extends Service {
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
@@ -35,6 +39,7 @@ export class DemoInputService extends Service {
     private moveRight = false;
     private moveForward = false;
     private moveBackward = false;
+    private fusionHeld = false;
 
     private readonly onPointerDown = (event: PointerEvent): void => {
         if (event.button === 0) {
@@ -73,7 +78,7 @@ export class DemoInputService extends Service {
             event.preventDefault();
         } else if (event.code === "Space") {
             event.preventDefault();
-            this.action = DemoInputAction.Fusion;
+            this.fusionHeld = true;
         } else if (event.code === "KeyQ") {
             event.preventDefault();
             this.action = DemoInputAction.ToggleFormation;
@@ -92,10 +97,20 @@ export class DemoInputService extends Service {
             this.moveForward = false;
         } else if (event.code === "KeyS") {
             this.moveBackward = false;
+        } else if (event.code === "Space") {
+            this.fusionHeld = false;
         } else {
             return;
         }
         event.preventDefault();
+    };
+
+    private readonly onBlur = (): void => {
+        this.moveLeft = false;
+        this.moveRight = false;
+        this.moveForward = false;
+        this.moveBackward = false;
+        this.fusionHeld = false;
     };
 
     start(): void {
@@ -104,6 +119,7 @@ export class DemoInputService extends Service {
         this.view.canvas.addEventListener("contextmenu", this.onContextMenu);
         window.addEventListener("keydown", this.onKeyDown);
         window.addEventListener("keyup", this.onKeyUp);
+        window.addEventListener("blur", this.onBlur);
     }
 
     stop(): void {
@@ -112,11 +128,13 @@ export class DemoInputService extends Service {
         this.view.canvas.removeEventListener("contextmenu", this.onContextMenu);
         window.removeEventListener("keydown", this.onKeyDown);
         window.removeEventListener("keyup", this.onKeyUp);
+        window.removeEventListener("blur", this.onBlur);
         this.action = DemoInputAction.None;
         this.moveLeft = false;
         this.moveRight = false;
         this.moveForward = false;
         this.moveBackward = false;
+        this.fusionHeld = false;
     }
 
     consume(out: DemoInputOut): boolean {
@@ -133,5 +151,11 @@ export class DemoInputService extends Service {
         out.forward =
             Number(this.moveForward) - Number(this.moveBackward);
         return out.right !== 0 || out.forward !== 0;
+    }
+
+    readFusion(out: DemoPointerOut): boolean {
+        out.clientX = this.clientX;
+        out.clientY = this.clientY;
+        return this.fusionHeld;
     }
 }

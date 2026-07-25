@@ -265,7 +265,8 @@ function driveScatterFlyingSwords(
             ) {
                 continue;
             }
-            const candidate = assignment % candidateCount;
+            const candidate =
+                swordSlots[row] % candidateCount;
             castTarget.x = targeting.xs[candidate];
             castTarget.y = targeting.ys[candidate];
             castTarget.z = targeting.zs[candidate];
@@ -351,5 +352,5 @@ const groupBehavior = {
     activeFormation: FlyingSwordActiveFormation.None as number,
 };
 const TASK_REQUEST_GUARD_TICKS = 2;
-const SCATTER_LAUNCH_CADENCE_TICKS = 5;
+const SCATTER_LAUNCH_CADENCE_TICKS = 7;
 const SCATTER_LAUNCH_SLOT_STRIDE = 3;

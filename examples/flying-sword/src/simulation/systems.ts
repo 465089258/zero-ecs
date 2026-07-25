@@ -4,12 +4,13 @@ import {
     Startup,
     SystemSet,
     Update,
-    World,
     Write,
     defSystem,
+    type Entity,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
+import { TimeState } from "@zero-ecs/game/time";
 import {
     Direction3Type,
     Float3,
@@ -63,6 +64,8 @@ import {
     PlayerMovementType,
     PlayerPickup,
     PlayerPickupType,
+    PlayerStamina,
+    PlayerStaminaType,
     RogueRunClock,
     RogueRunClockType,
     RogueRunIdentity,
@@ -83,10 +86,14 @@ import {
     SwordBodyUnity,
     SwordBodyUnityType,
 } from "./rogue/components";
-import { RogueRunQuery } from "./rogue/queries";
+import {
+    RogueRunQuery,
+    SwordBodyUnityControlQuery,
+} from "./rogue/queries";
 import { DemoSceneState } from "./state";
 
-type Cultivators = QueryOf<typeof CultivatorControlQuery>;
+type Cultivators = QueryOf<typeof SwordBodyUnityControlQuery>;
+type GroupCenterCultivators = QueryOf<typeof CultivatorControlQuery>;
 type MovingCultivators = QueryOf<typeof MovingCultivatorQuery>;
 type Runs = QueryOf<typeof RogueRunQuery>;
 type FlyingSwords = QueryOf<typeof FlyingSwordQuery>;
@@ -107,13 +114,13 @@ export const consumeFlyingSwordInputSystem = defSystem(
     consumeFlyingSwordInput,
     [
         Commands,
-        World,
+        TimeState,
         DemoInputService,
         DemoRenderService,
         FlyingSwordService,
         FlyingSwordSkillService,
         Write(DemoSceneState),
-        CultivatorControlQuery,
+        SwordBodyUnityControlQuery,
         RogueRunQuery,
         FlyingSwordQuery,
     ],
@@ -182,6 +189,7 @@ function setupFlyingSwordDemo(
         .add(PlayerMovementType)
         .add(LevelExperienceType)
         .add(PlayerPickupType)
+        .add(PlayerStaminaType)
         .add(SwordBodyUnityType)
         .set(Position3Type, Float3.X, 0)
         .set(Position3Type, Float3.Y, 0)
@@ -211,10 +219,33 @@ function setupFlyingSwordDemo(
         .set(PlayerPickupType, PlayerPickup.AttractionRadius, 4.5)
         .set(PlayerPickupType, PlayerPickup.PickupRadius, 0.65)
         .set(PlayerPickupType, PlayerPickup.AttractionSpeed, 8)
+        .set(
+            PlayerStaminaType,
+            PlayerStamina.Current,
+            INITIAL_STAMINA,
+        )
+        .set(
+            PlayerStaminaType,
+            PlayerStamina.Maximum,
+            INITIAL_STAMINA,
+        )
+        .set(
+            PlayerStaminaType,
+            PlayerStamina.DrainPerSecond,
+            FUSION_STAMINA_DRAIN_PER_SECOND,
+        )
+        .set(
+            PlayerStaminaType,
+            PlayerStamina.RecoveryPerSecond,
+            STAMINA_RECOVERY_PER_SECOND,
+        )
+        .set(
+            PlayerStaminaType,
+            PlayerStamina.RestartThreshold,
+            FUSION_RESTART_STAMINA,
+        )
         .set(SwordBodyUnityType, SwordBodyUnity.Active, 0)
         .set(SwordBodyUnityType, SwordBodyUnity.StartTick, 0)
-        .set(SwordBodyUnityType, SwordBodyUnity.EndTick, 0)
-        .set(SwordBodyUnityType, SwordBodyUnity.CooldownEndTick, 0)
         .set(SwordBodyUnityType, SwordBodyUnity.DirectionX, 0)
         .set(SwordBodyUnityType, SwordBodyUnity.DirectionZ, 1)
         .set(SwordBodyUnityType, SwordBodyUnity.Damage, 42)
@@ -222,16 +253,6 @@ function setupFlyingSwordDemo(
             SwordBodyUnityType,
             SwordBodyUnity.Group,
             INVALID_ENTITY,
-        )
-        .set(
-            SwordBodyUnityType,
-            SwordBodyUnity.CooldownTicks,
-            FUSION_COOLDOWN_TICKS,
-        )
-        .set(
-            SwordBodyUnityType,
-            SwordBodyUnity.DashDistance,
-            FUSION_DASH_DISTANCE,
         )
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
@@ -410,16 +431,19 @@ const target = { x: 0, y: 0, z: 0 };
 const groupCenter = { x: 0, y: 0, z: 0 };
 const DEFAULT_FLYING_SWORD_COUNT = 7;
 const MAX_FLYING_SWORD_COUNT = 2000;
-const FUSION_DASH_DISTANCE = 7.5;
 const FUSION_DASH_SPEED = 30;
 const FUSION_DASH_ACCELERATION = 180;
 const FUSION_DASH_ARRIVAL_RADIUS = 0.08;
-const FUSION_DASH_TICKS = 22;
-const FUSION_COOLDOWN_TICKS = 150;
+const FUSION_RELEASE_ACCELERATION = 48;
+const FUSION_TARGET_LOOKAHEAD = 12;
+const INITIAL_STAMINA = 100;
+const FUSION_STAMINA_DRAIN_PER_SECOND = 30;
+const STAMINA_RECOVERY_PER_SECOND = 22;
+const FUSION_RESTART_STAMINA = 25;
 
 function consumeFlyingSwordInput(
     commands: Commands,
-    world: World,
+    time: Readonly<TimeState>,
     inputService: DemoInputService,
     renderer: DemoRenderService,
     flyingSwords: FlyingSwordService,
@@ -429,11 +453,25 @@ function consumeFlyingSwordInput(
     runs: Runs,
     swords: FlyingSwords,
 ): void {
-    const fusionActive = world.get(
-        scene.cultivator,
-        SwordBodyUnityType,
-        SwordBodyUnity.Active,
-    ) === 1;
+    const fusionHeld = inputService.readFusion(input);
+    const hasFusionTarget = fusionHeld &&
+        renderer.clientToGround(
+            input.clientX,
+            input.clientY,
+            target,
+        );
+    const fusionActive = driveSwordBodyUnity(
+        commands,
+        time,
+        flyingSwords,
+        skills,
+        scene,
+        cultivators,
+        fusionHeld,
+        hasFusionTarget,
+        target.x,
+        target.z,
+    );
     const keyboardMoving = !fusionActive &&
         inputService.readMovement(movement);
     if (keyboardMoving) {
@@ -449,6 +487,7 @@ function consumeFlyingSwordInput(
     }
     keyboardWasMoving = keyboardMoving;
     if (!inputService.consume(input)) return;
+    if (fusionActive) return;
     if (input.action === DemoInputAction.Move) {
         if (
             !renderer.clientToGround(
@@ -522,145 +561,141 @@ function consumeFlyingSwordInput(
         );
         scene.stance = FlyingSwordStance.Guard;
         scene.mode = FlyingSwordMode.Recall;
-    } else if (input.action === DemoInputAction.Fusion) {
-        if (
-            !renderer.clientToGround(
-                input.clientX,
-                input.clientY,
-                target,
-            )
-        ) {
-            return;
-        }
-        startSwordBodyUnity(
-            commands,
-            world,
-            flyingSwords,
-            skills,
-            scene,
-            cultivators,
-            runs,
-            target.x,
-            target.z,
-        );
     }
 }
 
 let keyboardWasMoving = false;
 
-function startSwordBodyUnity(
+function driveSwordBodyUnity(
     commands: Commands,
-    world: World,
+    time: Readonly<TimeState>,
     flyingSwords: FlyingSwordService,
     skills: FlyingSwordSkillService,
     scene: Mut<DemoSceneState>,
     cultivators: Cultivators,
-    runs: Runs,
+    fusionHeld: boolean,
+    hasTarget: boolean,
     targetX: number,
     targetZ: number,
-): void {
-    const tick = readRogueTick(runs);
-    const active = world.get(
-        scene.cultivator,
-        SwordBodyUnityType,
-        SwordBodyUnity.Active,
-    );
-    const cooldownEndTick = world.get(
-        scene.cultivator,
-        SwordBodyUnityType,
-        SwordBodyUnity.CooldownEndTick,
-    );
-    const cooldownTicks = world.get(
-        scene.cultivator,
-        SwordBodyUnityType,
-        SwordBodyUnity.CooldownTicks,
-    );
-    const dashDistance = world.get(
-        scene.cultivator,
-        SwordBodyUnityType,
-        SwordBodyUnity.DashDistance,
-    );
-    if (
-        active !== 0 ||
-        cooldownEndTick === null ||
-        cooldownTicks === null ||
-        dashDistance === null ||
-        tick < cooldownEndTick ||
-        skills.phase(scene.swordGroup) !== FlyingSwordSkillPhase.Idle
-    ) {
-        return;
-    }
+): boolean {
     const iter = cultivators.iter();
     while (iter.next()) {
-        const [count, entities, positions, motion] = iter.current;
+        const [
+            count,
+            entities,
+            positions,
+            motion,
+            velocities,
+            ,
+            movement,
+            stamina,
+            actions,
+        ] = iter.current;
         const xs = positions[Float3.X];
         const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
+        const velocityXs = velocities[Float3.X];
+        const velocityYs = velocities[Float3.Y];
+        const velocityZs = velocities[Float3.Z];
         const motionTargetXs = motion[MoveTowards3.TargetX];
         const motionTargetYs = motion[MoveTowards3.TargetY];
         const motionTargetZs = motion[MoveTowards3.TargetZ];
         const maximumSpeeds = motion[MoveTowards3.MaximumSpeed];
         const accelerations = motion[MoveTowards3.Acceleration];
         const arrivalRadii = motion[MoveTowards3.ArrivalRadius];
+        const movementSpeeds = movement[PlayerMovement.Speed];
+        const currentStamina = stamina[PlayerStamina.Current];
+        const maximumStamina = stamina[PlayerStamina.Maximum];
+        const drainPerSecond = stamina[PlayerStamina.DrainPerSecond];
+        const recoveryPerSecond =
+            stamina[PlayerStamina.RecoveryPerSecond];
+        const restartThreshold =
+            stamina[PlayerStamina.RestartThreshold];
+        const active = actions[SwordBodyUnity.Active];
+        const startTicks = actions[SwordBodyUnity.StartTick];
+        const directionXs = actions[SwordBodyUnity.DirectionX];
+        const directionZs = actions[SwordBodyUnity.DirectionZ];
+        const groups = actions[SwordBodyUnity.Group];
         for (let row = 0; row < count; row++) {
             if (entities[row] !== scene.cultivator) continue;
+            if (active[row] !== 0) {
+                currentStamina[row] = Math.max(
+                    0,
+                    currentStamina[row] -
+                        drainPerSecond[row] * time.delta,
+                );
+                if (!fusionHeld || currentStamina[row] <= 0) {
+                    stopSwordBodyUnity(
+                        commands,
+                        flyingSwords,
+                        entities[row],
+                        row,
+                        xs,
+                        ys,
+                        zs,
+                        velocityXs,
+                        velocityYs,
+                        velocityZs,
+                        motionTargetXs,
+                        motionTargetYs,
+                        motionTargetZs,
+                        maximumSpeeds,
+                        accelerations,
+                        arrivalRadii,
+                        movementSpeeds,
+                        active,
+                        groups,
+                    );
+                    return false;
+                }
+                motionTargetXs[row] =
+                    xs[row] +
+                    directionXs[row] * FUSION_TARGET_LOOKAHEAD;
+                motionTargetYs[row] = ys[row];
+                motionTargetZs[row] =
+                    zs[row] +
+                    directionZs[row] * FUSION_TARGET_LOOKAHEAD;
+                maximumSpeeds[row] = FUSION_DASH_SPEED;
+                accelerations[row] = FUSION_DASH_ACCELERATION;
+                arrivalRadii[row] = FUSION_DASH_ARRIVAL_RADIUS;
+                scene.hasMoveTarget = false;
+                return true;
+            }
+
+            currentStamina[row] = Math.min(
+                maximumStamina[row],
+                currentStamina[row] +
+                    recoveryPerSecond[row] * time.delta,
+            );
+            if (
+                !fusionHeld ||
+                !hasTarget ||
+                currentStamina[row] < restartThreshold[row] ||
+                skills.phase(scene.swordGroup) !==
+                    FlyingSwordSkillPhase.Idle
+            ) {
+                return false;
+            }
             const dx = targetX - xs[row];
             const dz = targetZ - zs[row];
             const length = Math.sqrt(dx * dx + dz * dz);
-            if (length <= 1e-5) return;
+            if (length <= 1e-5) return false;
             const inverseLength = 1 / length;
             const directionX = dx * inverseLength;
             const directionZ = dz * inverseLength;
             motionTargetXs[row] =
-                xs[row] + directionX * dashDistance;
+                xs[row] + directionX * FUSION_TARGET_LOOKAHEAD;
             motionTargetYs[row] = ys[row];
             motionTargetZs[row] =
-                zs[row] + directionZ * dashDistance;
+                zs[row] + directionZ * FUSION_TARGET_LOOKAHEAD;
             maximumSpeeds[row] = FUSION_DASH_SPEED;
             accelerations[row] = FUSION_DASH_ACCELERATION;
             arrivalRadii[row] = FUSION_DASH_ARRIVAL_RADIUS;
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.Active,
-                1,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.StartTick,
-                tick,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.EndTick,
-                tick + FUSION_DASH_TICKS,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.CooldownEndTick,
-                tick + cooldownTicks,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.DirectionX,
-                directionX,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.DirectionZ,
-                directionZ,
-            );
-            world.set(
-                scene.cultivator,
-                SwordBodyUnityType,
-                SwordBodyUnity.Group,
-                scene.swordGroup,
-            );
+            active[row] = 1;
+            startTicks[row] = time.tick;
+            directionXs[row] = directionX;
+            directionZs[row] = directionZ;
+            groups[row] = scene.swordGroup;
             commands
                 .entity(scene.cultivator)
                 .add(CultivatorMoveActiveTag)
@@ -671,18 +706,52 @@ function startSwordBodyUnity(
                 directionZ,
             );
             scene.hasMoveTarget = false;
-            return;
+            return true;
         }
     }
+    return false;
 }
 
-function readRogueTick(runs: Runs): number {
-    const iter = runs.iter();
-    while (iter.next()) {
-        const [count, , , clocks] = iter.current;
-        if (count > 0) return clocks[RogueRunClock.Tick][0];
+function stopSwordBodyUnity(
+    commands: Commands,
+    flyingSwords: FlyingSwordService,
+    entity: Entity,
+    row: number,
+    xs: Float32Array,
+    ys: Float32Array,
+    zs: Float32Array,
+    velocityXs: Float32Array,
+    velocityYs: Float32Array,
+    velocityZs: Float32Array,
+    targetXs: Float32Array,
+    targetYs: Float32Array,
+    targetZs: Float32Array,
+    maximumSpeeds: Float32Array,
+    accelerations: Float32Array,
+    arrivalRadii: Float32Array,
+    movementSpeeds: Float32Array,
+    active: Uint8Array,
+    groups: Uint32Array,
+): void {
+    active[row] = 0;
+    targetXs[row] = xs[row];
+    targetYs[row] = ys[row];
+    targetZs[row] = zs[row];
+    maximumSpeeds[row] = movementSpeeds[row];
+    accelerations[row] = FUSION_RELEASE_ACCELERATION;
+    arrivalRadii[row] = FUSION_DASH_ARRIVAL_RADIUS;
+    velocityXs[row] = 0;
+    velocityYs[row] = 0;
+    velocityZs[row] = 0;
+    commands
+        .entity(entity)
+        .remove(CultivatorMoveActiveTag)
+        .submit();
+    const group = groups[row];
+    groups[row] = INVALID_ENTITY;
+    if (group !== INVALID_ENTITY) {
+        flyingSwords.endActiveFormation(group as Entity);
     }
-    return 0;
 }
 
 function setRogueSkillTarget(
@@ -827,7 +896,7 @@ function setCultivatorDestination(
 function synchronizeFlyingSwordGroupCenter(
     flyingSwords: FlyingSwordService,
     scene: Readonly<DemoSceneState>,
-    cultivators: Cultivators,
+    cultivators: GroupCenterCultivators,
 ): void {
     const iter = cultivators.iter();
     while (iter.next()) {

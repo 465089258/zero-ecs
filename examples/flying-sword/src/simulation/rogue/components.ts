@@ -136,6 +136,23 @@ export class PlayerPickupType implements Component<PlayerPickup> {
     readonly [PlayerPickup.AttractionSpeed] = Types.F32;
 }
 
+/** 身剑合一消耗的玩家体力；非突进时持续恢复。 */
+export enum PlayerStamina {
+    Current,
+    Maximum,
+    DrainPerSecond,
+    RecoveryPerSecond,
+    RestartThreshold,
+}
+
+export class PlayerStaminaType implements Component<PlayerStamina> {
+    readonly [PlayerStamina.Current] = Types.F32;
+    readonly [PlayerStamina.Maximum] = Types.F32;
+    readonly [PlayerStamina.DrainPerSecond] = Types.F32;
+    readonly [PlayerStamina.RecoveryPerSecond] = Types.F32;
+    readonly [PlayerStamina.RestartThreshold] = Types.F32;
+}
+
 /** 示例层控制组的飞剑战斗数值。 */
 export enum AutoFlyingSwordSkill {
     ReattackDelayTicks,
@@ -245,28 +262,20 @@ implements Component<EnemyFeedback> {
 export enum SwordBodyUnity {
     Active,
     StartTick,
-    EndTick,
-    CooldownEndTick,
     DirectionX,
     DirectionZ,
     Damage,
     Group,
-    CooldownTicks,
-    DashDistance,
 }
 
 export class SwordBodyUnityType
 implements Component<SwordBodyUnity> {
     readonly [SwordBodyUnity.Active] = Types.U8;
     readonly [SwordBodyUnity.StartTick] = Types.U32;
-    readonly [SwordBodyUnity.EndTick] = Types.U32;
-    readonly [SwordBodyUnity.CooldownEndTick] = Types.U32;
     readonly [SwordBodyUnity.DirectionX] = Types.F32;
     readonly [SwordBodyUnity.DirectionZ] = Types.F32;
     readonly [SwordBodyUnity.Damage] = Types.F32;
     readonly [SwordBodyUnity.Group] = Types.Entity;
-    readonly [SwordBodyUnity.CooldownTicks] = Types.U16;
-    readonly [SwordBodyUnity.DashDistance] = Types.F32;
 }
 
 export enum DamageRequest {

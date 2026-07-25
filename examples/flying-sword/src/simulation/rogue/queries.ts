@@ -36,6 +36,7 @@ import {
     LevelExperienceType,
     PlayerMovementType,
     PlayerPickupType,
+    PlayerStaminaType,
     RogueRunClockType,
     RogueRunIdentityType,
     RogueRunRandomType,
@@ -68,6 +69,18 @@ export const RoguePlayerQuery = QueryType.from(With(
     PlayerMovementType,
     LevelExperienceType,
     PlayerPickupType,
+    SwordBodyUnityType,
+    PlayerStaminaType,
+));
+
+/** 输入层驱动身剑合一时使用的窄查询。 */
+export const SwordBodyUnityControlQuery = QueryType.from(With(
+    Position3Type,
+    MoveTowards3Type,
+    Velocity3Type,
+    CultivatorTag,
+    PlayerMovementType,
+    PlayerStaminaType,
     SwordBodyUnityType,
 ));
 

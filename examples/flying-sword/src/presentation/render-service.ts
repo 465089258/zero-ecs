@@ -48,6 +48,7 @@ import {
     ExperiencePickup,
     Health,
     LevelExperience,
+    PlayerStamina,
     RogueRunClock,
     RogueRunPhase,
     RogueRunStatistics,
@@ -986,7 +987,9 @@ export class DemoRenderService extends Service {
         let experience = 0;
         let requiredExperience = 1;
         let fusionActive = false;
-        let fusionCooldownEndTick = 0;
+        let stamina = 0;
+        let maximumStamina = 1;
+        let restartStamina = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -1003,6 +1006,7 @@ export class DemoRenderService extends Service {
                 levelData,
                 ,
                 actionData,
+                staminaData,
             ] = cultivatorIter.current;
             if (count === 0) continue;
             health = healthData[Health.Current][0];
@@ -1013,8 +1017,11 @@ export class DemoRenderService extends Service {
                 levelData[LevelExperience.Required][0];
             fusionActive =
                 actionData[SwordBodyUnity.Active][0] !== 0;
-            fusionCooldownEndTick =
-                actionData[SwordBodyUnity.CooldownEndTick][0];
+            stamina = staminaData[PlayerStamina.Current][0];
+            maximumStamina =
+                staminaData[PlayerStamina.Maximum][0];
+            restartStamina =
+                staminaData[PlayerStamina.RestartThreshold][0];
             break;
         }
 
@@ -1025,21 +1032,22 @@ export class DemoRenderService extends Service {
                 0,
                 Math.min(100, experience / requiredExperience * 100),
             )}%`;
+        this.view.staminaFill.style.width =
+            `${Math.max(
+                0,
+                Math.min(100, stamina / maximumStamina * 100),
+            )}%`;
         this.view.level.textContent = `炼气 ${level} 层`;
-        const fusionCooldownTicks = Math.max(
-            0,
-            fusionCooldownEndTick - tick,
-        );
         this.view.skill.dataset.ready = String(
-            !fusionActive && fusionCooldownTicks === 0,
+            !fusionActive && stamina >= restartStamina,
         );
         this.view.skill.textContent = fusionActive
-            ? "身剑合一 · 突进"
-            : fusionCooldownTicks === 0
-                ? "空格 · 身剑合一"
-                : `身剑合一 ${(
-                    Math.ceil(fusionCooldownTicks / 6) / 10
-                ).toFixed(1)}s`;
+            ? `身剑合一 · ${Math.ceil(stamina)}`
+            : stamina >= restartStamina
+                ? "长按空格 · 身剑合一"
+                : `体力恢复 ${Math.ceil(stamina)}/${Math.ceil(
+                    restartStamina,
+                )}`;
         this.view.elapsed.textContent = formatRunTime(tick);
         this.view.kills.textContent = String(kills);
         this.view.enemyCount.textContent = String(activeEnemies);

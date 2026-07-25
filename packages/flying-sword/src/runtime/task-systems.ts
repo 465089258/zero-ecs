@@ -309,6 +309,7 @@ function guideFlyingSwordTasks(
         const maximumSpeeds =
             flights[FlyingSwordFlight.MaximumSpeed];
         const groups = members[FlyingSwordMember.Group];
+        const slots = members[FlyingSwordMember.Slot];
         const accelerations =
             flights[FlyingSwordFlight.Acceleration];
         const xs = positions[Float3.X];
@@ -361,6 +362,7 @@ function guideFlyingSwordTasks(
                     targetYs[row],
                     targetZs[row],
                     progress,
+                    slots[row],
                     motionTargetXs,
                     motionTargetYs,
                     motionTargetZs,
@@ -415,6 +417,7 @@ function guideFlyingSwordTasks(
                     targetYs[row],
                     targetZs[row],
                     progress,
+                    slots[row],
                     motionTargetXs,
                     motionTargetYs,
                     motionTargetZs,
@@ -458,9 +461,25 @@ function guideFlyingSwordTasks(
                 continue;
             }
 
-            motionTargetXs[row] = formationXs[row];
-            motionTargetYs[row] = formationYs[row];
-            motionTargetZs[row] = formationZs[row];
+            const returnTick = tick - phaseStartTicks[row];
+            const returnProgress = Math.min(
+                1,
+                returnTick / RETURN_CURVE_TICKS,
+            );
+            writeTaskReturnTarget(
+                xs[row],
+                ys[row],
+                zs[row],
+                formationXs[row],
+                formationYs[row],
+                formationZs[row],
+                slots[row],
+                returnProgress,
+                motionTargetXs,
+                motionTargetYs,
+                motionTargetZs,
+                row,
+            );
             motionMaximumSpeeds[row] =
                 maximumSpeeds[row] * RETURN_SPEED_MULTIPLIER;
             motionAccelerations[row] =
@@ -472,7 +491,7 @@ function guideFlyingSwordTasks(
             if (
                 dx * dx + dy * dy + dz * dz <=
                     RETURN_ARRIVAL_RADIUS * RETURN_ARRIVAL_RADIUS ||
-                tick - phaseStartTicks[row] >= RETURN_MAXIMUM_TICKS
+                returnTick >= RETURN_MAXIMUM_TICKS
             ) {
                 const command = commands
                     .entity(entities[row])
@@ -494,6 +513,7 @@ function writeTaskCurveTarget(
     targetY: number,
     targetZ: number,
     progress: number,
+    slot: number,
     outXs: Float32Array,
     outYs: Float32Array,
     outZs: Float32Array,
@@ -510,17 +530,31 @@ function writeTaskCurveTarget(
             : 0;
     const directionX = deltaX * inverseLength;
     const directionZ = deltaZ * inverseLength;
+    const sideX = -directionZ;
+    const sideZ = directionX;
+    const sideSign = (slot & 1) === 0 ? 1 : -1;
+    const lane = 1 + slot % TASK_CURVE_LANE_COUNT *
+        TASK_CURVE_LANE_STEP;
+    const lateral = sideSign * lane;
     const maximumY = Math.max(startY, targetY);
     const firstControlX =
-        startX + directionX * TASK_CURVE_FORWARD_CONTROL;
+        startX +
+        directionX * TASK_CURVE_FORWARD_CONTROL +
+        sideX * lateral;
     const firstControlY = maximumY + TASK_CURVE_FIRST_HEIGHT;
     const firstControlZ =
-        startZ + directionZ * TASK_CURVE_FORWARD_CONTROL;
+        startZ +
+        directionZ * TASK_CURVE_FORWARD_CONTROL +
+        sideZ * lateral;
     const secondControlX =
-        targetX - directionX * TASK_CURVE_APPROACH_DISTANCE;
+        targetX -
+        directionX * TASK_CURVE_APPROACH_DISTANCE -
+        sideX * lateral * TASK_CURVE_APPROACH_SWING;
     const secondControlY = maximumY + TASK_CURVE_SECOND_HEIGHT;
     const secondControlZ =
-        targetZ - directionZ * TASK_CURVE_APPROACH_DISTANCE;
+        targetZ -
+        directionZ * TASK_CURVE_APPROACH_DISTANCE -
+        sideZ * lateral * TASK_CURVE_APPROACH_SWING;
     const inverse = 1 - progress;
     const startWeight = inverse * inverse * inverse;
     const firstWeight = 3 * inverse * inverse * progress;
@@ -543,30 +577,85 @@ function writeTaskCurveTarget(
         targetWeight * targetZ;
 }
 
+function writeTaskReturnTarget(
+    x: number,
+    y: number,
+    z: number,
+    formationX: number,
+    formationY: number,
+    formationZ: number,
+    slot: number,
+    progress: number,
+    outXs: Float32Array,
+    outYs: Float32Array,
+    outZs: Float32Array,
+    row: number,
+): void {
+    const dx = formationX - x;
+    const dz = formationZ - z;
+    const horizontalLength = Math.sqrt(dx * dx + dz * dz);
+    const inverseLength = horizontalLength > TASK_DIRECTION_EPSILON
+        ? 1 / horizontalLength
+        : 0;
+    const directionX = dx * inverseLength;
+    const directionZ = dz * inverseLength;
+    const sideSign = (slot & 1) === 0 ? 1 : -1;
+    const lateral =
+        sideSign * RETURN_CURVE_LATERAL * (1 - progress);
+    const controlX =
+        (x + formationX) * 0.5 - directionZ * lateral;
+    const controlY =
+        Math.max(y, formationY) +
+        RETURN_CURVE_HEIGHT * (1 - progress);
+    const controlZ =
+        (z + formationZ) * 0.5 + directionX * lateral;
+    const t = RETURN_CURVE_LOOKAHEAD;
+    const inverse = 1 - t;
+    outXs[row] =
+        inverse * inverse * x +
+        2 * inverse * t * controlX +
+        t * t * formationX;
+    outYs[row] =
+        inverse * inverse * y +
+        2 * inverse * t * controlY +
+        t * t * formationY;
+    outZs[row] =
+        inverse * inverse * z +
+        2 * inverse * t * controlZ +
+        t * t * formationZ;
+}
+
 function smoothStep(value: number): number {
     const clamped = Math.max(0, Math.min(1, value));
     return clamped * clamped * (3 - 2 * clamped);
 }
 
-const RISE_TICKS = 14;
-const TASK_CURVE_TICKS = 34;
-const TASK_CURVE_LOOKAHEAD_TICKS = 4;
+const RISE_TICKS = 10;
+const TASK_CURVE_TICKS = 30;
+const TASK_CURVE_LOOKAHEAD_TICKS = 5;
 const RISE_END_PROGRESS =
     (RISE_TICKS + TASK_CURVE_LOOKAHEAD_TICKS) /
     TASK_CURVE_TICKS;
 const TASK_CURVE_FORWARD_CONTROL = 1.4;
-const TASK_CURVE_APPROACH_DISTANCE = 2.6;
-const TASK_CURVE_FIRST_HEIGHT = 5.2;
-const TASK_CURVE_SECOND_HEIGHT = 4.6;
+const TASK_CURVE_APPROACH_DISTANCE = 2.2;
+const TASK_CURVE_FIRST_HEIGHT = 2.35;
+const TASK_CURVE_SECOND_HEIGHT = 1.55;
+const TASK_CURVE_LANE_COUNT = 3;
+const TASK_CURVE_LANE_STEP = 0.28;
+const TASK_CURVE_APPROACH_SWING = 0.45;
 const TASK_DIRECTION_EPSILON = 1e-6;
-const RISE_SPEED_MULTIPLIER = 1.25;
-const RISE_ACCELERATION_MULTIPLIER = 1.05;
-const DIVE_SPEED_MULTIPLIER = 2.25;
-const DIVE_ACCELERATION_MULTIPLIER = 1.7;
-const DIVE_MAXIMUM_TICKS = 30;
+const RISE_SPEED_MULTIPLIER = 1.55;
+const RISE_ACCELERATION_MULTIPLIER = 1.35;
+const DIVE_SPEED_MULTIPLIER = 2.2;
+const DIVE_ACCELERATION_MULTIPLIER = 1.8;
+const DIVE_MAXIMUM_TICKS = 24;
 const DIVE_ARRIVAL_RADIUS = 0.28;
-const RETURN_SPEED_MULTIPLIER = 1.5;
-const RETURN_ACCELERATION_MULTIPLIER = 0.9;
-const RETURN_ARRIVAL_RADIUS = 0.32;
-const RETURN_MAXIMUM_TICKS = 120;
-const TASK_ARRIVAL_RADIUS = 0.12;
+const RETURN_CURVE_TICKS = 34;
+const RETURN_CURVE_LOOKAHEAD = 0.34;
+const RETURN_CURVE_LATERAL = 1.35;
+const RETURN_CURVE_HEIGHT = 0.9;
+const RETURN_SPEED_MULTIPLIER = 1.9;
+const RETURN_ACCELERATION_MULTIPLIER = 1.4;
+const RETURN_ARRIVAL_RADIUS = 0.28;
+const RETURN_MAXIMUM_TICKS = 64;
+const TASK_ARRIVAL_RADIUS = 0.08;

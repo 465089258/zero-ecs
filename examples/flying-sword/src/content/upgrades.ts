@@ -12,8 +12,8 @@ export enum RogueUpgrade {
     FormationPower,
     FormationTempo,
     FusionPower,
-    FusionCooldown,
-    FusionDistance,
+    FusionEfficiency,
+    FusionEndurance,
 }
 
 export class RogueUpgradeCatalog extends Resource {
@@ -45,8 +45,8 @@ export class RogueUpgradeCatalog extends Resource {
         "周天剑阵接触伤害提高 25%",
         "周天剑阵对同一目标的触发间隔缩短 15%",
         "身剑合一伤害提高 30%",
-        "身剑合一冷却缩短 15%",
-        "身剑合一突进距离增加 1.25 米",
+        "身剑合一每秒体力消耗降低 15%",
+        "最大体力增加 20，体力恢复提高 10%",
     ]);
 
     readonly count = this.names.length;

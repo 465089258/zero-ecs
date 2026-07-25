@@ -20,6 +20,7 @@ import {
     FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordGroupQuery,
+    FlyingSwordMember,
     FlyingSwordMode,
     FlyingSwordModule,
     PiercingCloudSkillPlan,
@@ -217,12 +218,20 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
     let maximumX = Number.NEGATIVE_INFINITY;
     let minimumForward = Number.POSITIVE_INFINITY;
     let swordCount = 0;
+    const beforeYs = new Float32Array(7);
+    const beforeZs = new Float32Array(7);
     const iter = game.world.query(FlyingSwordQuery).iter();
     while (iter.next()) {
-        const [count, , , , positions, directions] = iter.current;
+        const [count, , members, , positions, directions] =
+            iter.current;
+        const slots = members[FlyingSwordMember.Slot];
         const xs = positions[Float3.X];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
         const directionXs = directions[Float3.X];
         for (let row = 0; row < count; row++) {
+            beforeYs[slots[row]] = ys[row];
+            beforeZs[slots[row]] = zs[row];
             minimumX = Math.min(minimumX, xs[row]);
             maximumX = Math.max(maximumX, xs[row]);
             minimumForward = Math.min(
@@ -235,7 +244,26 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
     expect(swordCount).toBe(7);
     expect(minimumX).toBeGreaterThan(0.4);
     expect(maximumX - minimumX).toBeGreaterThan(2.5);
-    expect(minimumForward).toBeGreaterThan(0.94);
+    expect(minimumForward).toBeGreaterThan(0.82);
+
+    for (let tick = 0; tick < 6; tick++) game.update();
+    let radialMovement = 0;
+    const movingIter = game.world.query(FlyingSwordQuery).iter();
+    while (movingIter.next()) {
+        const [count, , members, , positions] = movingIter.current;
+        const slots = members[FlyingSwordMember.Slot];
+        const ys = positions[Float3.Y];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            radialMovement += Math.abs(
+                ys[row] - beforeYs[slots[row]],
+            );
+            radialMovement += Math.abs(
+                zs[row] - beforeZs[slots[row]],
+            );
+        }
+    }
+    expect(radialMovement).toBeGreaterThan(1);
 
     game.dispose();
 });
@@ -273,12 +301,17 @@ test("formation stance distributes swords across interwoven path radii", () => {
 
     let minimumRadius = Number.POSITIVE_INFINITY;
     let maximumRadius = Number.NEGATIVE_INFINITY;
+    const beforeXs = new Float32Array(9);
+    const beforeZs = new Float32Array(9);
     const iter = game.world.query(FlyingSwordQuery).iter();
     while (iter.next()) {
-        const [count, , , , positions] = iter.current;
+        const [count, , members, , positions] = iter.current;
+        const slots = members[FlyingSwordMember.Slot];
         const xs = positions[Float3.X];
         const zs = positions[Float3.Z];
         for (let row = 0; row < count; row++) {
+            beforeXs[slots[row]] = xs[row];
+            beforeZs[slots[row]] = zs[row];
             const radius = Math.sqrt(
                 xs[row] * xs[row] + zs[row] * zs[row],
             );
@@ -287,6 +320,23 @@ test("formation stance distributes swords across interwoven path radii", () => {
         }
     }
     expect(maximumRadius - minimumRadius).toBeGreaterThan(0.45);
+
+    for (let tick = 0; tick < 8; tick++) game.update();
+    let pathMovement = 0;
+    const movingIter = game.world.query(FlyingSwordQuery).iter();
+    while (movingIter.next()) {
+        const [count, , members, , positions] = movingIter.current;
+        const slots = members[FlyingSwordMember.Slot];
+        const xs = positions[Float3.X];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            pathMovement += Math.sqrt(
+                Math.pow(xs[row] - beforeXs[slots[row]], 2) +
+                Math.pow(zs[row] - beforeZs[slots[row]], 2),
+            );
+        }
+    }
+    expect(pathMovement).toBeGreaterThan(1.5);
 
     game.dispose();
 });
@@ -364,12 +414,12 @@ test("independent attack rises, opens a dive contact window, and returns on time
     expect(observedPhases.has(FlyingSwordTaskPhase.Rise)).toBe(true);
     expect(observedPhases.has(FlyingSwordTaskPhase.Dive)).toBe(true);
     expect(observedPhases.has(FlyingSwordTaskPhase.Return)).toBe(true);
-    expect(firstDiveTick).toBeGreaterThanOrEqual(12);
-    expect(firstDiveTick).toBeLessThanOrEqual(20);
+    expect(firstDiveTick).toBeGreaterThanOrEqual(8);
+    expect(firstDiveTick).toBeLessThanOrEqual(14);
     expect(firstContactTick).toBeGreaterThanOrEqual(firstDiveTick);
-    expect(peakY).toBeGreaterThan(3.4);
+    expect(peakY).toBeGreaterThan(2.2);
     expect(completionTick).toBeGreaterThan(0);
-    expect(completionTick).toBeLessThan(190);
+    expect(completionTick).toBeLessThan(140);
 
     game.dispose();
 });

@@ -1,5 +1,4 @@
 import {
-    Commands,
     INVALID_ENTITY,
     Update,
     World,
@@ -9,16 +8,12 @@ import {
 } from "@zero-ecs/game";
 import {
     FlyingSwordMember,
-    FlyingSwordService,
 } from "@zero-ecs/flying-sword";
 import { TimeState } from "@zero-ecs/game/time";
 import { Float3 } from "@zero-ecs/math/3d";
-import { MoveTowards3 } from "@zero-ecs/motion/3d";
-import { CultivatorMoveActiveTag } from "../../components";
 import {
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
-    PlayerMovement,
     SwordBodyUnity,
 } from "../components";
 import { RogueContentService } from "../content-service";
@@ -36,8 +31,6 @@ import {
     FUSION_BODY_HEIGHT,
     FUSION_CONTACT_COOLDOWN_TICKS,
     FUSION_HIT_RADIUS,
-    PLAYER_MOVEMENT_ACCELERATION,
-    PLAYER_MOVEMENT_ARRIVAL_RADIUS,
 } from "./combat-constants";
 import {
     clampGridCell,
@@ -51,24 +44,20 @@ export const collideSwordBodyUnitySystem = defSystem(
     Update.fixed,
     collideSwordBodyUnity,
     [
-        Commands,
         World,
         TimeState,
         EnemySpatialIndexState,
         RogueContentService,
-        FlyingSwordService,
         RoguePlayerQuery,
         RogueFlyingSwordCombatQuery,
     ],
 );
 
 function collideSwordBodyUnity(
-    commands: Commands,
     world: World,
     time: Readonly<TimeState>,
     index: Readonly<EnemySpatialIndexState>,
     content: RogueContentService,
-    flyingSwords: FlyingSwordService,
     players: Players,
     swords: CombatSwords,
 ): void {
@@ -80,12 +69,12 @@ function collideSwordBodyUnity(
             entities,
             positions,
             previousPositions,
-            velocities,
-            ,
-            motion,
             ,
             ,
-            movement,
+            ,
+            ,
+            ,
+            ,
             ,
             ,
             actions,
@@ -96,18 +85,7 @@ function collideSwordBodyUnity(
         const previousXs = previousPositions[Float3.X];
         const previousYs = previousPositions[Float3.Y];
         const previousZs = previousPositions[Float3.Z];
-        const velocityXs = velocities[Float3.X];
-        const velocityYs = velocities[Float3.Y];
-        const velocityZs = velocities[Float3.Z];
-        const targetXs = motion[MoveTowards3.TargetX];
-        const targetYs = motion[MoveTowards3.TargetY];
-        const targetZs = motion[MoveTowards3.TargetZ];
-        const maximumSpeeds = motion[MoveTowards3.MaximumSpeed];
-        const accelerations = motion[MoveTowards3.Acceleration];
-        const arrivalRadii = motion[MoveTowards3.ArrivalRadius];
-        const movementSpeeds = movement[PlayerMovement.Speed];
         const active = actions[SwordBodyUnity.Active];
-        const endTicks = actions[SwordBodyUnity.EndTick];
         const damages = actions[SwordBodyUnity.Damage];
         const groups = actions[SwordBodyUnity.Group];
         for (let row = 0; row < count; row++) {
@@ -137,33 +115,6 @@ function collideSwordBodyUnity(
                 damages[row],
                 swords,
             );
-            const dx = targetXs[row] - xs[row];
-            const dy = targetYs[row] - ys[row];
-            const dz = targetZs[row] - zs[row];
-            const arrival = arrivalRadii[row];
-            if (
-                tick < endTicks[row] &&
-                dx * dx + dy * dy + dz * dz > arrival * arrival
-            ) {
-                continue;
-            }
-            active[row] = 0;
-            targetXs[row] = xs[row];
-            targetYs[row] = ys[row];
-            targetZs[row] = zs[row];
-            maximumSpeeds[row] = movementSpeeds[row];
-            accelerations[row] = PLAYER_MOVEMENT_ACCELERATION;
-            arrivalRadii[row] = PLAYER_MOVEMENT_ARRIVAL_RADIUS;
-            velocityXs[row] = 0;
-            velocityYs[row] = 0;
-            velocityZs[row] = 0;
-            commands
-                .entity(entities[row])
-                .remove(CultivatorMoveActiveTag)
-                .submit();
-            if (groups[row] !== INVALID_ENTITY) {
-                flyingSwords.endActiveFormation(groups[row] as Entity);
-            }
         }
     }
 }

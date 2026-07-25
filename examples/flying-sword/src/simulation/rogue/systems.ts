@@ -56,6 +56,7 @@ import {
     HealthType,
     LevelExperience,
     PlayerPickup,
+    PlayerStamina,
     PlayerMovement,
     RogueRunClock,
     RogueRunIdentity,
@@ -576,6 +577,7 @@ function applyUpgradeToPlayer(
             ,
             pickup,
             actions,
+            stamina,
         ] = iter.current;
         if (count === 0) continue;
         if (upgrade === RogueUpgrade.BodyTechnique) {
@@ -592,15 +594,18 @@ function applyUpgradeToPlayer(
             pickup[PlayerPickup.AttractionRadius][0] *= 1.25;
         } else if (upgrade === RogueUpgrade.FusionPower) {
             actions[SwordBodyUnity.Damage][0] *= 1.3;
-        } else if (upgrade === RogueUpgrade.FusionCooldown) {
-            actions[SwordBodyUnity.CooldownTicks][0] = Math.max(
-                MINIMUM_FUSION_COOLDOWN_TICKS,
-                Math.floor(
-                    actions[SwordBodyUnity.CooldownTicks][0] * 0.85,
-                ),
+        } else if (upgrade === RogueUpgrade.FusionEfficiency) {
+            stamina[PlayerStamina.DrainPerSecond][0] = Math.max(
+                MINIMUM_FUSION_STAMINA_DRAIN,
+                stamina[PlayerStamina.DrainPerSecond][0] * 0.85,
             );
-        } else if (upgrade === RogueUpgrade.FusionDistance) {
-            actions[SwordBodyUnity.DashDistance][0] += 1.25;
+        } else if (upgrade === RogueUpgrade.FusionEndurance) {
+            stamina[PlayerStamina.Maximum][0] += 20;
+            stamina[PlayerStamina.Current][0] = Math.min(
+                stamina[PlayerStamina.Maximum][0],
+                stamina[PlayerStamina.Current][0] + 20,
+            );
+            stamina[PlayerStamina.RecoveryPerSecond][0] *= 1.1;
         }
         return;
     }
@@ -1192,4 +1197,4 @@ const PLAYER_RADIUS = 0.48;
 const MAX_FLYING_SWORD_UPGRADE_COUNT = 49;
 const HIT_FLASH_TICKS = 5;
 const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
-const MINIMUM_FUSION_COOLDOWN_TICKS = 45;
+const MINIMUM_FUSION_STAMINA_DRAIN = 10;

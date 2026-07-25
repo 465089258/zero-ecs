@@ -8,6 +8,7 @@ export class DemoViewResource extends Resource {
         readonly canvas: HTMLCanvasElement,
         readonly status: HTMLElement,
         readonly healthFill: HTMLElement,
+        readonly staminaFill: HTMLElement,
         readonly experienceFill: HTMLElement,
         readonly level: HTMLElement,
         readonly skill: HTMLElement,

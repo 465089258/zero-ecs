@@ -157,6 +157,14 @@ canvas {
     background: linear-gradient(90deg, #8d2530, #f15d64);
 }
 
+.stamina-meter {
+    height: 7px;
+}
+
+.stamina-meter span {
+    background: linear-gradient(90deg, #b98236, #ffe09b);
+}
+
 .experience-meter {
     height: 6px;
 }
