@@ -223,6 +223,18 @@ implements Component<FlyingSwordContactCooldown> {
     readonly [FlyingSwordContactCooldown.FusionNextTick] = Types.U32;
 }
 
+/** 敌人供表现层读取的战斗反馈事实。 */
+export enum EnemyFeedback {
+    TargetedSwordCount,
+    HitFlashEndTick,
+}
+
+export class EnemyFeedbackType
+implements Component<EnemyFeedback> {
+    readonly [EnemyFeedback.TargetedSwordCount] = Types.U16;
+    readonly [EnemyFeedback.HitFlashEndTick] = Types.U32;
+}
+
 /** 玩家身剑合一动作；常驻组件避免动作开始时迁移玩家 Archetype。 */
 export enum SwordBodyUnity {
     Active,

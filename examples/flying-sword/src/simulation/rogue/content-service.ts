@@ -26,6 +26,8 @@ import {
     EnemyBodyType,
     EnemyCombat,
     EnemyCombatType,
+    EnemyFeedback,
+    EnemyFeedbackType,
     EnemyIdentity,
     EnemyIdentityType,
     ExperiencePickup,
@@ -65,6 +67,7 @@ export class RogueContentService extends Service {
             .add(EnemyIdentityType)
             .add(EnemyBodyType)
             .add(EnemyCombatType)
+            .add(EnemyFeedbackType)
             .add(HealthType)
             .add(ExperienceRewardType)
             .add(FlyingSwordContactCooldownType)
@@ -118,6 +121,12 @@ export class RogueContentService extends Service {
                 catalog.contactDamage[kind],
             )
             .set(EnemyCombatType, EnemyCombat.NextContactTick, 0)
+            .set(
+                EnemyFeedbackType,
+                EnemyFeedback.TargetedSwordCount,
+                0,
+            )
+            .set(EnemyFeedbackType, EnemyFeedback.HitFlashEndTick, 0)
             .set(HealthType, Health.Current, health)
             .set(HealthType, Health.Maximum, health)
             .set(

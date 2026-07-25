@@ -45,6 +45,8 @@ import {
     EnemyBodyType,
     EnemyCombat,
     EnemyDirector,
+    EnemyFeedback,
+    EnemyFeedbackType,
     EnemyIdentity,
     ExperiencePickup,
     ExperienceReward,
@@ -169,6 +171,7 @@ export const resolveRogueDamageSystem = defSystem(
     [
         Commands,
         World,
+        TimeState,
         Write(RogueEntityAccessState),
         RogueDamageRequestQuery,
     ],
@@ -886,12 +889,14 @@ function collideEnemiesWithPlayer(
 function resolveRogueDamage(
     commands: Commands,
     world: World,
+    time: Readonly<TimeState>,
     scratch: Mut<RogueEntityAccessState>,
     requests: DamageRequests,
 ): void {
     const component = world.findComponent(HealthType);
     if (!component) return;
     const componentId = component.id;
+    const feedbackId = world.findComponent(EnemyFeedbackType)?.id;
     const access = scratch.access;
     const iter = requests.iter();
     while (iter.next()) {
@@ -909,10 +914,22 @@ function resolveRogueDamage(
                     const localRow =
                         access.archetype.rowIdxOf(access.row);
                     const current = health[Health.Current];
+                    const amount = Math.max(0, amounts[row]);
                     current[localRow] = Math.max(
                         0,
-                        current[localRow] - Math.max(0, amounts[row]),
+                        current[localRow] - amount,
                     );
+                    if (amount > 0 && feedbackId !== undefined) {
+                        const feedback = access.archetype.getComp(
+                            access.row,
+                            feedbackId,
+                        ) as ComponentColumns<EnemyFeedbackType> | null;
+                        if (feedback) {
+                            feedback[EnemyFeedback.HitFlashEndTick][
+                                localRow
+                            ] = time.tick + HIT_FLASH_TICKS;
+                        }
+                    }
                 }
             }
             commands.entity(entities[row]).despawn().submit();
@@ -1142,3 +1159,4 @@ const PLAYER_MOVEMENT_ACCELERATION = 48;
 const PLAYER_MOVEMENT_ARRIVAL_RADIUS = 0.04;
 const PLAYER_RADIUS = 0.48;
 const MAX_FLYING_SWORD_UPGRADE_COUNT = 49;
+const HIT_FLASH_TICKS = 5;

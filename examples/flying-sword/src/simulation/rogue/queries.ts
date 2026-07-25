@@ -26,6 +26,7 @@ import {
     EnemyBodyType,
     EnemyCombatType,
     EnemyDirectorType,
+    EnemyFeedbackType,
     EnemyIdentityType,
     ExperiencePickupType,
     ExperienceRewardType,
@@ -90,6 +91,12 @@ export const RogueEnemyRenderQuery = QueryType.from(With(
     EnemyIdentityType,
     EnemyBodyType,
     HealthType,
+    EnemyFeedbackType,
+));
+
+/** 战斗快照只写表现反馈列，避免依赖敌人的完整玩法组件集合。 */
+export const RogueEnemyFeedbackQuery = QueryType.from(With(
+    EnemyFeedbackType,
 ));
 
 export const RogueExperiencePickupQuery = QueryType.from(With(

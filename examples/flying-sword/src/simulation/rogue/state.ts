@@ -89,6 +89,7 @@ export class CombatScratchState extends State {
     readonly formationGroups = new Set<Entity>();
     readonly groupDamages = new Map<Entity, number>();
     readonly groupReattackDelays = new Map<Entity, number>();
+    readonly targetedSwordCounts = new Map<Entity, number>();
 
     reset(required: number): void {
         this.actionCount = 0;
@@ -115,6 +116,7 @@ export class CombatScratchState extends State {
         this.formationGroups.clear();
         this.groupDamages.clear();
         this.groupReattackDelays.clear();
+        this.targetedSwordCounts.clear();
         this.actionCount = 0;
     }
 }

@@ -1,4 +1,5 @@
 import {
+    INVALID_ENTITY,
     Update,
     Write,
     defSystem,
@@ -17,8 +18,16 @@ import {
     FlyingSwordStance,
     FlyingSwordTaskQuery,
 } from "@zero-ecs/flying-sword";
-import { AutoFlyingSwordSkill } from "../components";
-import { RogueAutoFlyingSwordGroupQuery } from "../queries";
+import {
+    AutoFlyingSwordSkill,
+    EnemyFeedback,
+    FlyingSwordCombat,
+} from "../components";
+import {
+    RogueAutoFlyingSwordGroupQuery,
+    RogueEnemyFeedbackQuery,
+    RogueFlyingSwordCombatQuery,
+} from "../queries";
 import { CombatScratchState } from "../state";
 import { DEFAULT_SWORD_DAMAGE } from "./combat-constants";
 
@@ -27,6 +36,8 @@ type SkillActions = QueryOf<typeof FlyingSwordSkillActionQuery>;
 type SwordTasks = QueryOf<typeof FlyingSwordTaskQuery>;
 type SwordActions = QueryOf<typeof FlyingSwordActionQuery>;
 type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
+type CombatSwords = QueryOf<typeof RogueFlyingSwordCombatQuery>;
+type EnemyFeedbacks = QueryOf<typeof RogueEnemyFeedbackQuery>;
 
 export const snapshotFlyingSwordCombatSystem = defSystem(
     Update.fixed,
@@ -38,6 +49,8 @@ export const snapshotFlyingSwordCombatSystem = defSystem(
         FlyingSwordTaskQuery,
         FlyingSwordActionQuery,
         FlyingSwordGroupQuery,
+        RogueFlyingSwordCombatQuery,
+        RogueEnemyFeedbackQuery,
     ],
 );
 
@@ -48,9 +61,40 @@ function snapshotFlyingSwordCombat(
     tasks: SwordTasks,
     actions: SwordActions,
     swordGroups: SwordGroups,
+    swords: CombatSwords,
+    enemyFeedbacks: EnemyFeedbacks,
 ): void {
     buildActionSnapshots(scratch, skillActions, groups);
     buildCombatMembership(scratch, tasks, actions, swordGroups);
+    buildTargetFeedback(scratch, swords, enemyFeedbacks);
+}
+
+function buildTargetFeedback(
+    scratch: Mut<CombatScratchState>,
+    swords: CombatSwords,
+    enemies: EnemyFeedbacks,
+): void {
+    const counts = scratch.targetedSwordCounts;
+    counts.clear();
+    const swordIter = swords.iter();
+    while (swordIter.next()) {
+        const [count, , , , , , combat] = swordIter.current;
+        const targets = combat[FlyingSwordCombat.Target];
+        for (let row = 0; row < count; row++) {
+            const target = targets[row];
+            if (target === INVALID_ENTITY) continue;
+            counts.set(target, (counts.get(target) ?? 0) + 1);
+        }
+    }
+    const enemyIter = enemies.iter();
+    while (enemyIter.next()) {
+        const [count, entities, feedback] = enemyIter.current;
+        const targeted =
+            feedback[EnemyFeedback.TargetedSwordCount];
+        for (let row = 0; row < count; row++) {
+            targeted[row] = counts.get(entities[row]) ?? 0;
+        }
+    }
 }
 
 function buildActionSnapshots(

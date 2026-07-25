@@ -41,6 +41,7 @@ const view = new DemoViewResource(
     element("health-fill", HTMLElement),
     element("experience-fill", HTMLElement),
     element("hud-level", HTMLElement),
+    element("hud-skill", HTMLElement),
     element("hud-time", HTMLElement),
     element("hud-kills", HTMLElement),
     element("hud-enemies", HTMLElement),

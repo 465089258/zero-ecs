@@ -115,9 +115,22 @@ canvas {
     font-weight: 650;
 }
 
-.hud-row span:nth-child(2) {
+.hud-row span:nth-child(3) {
     margin-left: auto;
     font-family: "Cascadia Mono", monospace;
+}
+
+#hud-skill {
+    border: 1px solid rgba(101, 221, 191, 0.3);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: #8faea7;
+    background: rgba(3, 12, 13, 0.62);
+}
+
+#hud-skill[data-ready="true"] {
+    border-color: rgba(255, 208, 116, 0.7);
+    color: #ffe09b;
 }
 
 .meter {

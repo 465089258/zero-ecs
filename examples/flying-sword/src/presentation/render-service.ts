@@ -43,6 +43,7 @@ import { RogueUpgradeCatalog } from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
 import {
     EnemyBody,
+    EnemyFeedback,
     EnemyIdentity,
     ExperiencePickup,
     Health,
@@ -78,6 +79,7 @@ enum RenderKind {
     Enemy,
     Experience,
     Sword,
+    FusionAura,
     Damage,
 }
 
@@ -96,6 +98,11 @@ interface DemoRenderItem extends DepthRenderItem {
     amount: number;
     alpha: number;
     style: number;
+    targeted: number;
+    flash: number;
+    trailX: number;
+    trailY: number;
+    trailStrength: number;
 }
 
 /** 示例专属 Canvas 表现后端。 */
@@ -135,6 +142,11 @@ export class DemoRenderService extends Service {
         amount: 0,
         alpha: 1,
         style: DamageDisplayStyle.Dealt,
+        targeted: 0,
+        flash: 0,
+        trailX: 0,
+        trailY: 0,
+        trailStrength: 0,
     }));
     private readonly swordSprites: SwordSprite[] = SWORD_SPRITES.map(definition => ({
         ...definition,
@@ -168,6 +180,7 @@ export class DemoRenderService extends Service {
     private totalSwordCount = 0;
     private visibleSwordCount = 0;
     private visibleEnemyCount = 0;
+    private swordTrailCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -234,6 +247,7 @@ export class DemoRenderService extends Service {
         swords: Swords,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
+        const tick = this.readRunTick(runs);
         this.followCultivator(
             cultivators,
             scene.cultivator,
@@ -241,15 +255,15 @@ export class DemoRenderService extends Service {
         );
         this.beginFrame();
         this.drawGroundGrid();
-        this.drawGroundTargets(scene, runs, skillPhase);
+        this.drawGroundTargets(scene, runs, skillPhase, tick);
         this.queue.begin();
-        this.collectCultivators(cultivators, interpolation);
-        this.collectEnemies(enemies, interpolation);
+        this.collectCultivators(cultivators, interpolation, tick);
+        this.collectEnemies(enemies, interpolation, tick);
         this.collectExperience(pickups, interpolation);
         this.collectSwords(swords, interpolation);
         this.collectDamageDisplays(
             damages,
-            this.readRunTick(runs),
+            tick,
             interpolation,
         );
         this.queue.sort();
@@ -269,6 +283,7 @@ export class DemoRenderService extends Service {
         this.totalSwordCount = 0;
         this.visibleSwordCount = 0;
         this.visibleEnemyCount = 0;
+        this.swordTrailCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -314,8 +329,18 @@ export class DemoRenderService extends Service {
         scene: Readonly<DemoSceneState>,
         runs: Runs,
         skillPhase: FlyingSwordSkillPhaseValue,
+        tick: number,
     ): void {
         const context = this.view.context;
+        if (scene.stance === FlyingSwordStance.Formation) {
+            this.camera.project(
+                this.followedX,
+                0,
+                this.followedZ,
+                this.projected,
+            );
+            drawFormationGroundAura(context, this.projected, tick);
+        }
         if (scene.hasMoveTarget) {
             this.camera.project(
                 scene.moveTargetX,
@@ -384,17 +409,33 @@ export class DemoRenderService extends Service {
     private collectCultivators(
         cultivators: Cultivators,
         interpolation: number,
+        tick: number,
     ): void {
         const iter = cultivators.iter();
         while (iter.next()) {
-            const [count, entities, positions, previousPositions] =
-                iter.current;
+            const [
+                count,
+                entities,
+                positions,
+                previousPositions,
+                ,
+                ,
+                ,
+                ,
+                ,
+                ,
+                ,
+                ,
+                actions,
+            ] = iter.current;
             const previousXs = previousPositions[Float3.X];
             const previousYs = previousPositions[Float3.Y];
             const previousZs = previousPositions[Float3.Z];
             const xs = positions[Float3.X];
             const ys = positions[Float3.Y];
             const zs = positions[Float3.Z];
+            const active = actions[SwordBodyUnity.Active];
+            const startTicks = actions[SwordBodyUnity.StartTick];
             for (let row = 0; row < count; row++) {
                 const x = lerp(previousXs[row], xs[row], interpolation);
                 const y = lerp(previousYs[row], ys[row], interpolation);
@@ -427,6 +468,30 @@ export class DemoRenderService extends Service {
                 item.width = CULTIVATOR_WIDTH;
                 item.height = CULTIVATOR_HEIGHT;
                 item.color = "#c9f5e7";
+                if (active[row] !== 0) {
+                    const currentX = this.projected.x;
+                    const currentY = this.projected.y;
+                    const currentDepth = this.projected.depth;
+                    this.camera.project(
+                        previousXs[row],
+                        previousYs[row],
+                        previousZs[row],
+                        this.projectedSecond,
+                    );
+                    const aura = this.queue.acquire();
+                    aura.kind = RenderKind.FusionAura;
+                    aura.sprite = 0;
+                    aura.layer = DemoRenderLayer.ForegroundEffect;
+                    aura.depth = currentDepth;
+                    aura.subOrder = 0;
+                    aura.stableId = entities[row] * 8 + 2;
+                    aura.x1 = currentX;
+                    aura.y1 = currentY;
+                    aura.x2 = this.projectedSecond.x;
+                    aura.y2 = this.projectedSecond.y;
+                    aura.amount =
+                        tick + interpolation - startTicks[row];
+                }
             }
         }
     }
@@ -434,6 +499,7 @@ export class DemoRenderService extends Service {
     private collectEnemies(
         enemies: Enemies,
         interpolation: number,
+        tick: number,
     ): void {
         const iter = enemies.iter();
         while (iter.next()) {
@@ -445,6 +511,7 @@ export class DemoRenderService extends Service {
                 identities,
                 bodies,
                 health,
+                feedback,
             ] = iter.current;
             const previousXs = previousPositions[Float3.X];
             const previousYs = previousPositions[Float3.Y];
@@ -456,6 +523,10 @@ export class DemoRenderService extends Service {
             const radii = bodies[EnemyBody.Radius];
             const currentHealth = health[Health.Current];
             const maximumHealth = health[Health.Maximum];
+            const targeted =
+                feedback[EnemyFeedback.TargetedSwordCount];
+            const flashEndTicks =
+                feedback[EnemyFeedback.HitFlashEndTick];
             for (let row = 0; row < count; row++) {
                 if (currentHealth[row] <= 0) continue;
                 const x = lerp(previousXs[row], xs[row], interpolation);
@@ -493,6 +564,10 @@ export class DemoRenderService extends Service {
                 item.height = sprite.height;
                 item.health = maximumHealth[row] > 0
                     ? currentHealth[row] / maximumHealth[row]
+                    : 0;
+                item.targeted = targeted[row];
+                item.flash = tick + interpolation < flashEndTicks[row]
+                    ? 1
                     : 0;
                 this.visibleEnemyCount++;
             }
@@ -595,6 +670,8 @@ export class DemoRenderService extends Service {
                 if (!this.isVisible(this.projected.x, this.projected.y)) {
                     continue;
                 }
+                const centerScreenX = this.projected.x;
+                const centerScreenY = this.projected.y;
 
                 const forwardX = forwardXs[row];
                 const forwardY = forwardYs[row];
@@ -665,6 +742,35 @@ export class DemoRenderService extends Service {
                 sword.y2 = this.projectedSecond.y;
                 sword.colorIndex = colorIndex;
                 sword.color = SWORD_COLORS[colorIndex];
+                const movementX = xs[row] - previousXs[row];
+                const movementY = ys[row] - previousYs[row];
+                const movementZ = zs[row] - previousZs[row];
+                const movementSquared =
+                    movementX * movementX +
+                    movementY * movementY +
+                    movementZ * movementZ;
+                if (
+                    movementSquared > SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED &&
+                    this.swordTrailCount < MAX_SWORD_TRAILS
+                ) {
+                    this.camera.project(
+                        previousXs[row],
+                        previousYs[row],
+                        previousZs[row],
+                        this.projected,
+                    );
+                    sword.trailX = this.projected.x;
+                    sword.trailY = this.projected.y;
+                    sword.trailStrength = Math.min(
+                        1,
+                        Math.sqrt(movementSquared) * 2.5,
+                    );
+                    this.swordTrailCount++;
+                } else {
+                    sword.trailX = centerScreenX;
+                    sword.trailY = centerScreenY;
+                    sword.trailStrength = 0;
+                }
                 this.visibleSwordCount++;
                 this.nearestDepth = Math.min(this.nearestDepth, sword.depth);
                 this.farthestDepth = Math.max(this.farthestDepth, sword.depth);
@@ -767,21 +873,40 @@ export class DemoRenderService extends Service {
                     this.actorSprites[item.sprite],
                 );
             } else if (item.kind === RenderKind.Enemy) {
+                if (item.targeted > 0) {
+                    drawEnemyTargetIndicator(context, item);
+                }
                 drawActorSprite(
                     context,
                     item,
                     this.actorSprites[item.sprite],
                 );
+                if (item.flash !== 0) {
+                    context.globalAlpha = 0.72;
+                    context.filter = "brightness(3) grayscale(1)";
+                    drawActorSprite(
+                        context,
+                        item,
+                        this.actorSprites[item.sprite],
+                    );
+                    context.filter = "none";
+                    context.globalAlpha = 1;
+                }
                 if (item.health < 0.999) drawEnemyHealth(context, item);
             } else if (item.kind === RenderKind.Experience) {
                 drawExperience(context, item);
             } else if (item.kind === RenderKind.Sword) {
+                if (item.trailStrength > 0) {
+                    drawSwordTrail(context, item);
+                }
                 const sprite = this.swordSprites[item.sprite];
                 if (sprite.glowVariants[item.colorIndex]) {
                     drawSwordSprite(context, item, sprite);
                 } else {
                     drawSwordFallback(context, item);
                 }
+            } else if (item.kind === RenderKind.FusionAura) {
+                drawFusionAura(context, item);
             } else if (item.kind === RenderKind.Damage) {
                 drawDamageDisplay(context, item);
             }
@@ -835,6 +960,7 @@ export class DemoRenderService extends Service {
         let experience = 0;
         let requiredExperience = 1;
         let fusionActive = false;
+        let fusionCooldownEndTick = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -861,6 +987,8 @@ export class DemoRenderService extends Service {
                 levelData[LevelExperience.Required][0];
             fusionActive =
                 actionData[SwordBodyUnity.Active][0] !== 0;
+            fusionCooldownEndTick =
+                actionData[SwordBodyUnity.CooldownEndTick][0];
             break;
         }
 
@@ -872,6 +1000,20 @@ export class DemoRenderService extends Service {
                 Math.min(100, experience / requiredExperience * 100),
             )}%`;
         this.view.level.textContent = `炼气 ${level} 层`;
+        const fusionCooldownTicks = Math.max(
+            0,
+            fusionCooldownEndTick - tick,
+        );
+        this.view.skill.dataset.ready = String(
+            !fusionActive && fusionCooldownTicks === 0,
+        );
+        this.view.skill.textContent = fusionActive
+            ? "身剑合一 · 突进"
+            : fusionCooldownTicks === 0
+                ? "空格 · 身剑合一"
+                : `身剑合一 ${(
+                    Math.ceil(fusionCooldownTicks / 6) / 10
+                ).toFixed(1)}s`;
         this.view.elapsed.textContent = formatRunTime(tick);
         this.view.kills.textContent = String(kills);
         this.view.enemyCount.textContent = String(activeEnemies);
@@ -1011,6 +1153,131 @@ const ACTOR_SPRITES = [
     { url: stoneGolemUrl, width: 105, height: 112 },
     { url: swordWraithUrl, width: 89, height: 104 },
 ] as const;
+
+function drawFormationGroundAura(
+    context: CanvasRenderingContext2D,
+    point: Readonly<ProjectedPoint>,
+    tick: number,
+): void {
+    const pulse = 1 + Math.sin(tick * 0.1) * 0.06;
+    context.globalAlpha = 0.52;
+    context.strokeStyle = "#69f7d0";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(
+        point.x,
+        point.y,
+        92 * pulse,
+        39 * pulse,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    context.globalAlpha = 0.18;
+    context.lineWidth = 7;
+    context.beginPath();
+    context.ellipse(
+        point.x,
+        point.y,
+        75 / pulse,
+        31 / pulse,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    context.globalAlpha = 1;
+}
+
+function drawEnemyTargetIndicator(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const radiusX = Math.min(42, item.width * 0.42);
+    const radiusY = Math.max(11, radiusX * 0.34);
+    const y = item.y1 - 1;
+    context.globalAlpha = Math.min(0.9, 0.5 + item.targeted * 0.08);
+    context.strokeStyle = "#ffd074";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(item.x1, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(item.x1 - 7, item.y1 - item.height - 3);
+    context.lineTo(item.x1, item.y1 - item.height + 4);
+    context.lineTo(item.x1 + 7, item.y1 - item.height - 3);
+    context.stroke();
+    context.globalAlpha = 1;
+}
+
+function drawSwordTrail(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const centerX = (item.x1 + item.x2) * 0.5;
+    const centerY = (item.y1 + item.y2) * 0.5;
+    context.strokeStyle = item.color;
+    context.globalAlpha = 0.12 * item.trailStrength;
+    context.lineWidth = 9;
+    context.beginPath();
+    context.moveTo(item.trailX, item.trailY);
+    context.lineTo(centerX, centerY);
+    context.stroke();
+    context.globalAlpha = 0.58 * item.trailStrength;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(item.trailX, item.trailY);
+    context.lineTo(centerX, centerY);
+    context.stroke();
+    context.globalAlpha = 1;
+}
+
+function drawFusionAura(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const centerY = item.y1 - 38;
+    const previousY = item.y2 - 38;
+    context.strokeStyle = "#8ee8ff";
+    context.globalAlpha = 0.2;
+    context.lineWidth = 18;
+    context.beginPath();
+    context.moveTo(item.x2, previousY);
+    context.lineTo(item.x1, centerY);
+    context.stroke();
+    context.globalAlpha = 0.82;
+    context.lineWidth = 2;
+    const rotation = item.amount * 0.42;
+    for (let index = 0; index < 3; index++) {
+        const angle = rotation + index * Math.PI * 2 / 3;
+        const radiusX = 27;
+        const radiusY = 42;
+        const x = item.x1 + Math.cos(angle) * radiusX;
+        const y = centerY + Math.sin(angle) * radiusY;
+        context.beginPath();
+        context.moveTo(item.x1, centerY);
+        context.lineTo(x, y);
+        context.stroke();
+        context.fillStyle = index === 0 ? "#f2fbff" : "#69f7d0";
+        context.beginPath();
+        context.arc(x, y, 3.5, 0, Math.PI * 2);
+        context.fill();
+    }
+    context.globalAlpha = 0.42;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        centerY,
+        30,
+        44,
+        rotation * 0.08,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    context.globalAlpha = 1;
+}
 
 function drawActorSprite(
     context: CanvasRenderingContext2D,
@@ -1256,3 +1523,5 @@ const CAMERA_TARGET_FORWARD_OFFSET = 2.2;
 const SPRITE_GLOW_PADDING = 12;
 const SPRITE_GLOW_BLUR = 9;
 const STATUS_UPDATE_INTERVAL_FRAMES = 6;
+const MAX_SWORD_TRAILS = 160;
+const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
