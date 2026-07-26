@@ -19,6 +19,8 @@ import {
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,
     FlyingSwordControl,
+    FlyingSwordFormationPlan,
+    FlyingSwordFormationPlanId,
     FlyingSwordGroupQuery,
     FlyingSwordMember,
     FlyingSwordMode,
@@ -337,6 +339,88 @@ test("formation stance distributes swords across interwoven path radii", () => {
         }
     }
     expect(pathMovement).toBeGreaterThan(1.5);
+
+    game.dispose();
+});
+
+test("formation plan request changes authoritative sword paths", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const swordCount = 7;
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: swordCount,
+        orbitRadius: 3,
+        orbitHeight: 1,
+        angularSpeed: 1,
+    });
+    for (let slot = 0; slot < swordCount; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 30,
+            acceleration: 100,
+        });
+    }
+    game.update();
+    flyingSwords.setStance(group, FlyingSwordStance.Formation);
+    for (let tick = 0; tick < 90; tick++) game.update();
+
+    const beforeXs = new Float32Array(swordCount);
+    const beforeZs = new Float32Array(swordCount);
+    const beforeIter = game.world.query(FlyingSwordQuery).iter();
+    while (beforeIter.next()) {
+        const [count, , members, , positions] = beforeIter.current;
+        const slots = members[FlyingSwordMember.Slot];
+        const xs = positions[Float3.X];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            beforeXs[slots[row]] = xs[row];
+            beforeZs[slots[row]] = zs[row];
+        }
+    }
+
+    flyingSwords.setFormationPlan(
+        group,
+        FlyingSwordFormationPlanId.Lotus,
+    );
+    for (let tick = 0; tick < 90; tick++) game.update();
+
+    const groupIter = game.world.query(FlyingSwordGroupQuery).iter();
+    expect(groupIter.next()).toBe(true);
+    const [, , , , , , , , plans] = groupIter.current;
+    expect(plans[FlyingSwordFormationPlan.Plan][0])
+        .toBe(FlyingSwordFormationPlanId.Lotus);
+
+    let totalDifference = 0;
+    const afterIter = game.world.query(FlyingSwordQuery).iter();
+    while (afterIter.next()) {
+        const [count, , members, , positions] = afterIter.current;
+        const slots = members[FlyingSwordMember.Slot];
+        const xs = positions[Float3.X];
+        const zs = positions[Float3.Z];
+        for (let row = 0; row < count; row++) {
+            totalDifference += Math.abs(
+                xs[row] - beforeXs[slots[row]],
+            );
+            totalDifference += Math.abs(
+                zs[row] - beforeZs[slots[row]],
+            );
+        }
+    }
+    expect(totalDifference).toBeGreaterThan(3);
+    expect(() => flyingSwords.setFormationPlan(group, 0xffff))
+        .toThrow(/Unknown flying sword formation plan/);
 
     game.dispose();
 });

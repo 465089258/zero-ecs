@@ -14,12 +14,18 @@ import {
     Float3,
 } from "@zero-ecs/math/3d";
 import { MotionSystemSet } from "@zero-ecs/motion/3d";
+import { FlyingSwordFormationCatalog } from "../formation-catalog";
+import type {
+    FlyingSwordFormationRouteSample,
+    FlyingSwordFormationSlotSample,
+} from "../formation-types";
 import { FlyingSwordSystemSet } from "../system-set";
 import {
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordFormation,
+    FlyingSwordFormationPlan,
     FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
@@ -33,6 +39,7 @@ import {
     FocusFlyingSwordRequestStorageQuery,
     SetFlyingSwordCenterRequestStorageQuery,
     SetFlyingSwordFormationSizeRequestStorageQuery,
+    SetFlyingSwordFormationPlanRequestStorageQuery,
     SetFlyingSwordModeRequestStorageQuery,
     SetFlyingSwordActiveFormationRequestStorageQuery,
     SetFlyingSwordStanceRequestStorageQuery,
@@ -42,11 +49,13 @@ import {
     FlyingSwordBehaviorStorage,
     FlyingSwordControlStorage,
     FlyingSwordFormationStorage,
+    FlyingSwordFormationPlanStorage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupTarget3Storage,
     FocusFlyingSwordRequest,
     SetFlyingSwordCenterRequest,
     SetFlyingSwordFormationSizeRequest,
+    SetFlyingSwordFormationPlanRequest,
     SetFlyingSwordModeRequest,
     SetFlyingSwordActiveFormationRequest,
     SetFlyingSwordStanceRequest,
@@ -62,6 +71,8 @@ type ModeRequests =
     QueryOf<typeof SetFlyingSwordModeRequestStorageQuery>;
 type FormationSizeRequests =
     QueryOf<typeof SetFlyingSwordFormationSizeRequestStorageQuery>;
+type FormationPlanRequests =
+    QueryOf<typeof SetFlyingSwordFormationPlanRequestStorageQuery>;
 type StanceRequests =
     QueryOf<typeof SetFlyingSwordStanceRequestStorageQuery>;
 type ActiveFormationRequests =
@@ -113,6 +124,18 @@ export const applyFlyingSwordFormationSizeRequestsSystem = defSystem(
     ],
 );
 
+export const applyFlyingSwordFormationPlanRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordFormationPlanRequests,
+    [
+        Commands,
+        World,
+        Write(FlyingSwordEntityAccessState),
+        FlyingSwordFormationCatalog,
+        SetFlyingSwordFormationPlanRequestStorageQuery,
+    ],
+);
+
 export const applyFlyingSwordStanceRequestsSystem = defSystem(
     Update.fixed,
     applyFlyingSwordStanceRequests,
@@ -150,7 +173,12 @@ export const snapshotFlyingSwordGroupsSystem = defSystem(
 export const formFlyingSwordGoalsSystem = defSystem(
     Update.fixed,
     formFlyingSwordGoals,
-    [TimeState, FlyingSwordGroupIndexState, FlyingSwordBaseStorageQuery],
+    [
+        TimeState,
+        FlyingSwordFormationCatalog,
+        FlyingSwordGroupIndexState,
+        FlyingSwordBaseStorageQuery,
+    ],
 );
 
 export const orientIdleFlyingSwordsSystem = defSystem(
@@ -158,6 +186,7 @@ export const orientIdleFlyingSwordsSystem = defSystem(
     orientIdleFlyingSwords,
     [
         TimeState,
+        FlyingSwordFormationCatalog,
         FlyingSwordGroupIndexState,
         FlyingSwordOrientationStorageQuery,
     ],
@@ -168,6 +197,9 @@ export const FlyingSwordSystemOptions = Object.freeze({
     focusRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     modeRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     formationSizeRequests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
+    formationPlanRequests: {
         inSet: FlyingSwordSystemSet.Request,
     } as const,
     stanceRequests: {
@@ -353,6 +385,46 @@ function applyFlyingSwordFormationSizeRequests(
     }
 }
 
+function applyFlyingSwordFormationPlanRequests(
+    commands: Commands,
+    world: World,
+    scratch: Mut<FlyingSwordEntityAccessState>,
+    catalog: Readonly<FlyingSwordFormationCatalog>,
+    requests: FormationPlanRequests,
+): void {
+    const componentId = world.findComponent(
+        FlyingSwordFormationPlanStorage,
+    )?.id;
+    const access = scratch.access;
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const groups =
+            data[SetFlyingSwordFormationPlanRequest.Group];
+        const plans =
+            data[SetFlyingSwordFormationPlanRequest.Plan];
+        for (let row = 0; row < count; row++) {
+            if (
+                componentId !== undefined &&
+                catalog.get(plans[row]) !== undefined &&
+                world.resolve(groups[row], access)
+            ) {
+                const archetype = access.archetype;
+                const plan = archetype?.getComp(
+                    access.row,
+                    componentId,
+                ) as ComponentColumns<FlyingSwordFormationPlanStorage> | null;
+                if (archetype && plan) {
+                    const groupRow = archetype.rowIdxOf(access.row);
+                    plan[FlyingSwordFormationPlan.Plan][groupRow] =
+                        plans[row];
+                }
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
 function applyFlyingSwordStanceRequests(
     commands: Commands,
     world: World,
@@ -456,6 +528,7 @@ function snapshotFlyingSwordGroups(
             formations,
             controls,
             behaviors,
+            formationPlans,
         ] = iter.current;
         const owners = identities[FlyingSwordGroup.Owner];
         const centerXs = centers[Float3.X];
@@ -484,6 +557,8 @@ function snapshotFlyingSwordGroups(
             behaviors[FlyingSwordBehavior.ActiveForwardX];
         const activeForwardZs =
             behaviors[FlyingSwordBehavior.ActiveForwardZ];
+        const planIds =
+            formationPlans[FlyingSwordFormationPlan.Plan];
         for (let row = 0; row < count; row++) {
             const group = entities[row];
             let index = runtime.indices.get(group);
@@ -530,6 +605,7 @@ function snapshotFlyingSwordGroups(
             runtime.verticalSpeeds[index] = verticalSpeeds[row];
             runtime.formationSizes[index] =
                 Math.max(1, formationSizes[row]);
+            runtime.formationPlans[index] = planIds[row];
             runtime.modes[index] = modes[row];
             runtime.stances[index] = stances[row];
             runtime.activeFormations[index] =
@@ -550,6 +626,7 @@ function snapshotFlyingSwordGroups(
 
 function formFlyingSwordGoals(
     time: Readonly<TimeState>,
+    catalog: Readonly<FlyingSwordFormationCatalog>,
     runtime: Readonly<FlyingSwordGroupIndexState>,
     swords: Swords,
 ): void {
@@ -668,40 +745,44 @@ function formFlyingSwordGoals(
                 runtime.stances[group] === FlyingSwordStance.Formation &&
                 runtime.modes[group] === FlyingSwordMode.Orbit
             ) {
-                const route = slot % FORMATION_ROUTE_COUNT;
-                const routePhase = formationRoutePhase(
-                    elapsed + FORMATION_GUIDANCE_LOOKAHEAD_SECONDS,
-                    runtime.angularSpeeds[group],
+                const plan = runtime.formationPlans[group];
+                catalog.resolveSlot(
+                    plan,
                     slot,
                     formationSize,
-                    route,
+                    formationSlotSample,
                 );
-                writeFormationPathPoint(
-                    route,
+                const routePhase =
+                    (
+                        elapsed +
+                        FORMATION_GUIDANCE_LOOKAHEAD_SECONDS
+                    ) *
+                    runtime.angularSpeeds[group] *
+                    FORMATION_SPEED_MULTIPLIER +
+                    formationSlotSample.phaseOffset;
+                catalog.sampleRoute(
+                    plan,
+                    formationSlotSample.route,
                     routePhase,
-                    radius,
-                    formationPathPoint,
+                    formationRouteSample,
                 );
                 const forwardX = runtime.forwardXs[group];
                 const forwardZ = runtime.forwardZs[group];
                 const rightX = forwardZ;
                 const rightZ = -forwardX;
+                const lateral = formationRouteSample.x * radius;
+                const depth = formationRouteSample.z * radius;
                 formationGoalXs[row] =
                     centerX +
-                    rightX * formationPathPoint.lateral +
-                    forwardX * formationPathPoint.depth;
+                    rightX * lateral +
+                    forwardX * depth;
                 formationGoalYs[row] =
                     centerY + height * FORMATION_HEIGHT_MULTIPLIER +
-                    formationRouteHeight(route) +
-                    Math.sin(routePhase * 2 + slot * 0.7) *
-                    Math.max(
-                        FORMATION_PATH_WAVE,
-                        verticalAmplitude * 0.35,
-                    );
+                    formationRouteSample.y;
                 formationGoalZs[row] =
                     centerZ +
-                    rightZ * formationPathPoint.lateral +
-                    forwardZ * formationPathPoint.depth;
+                    rightZ * lateral +
+                    forwardZ * depth;
                 continue;
             }
 
@@ -734,6 +815,7 @@ function formFlyingSwordGoals(
 
 function orientIdleFlyingSwords(
     time: Readonly<TimeState>,
+    catalog: Readonly<FlyingSwordFormationCatalog>,
     runtime: Readonly<FlyingSwordGroupIndexState>,
     swords: OrientedSwords,
 ): void {
@@ -820,49 +902,37 @@ function orientIdleFlyingSwords(
                     const slot = slots[row];
                     const formationSize =
                         runtime.formationSizes[group];
-                    const route = slot % FORMATION_ROUTE_COUNT;
-                    const phase = formationRoutePhase(
-                        elapsed,
-                        runtime.angularSpeeds[group],
+                    const plan = runtime.formationPlans[group];
+                    catalog.resolveSlot(
+                        plan,
                         slot,
                         formationSize,
-                        route,
+                        formationSlotSample,
                     );
-                    const nextPhase = formationRoutePhase(
-                        elapsed + FORMATION_TANGENT_TIME_STEP,
-                        runtime.angularSpeeds[group],
-                        slot,
-                        formationSize,
-                        route,
-                    );
-                    const radius = runtime.orbitRadii[group];
-                    writeFormationPathPoint(
-                        route,
+                    const phase =
+                        elapsed *
+                        runtime.angularSpeeds[group] *
+                        FORMATION_SPEED_MULTIPLIER +
+                        formationSlotSample.phaseOffset;
+                    catalog.sampleRoute(
+                        plan,
+                        formationSlotSample.route,
                         phase,
-                        radius,
-                        formationPathPoint,
-                    );
-                    writeFormationPathPoint(
-                        route,
-                        nextPhase,
-                        radius,
-                        formationPathPointAhead,
+                        formationRouteSample,
                     );
                     const forwardX = runtime.forwardXs[group];
                     const forwardZ = runtime.forwardZs[group];
                     const rightX = forwardZ;
                     const rightZ = -forwardX;
+                    const radius = runtime.orbitRadii[group];
                     const lateral =
-                        formationPathPointAhead.lateral -
-                        formationPathPoint.lateral;
+                        formationRouteSample.tangentX * radius;
                     const depth =
-                        formationPathPointAhead.depth -
-                        formationPathPoint.depth;
+                        formationRouteSample.tangentZ * radius;
                     const tangentX =
                         rightX * lateral + forwardX * depth;
                     const tangentY =
-                        Math.sin(nextPhase * 2 + slot * 0.7) -
-                        Math.sin(phase * 2 + slot * 0.7);
+                        formationRouteSample.tangentY;
                     const tangentZ =
                         rightZ * lateral + forwardZ * depth;
                     const length = Math.sqrt(
@@ -933,6 +1003,8 @@ function removeGroupIndex(
             runtime.verticalSpeeds[last];
         runtime.formationSizes[index] =
             runtime.formationSizes[last];
+        runtime.formationPlans[index] =
+            runtime.formationPlans[last];
         runtime.modes[index] = runtime.modes[last];
         runtime.stances[index] = runtime.stances[last];
         runtime.activeFormations[index] =
@@ -995,87 +1067,6 @@ function writeFusionSlot(
     out.tip = false;
 }
 
-function formationRoutePhase(
-    elapsed: number,
-    angularSpeed: number,
-    slot: number,
-    formationSize: number,
-    route: number,
-): number {
-    const routeCount = Math.max(
-        1,
-        Math.floor(
-            (formationSize + FORMATION_ROUTE_COUNT - 1 - route) /
-            FORMATION_ROUTE_COUNT,
-        ),
-    );
-    const routeSlot = Math.floor(slot / FORMATION_ROUTE_COUNT);
-    const offset = routeSlot * Math.PI * 2 / routeCount;
-    const speedScale = route === 0
-        ? 0.86
-        : route === 1
-            ? 1.18
-            : -1.03;
-    return elapsed * angularSpeed *
-        FORMATION_SPEED_MULTIPLIER * speedScale + offset;
-}
-
-function writeFormationPathPoint(
-    route: number,
-    phase: number,
-    radius: number,
-    out: { lateral: number; depth: number },
-): void {
-    if (route === 0) {
-        writeRegularPolygonPoint(
-            phase,
-            8,
-            radius * FORMATION_OUTER_RADIUS_MULTIPLIER,
-            Math.PI / 8,
-            out,
-        );
-        return;
-    }
-    writeRegularPolygonPoint(
-        phase,
-        4,
-        radius * FORMATION_INNER_RADIUS_MULTIPLIER,
-        route === 1 ? Math.PI / 4 : 0,
-        out,
-    );
-}
-
-function writeRegularPolygonPoint(
-    phase: number,
-    sides: number,
-    radius: number,
-    rotation: number,
-    out: { lateral: number; depth: number },
-): void {
-    const turns = phase / (Math.PI * 2);
-    const wrapped = turns - Math.floor(turns);
-    const edgePosition = wrapped * sides;
-    const edge = Math.floor(edgePosition);
-    const progress = edgePosition - edge;
-    const startAngle = rotation + edge * Math.PI * 2 / sides;
-    const endAngle =
-        rotation + (edge + 1) * Math.PI * 2 / sides;
-    out.lateral =
-        (
-            Math.cos(startAngle) +
-            (Math.cos(endAngle) - Math.cos(startAngle)) * progress
-        ) * radius;
-    out.depth =
-        (
-            Math.sin(startAngle) +
-            (Math.sin(endAngle) - Math.sin(startAngle)) * progress
-        ) * radius;
-}
-
-function formationRouteHeight(route: number): number {
-    return route === 0 ? 0 : route === 1 ? 0.18 : -0.12;
-}
-
 const DIRECTION_EPSILON = 1e-6;
 const RECALL_FAN_HALF_ANGLE = Math.PI / 3;
 const RECALL_MINIMUM_RADIUS = 1.2;
@@ -1090,14 +1081,9 @@ const RECALL_MAXIMUM_BREATH_RADIUS = 0.12;
 const RECALL_MAXIMUM_TILT = Math.PI * 0.18;
 const RECALL_SWAY_ANGLE = Math.PI / 72;
 const RECALL_SWAY_SPEED = 1.8;
-const FORMATION_ROUTE_COUNT = 3;
 const FORMATION_SPEED_MULTIPLIER = 2.65;
 const FORMATION_GUIDANCE_LOOKAHEAD_SECONDS = 0.1;
-const FORMATION_OUTER_RADIUS_MULTIPLIER = 0.94;
-const FORMATION_INNER_RADIUS_MULTIPLIER = 0.78;
 const FORMATION_HEIGHT_MULTIPLIER = 0.76;
-const FORMATION_PATH_WAVE = 0.08;
-const FORMATION_TANGENT_TIME_STEP = 1 / 120;
 const FUSION_SPIRAL_SPEED = 18;
 const FUSION_SPIRAL_START = 0.65;
 const FUSION_SPIRAL_LENGTH = 4.35;
@@ -1110,8 +1096,20 @@ const FUSION_BODY_LENGTH_FRACTION = 0.74;
 const FUSION_DIRECTION_WEIGHT = 2.15;
 const FUSION_TIP_DIRECTION_BONUS = 0.85;
 const FUSION_TANGENT_WEIGHT = 1.18;
-const formationPathPoint = { lateral: 0, depth: 0 };
-const formationPathPointAhead = { lateral: 0, depth: 0 };
+const formationSlotSample: FlyingSwordFormationSlotSample = {
+    route: 0,
+    routeSlot: 0,
+    routeSwordCount: 1,
+    phaseOffset: 0,
+};
+const formationRouteSample: FlyingSwordFormationRouteSample = {
+    x: 0,
+    y: 0,
+    z: 0,
+    tangentX: 0,
+    tangentY: 0,
+    tangentZ: 1,
+};
 const fusionSlotPoint = {
     longitudinal: 0,
     radius: 0,

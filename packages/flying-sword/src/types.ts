@@ -56,6 +56,7 @@ export interface CreateFlyingSwordGroupOptions {
     readonly owner: Entity;
     readonly center?: ReadonlyVector3;
     readonly formationSize?: number;
+    readonly formationPlan?: number;
     readonly orbitRadius?: number;
     readonly orbitHeight?: number;
     readonly angularSpeed?: number;
@@ -100,6 +101,15 @@ export interface FlyingSwordFormationViewData {
     readonly [FlyingSwordFormation.VerticalAmplitude]: typeof Types.F32;
     readonly [FlyingSwordFormation.VerticalSpeed]: typeof Types.F32;
     readonly [FlyingSwordFormation.Size]: typeof Types.U16;
+}
+
+/** 控制组当前选择的常驻阵图计划。 */
+export enum FlyingSwordFormationPlan {
+    Plan,
+}
+
+export interface FlyingSwordFormationPlanViewData {
+    readonly [FlyingSwordFormationPlan.Plan]: typeof Types.U16;
 }
 
 /** 控制组当前的基础控制状态。 */

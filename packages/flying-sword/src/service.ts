@@ -15,12 +15,15 @@ import {
     MoveTowards3,
     MoveTowards3Type,
 } from "@zero-ecs/motion/3d";
+import { FlyingSwordFormationCatalog } from "./formation-catalog";
+import { FlyingSwordFormationPlanId } from "./formation-types";
 import {
     FlyingSwordFlight,
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,
     FlyingSwordControl,
     FlyingSwordFormation,
+    FlyingSwordFormationPlan,
     FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordMode,
@@ -36,6 +39,7 @@ import {
     FlyingSwordControlStorage,
     FlyingSwordBehaviorStorage,
     FlyingSwordFormationStorage,
+    FlyingSwordFormationPlanStorage,
     FlyingSwordFormationGoal3Storage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
@@ -47,6 +51,8 @@ import {
     SetFlyingSwordModeRequestStorage,
     SetFlyingSwordFormationSizeRequest,
     SetFlyingSwordFormationSizeRequestStorage,
+    SetFlyingSwordFormationPlanRequest,
+    SetFlyingSwordFormationPlanRequestStorage,
     SetFlyingSwordStanceRequest,
     SetFlyingSwordStanceRequestStorage,
     SetFlyingSwordActiveFormationRequest,
@@ -66,6 +72,8 @@ import {
  */
 export class FlyingSwordService extends Service {
     @Inject.service(Commands) private readonly commands!: Commands;
+    @Inject.resource(FlyingSwordFormationCatalog)
+    private readonly formationCatalog!: FlyingSwordFormationCatalog;
 
     createGroup(options: CreateFlyingSwordGroupOptions): Entity {
         const center = options.center ?? ZERO_VECTOR;
@@ -75,6 +83,10 @@ export class FlyingSwordService extends Service {
             1,
             0xffff,
         );
+        const formationPlan =
+            options.formationPlan ??
+            FlyingSwordFormationPlanId.EightGates;
+        this.formationCatalog.require(formationPlan);
         const orbitRadius = positive("orbitRadius", options.orbitRadius ?? 2.8);
         const orbitHeight = finite("orbitHeight", options.orbitHeight ?? 2.2);
         const angularSpeed = finite("angularSpeed", options.angularSpeed ?? 0.9);
@@ -92,6 +104,7 @@ export class FlyingSwordService extends Service {
             .add(FlyingSwordGroupCenter3Storage)
             .add(FlyingSwordGroupTarget3Storage)
             .add(FlyingSwordFormationStorage)
+            .add(FlyingSwordFormationPlanStorage)
             .add(FlyingSwordControlStorage)
             .add(FlyingSwordBehaviorStorage)
             .set(FlyingSwordGroupStorage, FlyingSwordGroup.Owner, options.owner)
@@ -111,6 +124,11 @@ export class FlyingSwordService extends Service {
             )
             .set(FlyingSwordFormationStorage, FlyingSwordFormation.VerticalSpeed, verticalSpeed)
             .set(FlyingSwordFormationStorage, FlyingSwordFormation.Size, formationSize)
+            .set(
+                FlyingSwordFormationPlanStorage,
+                FlyingSwordFormationPlan.Plan,
+                formationPlan,
+            )
             .set(FlyingSwordControlStorage, FlyingSwordControl.Mode, FlyingSwordMode.Orbit)
             .set(
                 FlyingSwordBehaviorStorage,
@@ -290,6 +308,24 @@ export class FlyingSwordService extends Service {
                 SetFlyingSwordFormationSizeRequestStorage,
                 SetFlyingSwordFormationSizeRequest.Size,
                 formationSize,
+            )
+            .submit();
+    }
+
+    setFormationPlan(group: Entity, plan: number): void {
+        this.formationCatalog.require(plan);
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordFormationPlanRequestStorage)
+            .set(
+                SetFlyingSwordFormationPlanRequestStorage,
+                SetFlyingSwordFormationPlanRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordFormationPlanRequestStorage,
+                SetFlyingSwordFormationPlanRequest.Plan,
+                plan,
             )
             .submit();
     }

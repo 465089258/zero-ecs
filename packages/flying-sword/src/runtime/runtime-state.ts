@@ -25,6 +25,7 @@ export class FlyingSwordGroupIndexState extends State {
     readonly verticalAmplitudes: number[] = [];
     readonly verticalSpeeds: number[] = [];
     readonly formationSizes: number[] = [];
+    readonly formationPlans: number[] = [];
     readonly modes: number[] = [];
     readonly stances: number[] = [];
     readonly activeFormations: number[] = [];
@@ -50,6 +51,7 @@ export class FlyingSwordGroupIndexState extends State {
         this.verticalAmplitudes.length = 0;
         this.verticalSpeeds.length = 0;
         this.formationSizes.length = 0;
+        this.formationPlans.length = 0;
         this.modes.length = 0;
         this.stances.length = 0;
         this.activeFormations.length = 0;

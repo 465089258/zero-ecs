@@ -18,6 +18,7 @@ import {
     FlyingSwordControlStorage,
     FlyingSwordFlightStorage,
     FlyingSwordFormationStorage,
+    FlyingSwordFormationPlanStorage,
     FlyingSwordFormationGoal3Storage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
@@ -39,6 +40,7 @@ import {
     SetFlyingSwordCenterRequestStorage,
     SetFlyingSwordModeRequestStorage,
     SetFlyingSwordFormationSizeRequestStorage,
+    SetFlyingSwordFormationPlanRequestStorage,
     SetFlyingSwordSkillTargetRequestStorage,
     FocusFlyingSwordRequestStorage,
     CastFlyingSwordSkillRequestStorage,
@@ -52,6 +54,7 @@ export const FlyingSwordGroupStorageQuery = QueryType.from(With(
     FlyingSwordFormationStorage,
     FlyingSwordControlStorage,
     FlyingSwordBehaviorStorage,
+    FlyingSwordFormationPlanStorage,
 ));
 
 export const SetFlyingSwordCenterRequestStorageQuery =
@@ -65,6 +68,9 @@ export const SetFlyingSwordModeRequestStorageQuery =
 
 export const SetFlyingSwordFormationSizeRequestStorageQuery =
     QueryType.from(With(SetFlyingSwordFormationSizeRequestStorage));
+
+export const SetFlyingSwordFormationPlanRequestStorageQuery =
+    QueryType.from(With(SetFlyingSwordFormationPlanRequestStorage));
 
 export const SetFlyingSwordStanceRequestStorageQuery =
     QueryType.from(With(SetFlyingSwordStanceRequestStorage));

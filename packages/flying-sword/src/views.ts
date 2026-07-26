@@ -14,6 +14,7 @@ import {
     FlyingSwordBehaviorStorage,
     FlyingSwordControlStorage,
     FlyingSwordFormationStorage,
+    FlyingSwordFormationPlanStorage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
     FlyingSwordGroupTarget3Storage,
@@ -30,6 +31,7 @@ import type {
     FlyingSwordBehaviorViewData,
     FlyingSwordControlViewData,
     FlyingSwordFormationViewData,
+    FlyingSwordFormationPlanViewData,
     FlyingSwordGroupViewData,
     FlyingSwordMemberViewData,
     FlyingSwordSkillActionViewData,
@@ -65,6 +67,13 @@ export const FlyingSwordFormationView =
     defineQueryProjection<FlyingSwordFormationViewData>(
         FlyingSwordFormationStorage,
         "FlyingSwordFormationView",
+    );
+
+/** 控制组当前阵图计划的公开只读投影。 */
+export const FlyingSwordFormationPlanView =
+    defineQueryProjection<FlyingSwordFormationPlanViewData>(
+        FlyingSwordFormationPlanStorage,
+        "FlyingSwordFormationPlanView",
     );
 
 /** 控制组基础模式的公开只读投影。 */
@@ -167,6 +176,7 @@ export const FlyingSwordGroupQuery =
         FlyingSwordFormationView,
         FlyingSwordControlView,
         FlyingSwordBehaviorView,
+        FlyingSwordFormationPlanView,
     ));
 
 /** 表现层所需的最小飞剑查询。 */

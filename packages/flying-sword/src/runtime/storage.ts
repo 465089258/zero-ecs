@@ -10,6 +10,7 @@ import {
     FlyingSwordControl,
     FlyingSwordFlight,
     FlyingSwordFormation,
+    FlyingSwordFormationPlan,
     FlyingSwordGroup,
     FlyingSwordMember,
     FlyingSwordSkillAction,
@@ -20,6 +21,7 @@ import {
     type FlyingSwordBehaviorViewData,
     type FlyingSwordControlViewData,
     type FlyingSwordFormationViewData,
+    type FlyingSwordFormationPlanViewData,
     type FlyingSwordGroupViewData,
     type FlyingSwordMemberViewData,
     type FlyingSwordSkillActionViewData,
@@ -56,6 +58,12 @@ implements FlyingSwordFormationViewData {
     readonly [FlyingSwordFormation.VerticalAmplitude] = Types.F32;
     readonly [FlyingSwordFormation.VerticalSpeed] = Types.F32;
     readonly [FlyingSwordFormation.Size] = Types.U16;
+}
+
+/** @internal 控制组选择的常驻阵图计划。 */
+export class FlyingSwordFormationPlanStorage
+implements FlyingSwordFormationPlanViewData {
+    readonly [FlyingSwordFormationPlan.Plan] = Types.U16;
 }
 
 /** @internal 飞剑控制组基础控制状态。 */
@@ -177,6 +185,18 @@ export class SetFlyingSwordFormationSizeRequestStorage
 implements Component<SetFlyingSwordFormationSizeRequest> {
     readonly [SetFlyingSwordFormationSizeRequest.Group] = Types.Entity;
     readonly [SetFlyingSwordFormationSizeRequest.Size] = Types.U16;
+}
+
+export enum SetFlyingSwordFormationPlanRequest {
+    Group,
+    Plan,
+}
+
+/** @internal 修改控制组阵图计划的一次性请求实体。 */
+export class SetFlyingSwordFormationPlanRequestStorage
+implements Component<SetFlyingSwordFormationPlanRequest> {
+    readonly [SetFlyingSwordFormationPlanRequest.Group] = Types.Entity;
+    readonly [SetFlyingSwordFormationPlanRequest.Plan] = Types.U16;
 }
 
 export enum SetFlyingSwordStanceRequest {
