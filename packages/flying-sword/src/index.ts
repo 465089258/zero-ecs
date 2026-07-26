@@ -1,6 +1,11 @@
 export { FlyingSwordModule } from "./module";
 export { FlyingSwordService } from "./service";
 export {
+    EightGatesFormationPlan,
+    FlyingSwordFormationCatalog,
+    LotusFormationPlan,
+} from "./formation-catalog";
+export {
     FlyingSwordSkillCatalog,
     PiercingCloudSkillPlan,
 } from "./skill-catalog";
@@ -48,6 +53,19 @@ export {
     FlyingSwordSkillProgress,
     FlyingSwordSkillTiming,
 } from "./types";
+export {
+    FlyingSwordFormationPlanId,
+    FlyingSwordFormationPrimitive,
+} from "./formation-types";
+export type {
+    CompiledFlyingSwordFormationPlan,
+    FlyingSwordFormationPlanDefinition,
+    FlyingSwordFormationPlanId as FlyingSwordFormationPlanIdValue,
+    FlyingSwordFormationPrimitive as FlyingSwordFormationPrimitiveValue,
+    FlyingSwordFormationRouteDefinition,
+    FlyingSwordFormationRouteSample,
+    FlyingSwordFormationSlotSample,
+} from "./formation-types";
 export {
     FlyingSwordSkillPhase,
     FlyingSwordSkillPlanId,

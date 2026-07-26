@@ -1,4 +1,5 @@
 import type { GameBuilder, Module } from "@zero-ecs/game";
+import { FlyingSwordFormationCatalog } from "./formation-catalog";
 import { FlyingSwordService } from "./service";
 import { FlyingSwordSkillCatalog } from "./skill-catalog";
 import { FlyingSwordSkillService } from "./skill-service";
@@ -46,11 +47,17 @@ import { FlyingSwordTaskCancellationState } from "./runtime/task-state";
 export class FlyingSwordModule implements Module {
     constructor(
         private readonly skillCatalog = new FlyingSwordSkillCatalog(),
+        private readonly formationCatalog =
+            new FlyingSwordFormationCatalog(),
     ) {}
 
     build(builder: GameBuilder): void {
         builder
             .addResource(FlyingSwordSkillCatalog, this.skillCatalog)
+            .addResource(
+                FlyingSwordFormationCatalog,
+                this.formationCatalog,
+            )
             .addState(FlyingSwordEntityAccessState)
             .addState(FlyingSwordGroupIndexState)
             .addState(FlyingSwordSkillActionIndexState)
