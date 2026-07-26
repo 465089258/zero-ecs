@@ -757,8 +757,7 @@ function formFlyingSwordGoals(
                         elapsed +
                         FORMATION_GUIDANCE_LOOKAHEAD_SECONDS
                     ) *
-                    runtime.angularSpeeds[group] *
-                    FORMATION_SPEED_MULTIPLIER +
+                    runtime.angularSpeeds[group] +
                     formationSlotSample.phaseOffset;
                 catalog.sampleRoute(
                     plan,
@@ -911,8 +910,7 @@ function orientIdleFlyingSwords(
                     );
                     const phase =
                         elapsed *
-                        runtime.angularSpeeds[group] *
-                        FORMATION_SPEED_MULTIPLIER +
+                        runtime.angularSpeeds[group] +
                         formationSlotSample.phaseOffset;
                     catalog.sampleRoute(
                         plan,
@@ -1081,7 +1079,6 @@ const RECALL_MAXIMUM_BREATH_RADIUS = 0.12;
 const RECALL_MAXIMUM_TILT = Math.PI * 0.18;
 const RECALL_SWAY_ANGLE = Math.PI / 72;
 const RECALL_SWAY_SPEED = 1.8;
-const FORMATION_SPEED_MULTIPLIER = 2.65;
 const FORMATION_GUIDANCE_LOOKAHEAD_SECONDS = 0.1;
 const FORMATION_HEIGHT_MULTIPLIER = 0.76;
 const FUSION_SPIRAL_SPEED = 18;

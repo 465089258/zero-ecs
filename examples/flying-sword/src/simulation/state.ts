@@ -4,6 +4,7 @@ import {
     type Entity,
 } from "@zero-ecs/game";
 import {
+    FlyingSwordFormationPlanId,
     FlyingSwordMode,
     FlyingSwordStance,
     type FlyingSwordMode as FlyingSwordModeValue,
@@ -22,4 +23,5 @@ export class DemoSceneState extends State {
     targetZ = 5;
     mode: FlyingSwordModeValue = FlyingSwordMode.Orbit;
     stance: FlyingSwordStanceValue = FlyingSwordStance.Scatter;
+    formationPlan: number = FlyingSwordFormationPlanId.EightGates;
 }

@@ -19,7 +19,7 @@ export const EightGatesFormationPlan: FlyingSwordFormationPlanDefinition =
                 primitive: FlyingSwordFormationPrimitive.RegularPolygon,
                 radius: 0.94,
                 rotation: Math.PI / 8,
-                speed: 0.86,
+                speed: 2.279,
                 height: 0,
                 verticalAmplitude: 0.08,
                 verticalFrequency: 2,
@@ -29,7 +29,7 @@ export const EightGatesFormationPlan: FlyingSwordFormationPlanDefinition =
                 primitive: FlyingSwordFormationPrimitive.RegularPolygon,
                 radius: 0.78,
                 rotation: Math.PI / 4,
-                speed: 1.18,
+                speed: 3.127,
                 height: 0.18,
                 verticalAmplitude: 0.08,
                 verticalFrequency: 2,
@@ -39,7 +39,7 @@ export const EightGatesFormationPlan: FlyingSwordFormationPlanDefinition =
                 primitive: FlyingSwordFormationPrimitive.RegularPolygon,
                 radius: 0.78,
                 direction: -1,
-                speed: 1.03,
+                speed: 2.7295,
                 height: -0.12,
                 verticalAmplitude: 0.08,
                 verticalFrequency: 2,
@@ -57,7 +57,7 @@ export const LotusFormationPlan: FlyingSwordFormationPlanDefinition =
             Object.freeze({
                 primitive: FlyingSwordFormationPrimitive.Rose,
                 radius: 0.92,
-                speed: 0.82,
+                speed: 2.173,
                 verticalAmplitude: 0.1,
                 verticalFrequency: 4,
                 petals: 4,
@@ -67,7 +67,7 @@ export const LotusFormationPlan: FlyingSwordFormationPlanDefinition =
                 primitive: FlyingSwordFormationPrimitive.Lemniscate,
                 radius: 0.82,
                 direction: -1,
-                speed: 1.08,
+                speed: 2.862,
                 height: 0.16,
                 verticalAmplitude: 0.06,
                 verticalFrequency: 2,
@@ -77,7 +77,7 @@ export const LotusFormationPlan: FlyingSwordFormationPlanDefinition =
                 primitive: FlyingSwordFormationPrimitive.StarPolygon,
                 radius: 0.68,
                 rotation: -Math.PI / 2,
-                speed: 1.32,
+                speed: 3.498,
                 height: -0.1,
                 verticalAmplitude: 0.05,
                 verticalFrequency: 5,
@@ -269,8 +269,24 @@ export class FlyingSwordFormationCatalog extends Resource {
         out.route = route;
         out.routeSlot = routeSlot;
         out.routeSwordCount = routeSwordCount;
+        const routeIndex = this.planRouteStarts[planId] + route;
         out.phaseOffset =
-            routeSlot * Math.PI * 2 / routeSwordCount;
+            (
+                routeSlot * Math.PI * 2 / routeSwordCount
+            ) / this.routeSignedSpeeds[routeIndex];
+    }
+
+    /** 指定路径完成一周所需的公共相位长度。 */
+    routePeriod(planId: number, route: number): number {
+        this.require(planId);
+        integer(
+            "route",
+            route,
+            0,
+            this.planRouteCounts[planId] - 1,
+        );
+        const index = this.planRouteStarts[planId] + route;
+        return TWO_PI / Math.abs(this.routeSignedSpeeds[index]);
     }
 
     /** 将指定路径的局部 3D 位置与切线写入复用输出。 */

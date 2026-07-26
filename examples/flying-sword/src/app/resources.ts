@@ -15,6 +15,7 @@ export class DemoViewResource extends Resource {
         readonly elapsed: HTMLElement,
         readonly kills: HTMLElement,
         readonly enemyCount: HTMLElement,
+        readonly formation: HTMLElement,
         readonly defeatOverlay: HTMLElement,
         readonly restartButton: HTMLButtonElement,
         readonly upgradePanel: HTMLElement,

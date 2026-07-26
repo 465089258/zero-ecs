@@ -4,10 +4,17 @@ import {
     type QueryOf,
 } from "@zero-ecs/game";
 import {
+    FlyingSwordFormation,
+    FlyingSwordFormationCatalog,
+    FlyingSwordFormationPlan,
+    FlyingSwordFormationPlanId,
+    FlyingSwordGroupQuery,
     FlyingSwordMode,
     FlyingSwordStance,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
+    type FlyingSwordFormationRouteSample,
+    type FlyingSwordFormationSlotSample,
     type FlyingSwordSkillPhaseValue,
 } from "@zero-ecs/flying-sword";
 import { Float3 } from "@zero-ecs/math/3d";
@@ -72,6 +79,7 @@ type Cultivators = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
+type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
 
 enum RenderKind {
     SwordShadow,
@@ -113,6 +121,8 @@ export class DemoRenderService extends Service {
     private readonly skills!: FlyingSwordSkillService;
     @Inject.resource(RogueUpgradeCatalog)
     private readonly upgrades!: RogueUpgradeCatalog;
+    @Inject.resource(FlyingSwordFormationCatalog)
+    private readonly formations!: FlyingSwordFormationCatalog;
 
     private readonly logicalWidth = 960;
     private readonly logicalHeight = 640;
@@ -168,6 +178,34 @@ export class DemoRenderService extends Service {
     private readonly projected: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly projectedSecond: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly clientPoint = { x: 0, y: 0 };
+    private readonly formationSample: FlyingSwordFormationRouteSample = {
+        x: 0,
+        y: 0,
+        z: 0,
+        tangentX: 0,
+        tangentY: 0,
+        tangentZ: 1,
+    };
+    private readonly formationSlot: FlyingSwordFormationSlotSample = {
+        route: 0,
+        routeSlot: 0,
+        routeSwordCount: 1,
+        phaseOffset: 0,
+    };
+    private readonly formationDebug =
+        new URLSearchParams(window.location.search).has(
+            "formationDebug",
+        );
+    private formationPlan: number =
+        FlyingSwordFormationPlanId.EightGates;
+    private formationName = "八门周天阵";
+    private formationCenterX = 0;
+    private formationCenterZ = 0;
+    private formationRadius = 2.8;
+    private formationAngularSpeed = 0.9;
+    private formationSize = 1;
+    private formationForwardX = 0;
+    private formationForwardZ = 1;
     private readonly upgradeNames: Array<HTMLElement | null> = [
         null,
         null,
@@ -245,6 +283,7 @@ export class DemoRenderService extends Service {
         enemies: Enemies,
         pickups: Pickups,
         damages: DamageDisplays,
+        groups: SwordGroups,
         swords: Swords,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
@@ -255,6 +294,7 @@ export class DemoRenderService extends Service {
             scene.cultivator,
             interpolation,
         );
+        this.snapshotFormation(scene, groups, cultivators);
         this.beginFrame();
         this.drawGroundGrid();
         this.drawGroundTargets(
@@ -333,6 +373,67 @@ export class DemoRenderService extends Service {
         context.stroke();
     }
 
+    private snapshotFormation(
+        scene: Readonly<DemoSceneState>,
+        groups: SwordGroups,
+        cultivators: Cultivators,
+    ): void {
+        const groupIter = groups.iter();
+        while (groupIter.next()) {
+            const [
+                count,
+                entities,
+                ,
+                centers,
+                ,
+                formation,
+                ,
+                ,
+                plans,
+            ] = groupIter.current;
+            const centerXs = centers[Float3.X];
+            const centerZs = centers[Float3.Z];
+            const radii =
+                formation[FlyingSwordFormation.OrbitRadius];
+            const angularSpeeds =
+                formation[FlyingSwordFormation.AngularSpeed];
+            const sizes = formation[FlyingSwordFormation.Size];
+            const planIds = plans[FlyingSwordFormationPlan.Plan];
+            for (let row = 0; row < count; row++) {
+                if (entities[row] !== scene.swordGroup) continue;
+                this.formationCenterX = centerXs[row];
+                this.formationCenterZ = centerZs[row];
+                this.formationRadius = radii[row];
+                this.formationAngularSpeed = angularSpeeds[row];
+                this.formationSize = Math.max(1, sizes[row]);
+                this.formationPlan = planIds[row];
+                this.formationName =
+                    this.formations.get(planIds[row])?.name ??
+                    "未知阵图";
+                break;
+            }
+        }
+
+        const cultivatorIter = cultivators.iter();
+        while (cultivatorIter.next()) {
+            const [count, entities, , , , directions] =
+                cultivatorIter.current;
+            const directionXs = directions[Float3.X];
+            const directionZs = directions[Float3.Z];
+            for (let row = 0; row < count; row++) {
+                if (entities[row] !== scene.cultivator) continue;
+                const x = directionXs[row];
+                const z = directionZs[row];
+                const length = Math.sqrt(x * x + z * z);
+                if (length > FORMATION_DIRECTION_EPSILON) {
+                    this.formationForwardX = x / length;
+                    this.formationForwardZ = z / length;
+                }
+                return;
+            }
+        }
+    }
+
     private drawGroundTargets(
         scene: Readonly<DemoSceneState>,
         runs: Runs,
@@ -345,13 +446,7 @@ export class DemoRenderService extends Service {
             !fusionActive &&
             scene.stance === FlyingSwordStance.Formation
         ) {
-            this.camera.project(
-                this.followedX,
-                0,
-                this.followedZ,
-                this.projected,
-            );
-            drawFormationGroundAura(context, this.projected, tick);
+            this.drawFormationGroundAura(context, tick);
         }
         if (scene.hasMoveTarget) {
             this.camera.project(
@@ -386,6 +481,147 @@ export class DemoRenderService extends Service {
             10,
             false,
         );
+    }
+
+    private drawFormationGroundAura(
+        context: CanvasRenderingContext2D,
+        tick: number,
+    ): void {
+        const plan = this.formations.get(this.formationPlan);
+        if (!plan) return;
+        const pulse = 0.34 + Math.sin(tick * 0.1) * 0.05;
+        const rightX = this.formationForwardZ;
+        const rightZ = -this.formationForwardX;
+        context.lineWidth = 1.5;
+        context.strokeStyle = "#69f7d0";
+        context.globalAlpha = pulse;
+        for (let route = 0; route < plan.routeCount; route++) {
+            const period = this.formations.routePeriod(
+                plan.id,
+                route,
+            );
+            context.beginPath();
+            for (
+                let sampleIndex = 0;
+                sampleIndex <= FORMATION_PATH_SAMPLES;
+                sampleIndex++
+            ) {
+                const phase =
+                    period * sampleIndex / FORMATION_PATH_SAMPLES;
+                this.formations.sampleRoute(
+                    plan.id,
+                    route,
+                    phase,
+                    this.formationSample,
+                );
+                const lateral =
+                    this.formationSample.x * this.formationRadius;
+                const depth =
+                    this.formationSample.z * this.formationRadius;
+                this.camera.project(
+                    this.formationCenterX +
+                        rightX * lateral +
+                        this.formationForwardX * depth,
+                    FORMATION_GROUND_HEIGHT,
+                    this.formationCenterZ +
+                        rightZ * lateral +
+                        this.formationForwardZ * depth,
+                    this.projected,
+                );
+                if (sampleIndex === 0) {
+                    context.moveTo(
+                        this.projected.x,
+                        this.projected.y,
+                    );
+                } else {
+                    context.lineTo(
+                        this.projected.x,
+                        this.projected.y,
+                    );
+                }
+            }
+            context.stroke();
+        }
+        if (this.formationDebug) {
+            this.drawFormationDebug(context, tick);
+        }
+        context.globalAlpha = 1;
+    }
+
+    private drawFormationDebug(
+        context: CanvasRenderingContext2D,
+        tick: number,
+    ): void {
+        const slotCount = Math.min(
+            this.formationSize,
+            FORMATION_DEBUG_MAXIMUM_SLOTS,
+        );
+        const rightX = this.formationForwardZ;
+        const rightZ = -this.formationForwardX;
+        const basePhase =
+            tick / 60 *
+            this.formationAngularSpeed;
+        context.fillStyle = "#d7fff5";
+        context.font = "10px monospace";
+        context.globalAlpha = 0.88;
+        for (let slot = 0; slot < slotCount; slot++) {
+            this.formations.resolveSlot(
+                this.formationPlan,
+                slot,
+                this.formationSize,
+                this.formationSlot,
+            );
+            this.formations.sampleRoute(
+                this.formationPlan,
+                this.formationSlot.route,
+                basePhase + this.formationSlot.phaseOffset,
+                this.formationSample,
+            );
+            const lateral =
+                this.formationSample.x * this.formationRadius;
+            const depth =
+                this.formationSample.z * this.formationRadius;
+            const worldX =
+                this.formationCenterX +
+                rightX * lateral +
+                this.formationForwardX * depth;
+            const worldZ =
+                this.formationCenterZ +
+                rightZ * lateral +
+                this.formationForwardZ * depth;
+            this.camera.project(
+                worldX,
+                FORMATION_GROUND_HEIGHT,
+                worldZ,
+                this.projected,
+            );
+            context.fillText(
+                String(slot),
+                this.projected.x + 3,
+                this.projected.y - 3,
+            );
+            const tangentX =
+                rightX * this.formationSample.tangentX +
+                this.formationForwardX *
+                    this.formationSample.tangentZ;
+            const tangentZ =
+                rightZ * this.formationSample.tangentX +
+                this.formationForwardZ *
+                    this.formationSample.tangentZ;
+            this.camera.project(
+                worldX + tangentX * FORMATION_DEBUG_TANGENT_LENGTH,
+                FORMATION_GROUND_HEIGHT,
+                worldZ + tangentZ * FORMATION_DEBUG_TANGENT_LENGTH,
+                this.projectedSecond,
+            );
+            context.beginPath();
+            context.moveTo(this.projected.x, this.projected.y);
+            context.lineTo(
+                this.projectedSecond.x,
+                this.projectedSecond.y,
+            );
+            context.stroke();
+        }
     }
 
     private readFusionActive(cultivators: Cultivators): boolean {
@@ -1051,6 +1287,12 @@ export class DemoRenderService extends Service {
         this.view.elapsed.textContent = formatRunTime(tick);
         this.view.kills.textContent = String(kills);
         this.view.enemyCount.textContent = String(activeEnemies);
+        this.view.formation.textContent =
+            scene.stance === FlyingSwordStance.Formation
+                ? this.formationName
+                : scene.mode === FlyingSwordMode.Recall
+                    ? "收剑护卫"
+                    : "分散御剑";
         this.view.defeatOverlay.hidden =
             runPhase !== RogueRunPhase.Defeat;
         this.updateUpgradePanel(
@@ -1065,6 +1307,7 @@ export class DemoRenderService extends Service {
             scene.mode,
             scene.stance,
             fusionActive,
+            this.formationName,
         );
         const nearest = Number.isFinite(this.nearestDepth)
             ? this.nearestDepth.toFixed(2)
@@ -1085,6 +1328,7 @@ export class DemoRenderService extends Service {
             `场上妖物  ${activeEnemies}`,
             `累计斩妖  ${kills}`,
             `当前状态  ${mode}`,
+            `当前阵图  ${this.formationName}`,
             `剑诀阶段  ${skillPhase}`,
             `生命      ${Math.ceil(health)} / ${Math.ceil(maximumHealth)}`,
             `修为      ${experience.toFixed(0)} / ${requiredExperience.toFixed(0)}`,
@@ -1133,6 +1377,7 @@ function skillPhaseName(
     mode: number,
     stance: number,
     fusionActive: boolean,
+    formationName: string,
 ): string {
     if (fusionActive) return "身剑合一 · 螺旋突进";
     if (phase === FlyingSwordSkillPhase.Gather) return "穿云 · 聚剑";
@@ -1142,7 +1387,7 @@ function skillPhaseName(
     if (phase === FlyingSwordSkillPhase.Rejoin) return "穿云 · 入阵";
     if (mode === FlyingSwordMode.Recall) return "收剑护卫";
     return stance === FlyingSwordStance.Formation
-        ? "周天剑阵"
+        ? formationName
         : "分散御剑";
 }
 
@@ -1187,67 +1432,6 @@ const ACTOR_SPRITES = [
     { url: stoneGolemUrl, width: 105, height: 112 },
     { url: swordWraithUrl, width: 89, height: 104 },
 ] as const;
-
-function drawFormationGroundAura(
-    context: CanvasRenderingContext2D,
-    point: Readonly<ProjectedPoint>,
-    tick: number,
-): void {
-    const pulse = 1 + Math.sin(tick * 0.1) * 0.06;
-    context.globalAlpha = 0.42;
-    context.strokeStyle = "#69f7d0";
-    context.lineWidth = 2;
-    drawScreenPolygon(
-        context,
-        point.x,
-        point.y,
-        92 * pulse,
-        39 * pulse,
-        8,
-        Math.PI / 8,
-    );
-    context.globalAlpha = 0.22;
-    context.lineWidth = 1.5;
-    drawScreenPolygon(
-        context,
-        point.x,
-        point.y,
-        72 / pulse,
-        30 / pulse,
-        4,
-        Math.PI / 4,
-    );
-    drawScreenPolygon(
-        context,
-        point.x,
-        point.y,
-        72 / pulse,
-        30 / pulse,
-        4,
-        0,
-    );
-    context.globalAlpha = 1;
-}
-
-function drawScreenPolygon(
-    context: CanvasRenderingContext2D,
-    centerX: number,
-    centerY: number,
-    radiusX: number,
-    radiusY: number,
-    sides: number,
-    rotation: number,
-): void {
-    context.beginPath();
-    for (let vertex = 0; vertex <= sides; vertex++) {
-        const angle = rotation + vertex * Math.PI * 2 / sides;
-        const x = centerX + Math.cos(angle) * radiusX;
-        const y = centerY + Math.sin(angle) * radiusY;
-        if (vertex === 0) context.moveTo(x, y);
-        else context.lineTo(x, y);
-    }
-    context.stroke();
-}
 
 function drawEnemyTargetIndicator(
     context: CanvasRenderingContext2D,
@@ -1567,6 +1751,11 @@ const CULTIVATOR_HEIGHT = 96;
 const ACTOR_FOOT_OFFSET = 7;
 const VIEW_CULLING_MARGIN = 192;
 const GRID_HALF_SPAN = 24;
+const FORMATION_PATH_SAMPLES = 48;
+const FORMATION_GROUND_HEIGHT = 0.035;
+const FORMATION_DIRECTION_EPSILON = 1e-6;
+const FORMATION_DEBUG_MAXIMUM_SLOTS = 64;
+const FORMATION_DEBUG_TANGENT_LENGTH = 0.42;
 const CAMERA_TARGET_HEIGHT = 0.9;
 const CAMERA_TARGET_FORWARD_OFFSET = 2.2;
 const SPRITE_GLOW_PADDING = 12;

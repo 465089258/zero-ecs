@@ -24,6 +24,7 @@ import {
     MoveTowards3Type,
 } from "@zero-ecs/motion/3d";
 import {
+    FlyingSwordFormationPlanId,
     FlyingSwordMode,
     FlyingSwordMember,
     FlyingSwordQuery,
@@ -561,6 +562,18 @@ function consumeFlyingSwordInput(
         );
         scene.stance = FlyingSwordStance.Guard;
         scene.mode = FlyingSwordMode.Recall;
+    } else if (
+        input.action === DemoInputAction.ToggleFormationPlan
+    ) {
+        scene.formationPlan =
+            scene.formationPlan ===
+                FlyingSwordFormationPlanId.EightGates
+                ? FlyingSwordFormationPlanId.Lotus
+                : FlyingSwordFormationPlanId.EightGates;
+        flyingSwords.setFormationPlan(
+            scene.swordGroup,
+            scene.formationPlan,
+        );
     }
 }
 

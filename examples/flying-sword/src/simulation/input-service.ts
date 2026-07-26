@@ -10,6 +10,7 @@ export const DemoInputAction = Object.freeze({
     Focus: 2,
     ToggleFormation: 3,
     Recall: 4,
+    ToggleFormationPlan: 5,
 } as const);
 
 export interface DemoInputOut {
@@ -81,10 +82,19 @@ export class DemoInputService extends Service {
             this.fusionHeld = true;
         } else if (event.code === "KeyQ") {
             event.preventDefault();
-            this.action = DemoInputAction.ToggleFormation;
+            if (!event.repeat) {
+                this.action = DemoInputAction.ToggleFormation;
+            }
         } else if (event.code === "KeyR") {
             event.preventDefault();
-            this.action = DemoInputAction.Recall;
+            if (!event.repeat) {
+                this.action = DemoInputAction.Recall;
+            }
+        } else if (event.code === "KeyE") {
+            event.preventDefault();
+            if (!event.repeat) {
+                this.action = DemoInputAction.ToggleFormationPlan;
+            }
         }
     };
 

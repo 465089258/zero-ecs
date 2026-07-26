@@ -23,6 +23,10 @@ test("formation catalog compiles built-in plans and samples finite tangents", ()
     const sample = createRouteSample();
     for (const plan of [defaultPlan, lotusPlan]) {
         for (let route = 0; route < plan.routeCount; route++) {
+            catalog.sampleRoute(plan.id, route, 0, sample);
+            const startX = sample.x;
+            const startY = sample.y;
+            const startZ = sample.z;
             for (let step = 0; step < 32; step++) {
                 catalog.sampleRoute(
                     plan.id,
@@ -40,6 +44,15 @@ test("formation catalog compiles built-in plans and samples finite tangents", ()
                 );
                 expect(tangentLength).toBeCloseTo(1, 5);
             }
+            catalog.sampleRoute(
+                plan.id,
+                route,
+                catalog.routePeriod(plan.id, route),
+                sample,
+            );
+            expect(sample.x).toBeCloseTo(startX, 5);
+            expect(sample.y).toBeCloseTo(startY, 5);
+            expect(sample.z).toBeCloseTo(startZ, 5);
         }
     }
 });

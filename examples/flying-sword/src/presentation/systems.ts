@@ -1,4 +1,7 @@
 import {
+    FlyingSwordGroupQuery,
+} from "@zero-ecs/flying-sword";
+import {
     defSystem,
 } from "@zero-ecs/game";
 import { DamageDisplayQuery } from "../damage-display/queries";
@@ -31,6 +34,7 @@ export const renderFlyingSwordDemoSystem = defSystem(
         RogueEnemyRenderQuery,
         RogueExperiencePickupQuery,
         DamageDisplayQuery,
+        FlyingSwordGroupQuery,
         DemoFlyingSwordRenderQuery,
     ],
 );
@@ -48,7 +52,8 @@ function renderFlyingSwordDemo(
     enemies: Parameters<DemoRenderService["render"]>[4],
     pickups: Parameters<DemoRenderService["render"]>[5],
     damages: Parameters<DemoRenderService["render"]>[6],
-    swords: Parameters<DemoRenderService["render"]>[7],
+    groups: Parameters<DemoRenderService["render"]>[7],
+    swords: Parameters<DemoRenderService["render"]>[8],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -58,6 +63,7 @@ function renderFlyingSwordDemo(
         enemies,
         pickups,
         damages,
+        groups,
         swords,
     );
 }

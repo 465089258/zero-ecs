@@ -46,6 +46,7 @@ const view = new DemoViewResource(
     element("hud-time", HTMLElement),
     element("hud-kills", HTMLElement),
     element("hud-enemies", HTMLElement),
+    element("hud-formation", HTMLElement),
     element("defeat-overlay", HTMLElement),
     element("restart-button", HTMLButtonElement),
     element("upgrade-panel", HTMLElement),
