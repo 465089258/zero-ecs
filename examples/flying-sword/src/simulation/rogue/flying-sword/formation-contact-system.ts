@@ -90,6 +90,8 @@ function collideFormationSwordContacts(
                 content,
                 index,
                 sword,
+                group,
+                scratch.groupFireBurstThresholds.has(group),
                 scratch.groupFormationDamages.get(group) ??
                     DEFAULT_SWORD_DAMAGE *
                         FORMATION_DAMAGE_MULTIPLIER,
@@ -112,6 +114,8 @@ function collideFormationSegment(
     content: RogueContentService,
     index: Readonly<EnemySpatialIndexState>,
     source: Entity,
+    sourceGroup: Entity,
+    fireIntentActive: boolean,
     damage: number,
     contactCooldownTicks: number,
     startX: number,
@@ -183,12 +187,22 @@ function collideFormationSegment(
                             FlyingSwordContactCooldown.FormationNextTick,
                             tick + contactCooldownTicks,
                         );
-                        content.requestDamage(
-                            source,
-                            enemy,
-                            damage,
-                            DamageKind.FormationSword,
-                        );
+                        if (fireIntentActive) {
+                            content.requestFlyingSwordDamage(
+                                source,
+                                sourceGroup,
+                                enemy,
+                                damage,
+                                DamageKind.FormationSword,
+                            );
+                        } else {
+                            content.requestDamage(
+                                source,
+                                enemy,
+                                damage,
+                                DamageKind.FormationSword,
+                            );
+                        }
                     }
                 }
                 candidate = index.next[candidate];

@@ -57,6 +57,8 @@ import {
     AutoFlyingSwordSkillType,
     EnemyDirector,
     EnemyDirectorType,
+    FireSwordIntent,
+    FireSwordIntentType,
     Health,
     HealthType,
     LevelExperience,
@@ -338,6 +340,7 @@ function setupFlyingSwordDemo(
         .add(AutoFlyingSwordSkillType)
         .add(LightningSwordIntentType)
         .add(MetalSwordIntentType)
+        .add(FireSwordIntentType)
         .set(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.ReattackDelayTicks,
@@ -412,6 +415,21 @@ function setupFlyingSwordDemo(
             MetalSwordIntentType,
             MetalSwordIntent.DamagePerMomentum,
             0.2,
+        )
+        .set(
+            FireSwordIntentType,
+            FireSwordIntent.BurstThreshold,
+            0,
+        )
+        .set(
+            FireSwordIntentType,
+            FireSwordIntent.BurstRadius,
+            2.6,
+        )
+        .set(
+            FireSwordIntentType,
+            FireSwordIntent.BurstDamageMultiplier,
+            0.85,
         )
         .submit();
 

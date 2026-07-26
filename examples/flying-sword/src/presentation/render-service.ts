@@ -54,6 +54,8 @@ import {
     EnemyFeedback,
     EnemyIdentity,
     ExperiencePickup,
+    FireBurst,
+    FireSwordIntent,
     Health,
     LevelExperience,
     LightningArc,
@@ -72,6 +74,7 @@ import {
     RogueEnemyRenderQuery,
     RogueAutoFlyingSwordGroupQuery,
     RogueExperiencePickupQuery,
+    RogueFireBurstQuery,
     RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
@@ -86,6 +89,7 @@ type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
 type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
+type FireBursts = QueryOf<typeof RogueFireBurstQuery>;
 type SwordBuilds = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
 
@@ -98,6 +102,7 @@ enum RenderKind {
     Sword,
     FusionAura,
     LightningArc,
+    FireBurst,
     Damage,
 }
 
@@ -230,6 +235,7 @@ export class DemoRenderService extends Service {
     private visibleEnemyCount = 0;
     private swordTrailCount = 0;
     private lightningArcCount = 0;
+    private fireBurstCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -294,6 +300,7 @@ export class DemoRenderService extends Service {
         pickups: Pickups,
         damages: DamageDisplays,
         lightningArcs: LightningArcs,
+        fireBursts: FireBursts,
         swordBuilds: SwordBuilds,
         groups: SwordGroups,
         swords: Swords,
@@ -327,6 +334,7 @@ export class DemoRenderService extends Service {
             interpolation,
         );
         this.collectLightningArcs(lightningArcs, tick);
+        this.collectFireBursts(fireBursts, tick);
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
@@ -352,6 +360,7 @@ export class DemoRenderService extends Service {
         this.visibleEnemyCount = 0;
         this.swordTrailCount = 0;
         this.lightningArcCount = 0;
+        this.fireBurstCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -1190,6 +1199,71 @@ export class DemoRenderService extends Service {
         }
     }
 
+    private collectFireBursts(
+        bursts: FireBursts,
+        tick: number,
+    ): void {
+        const iter = bursts.iter();
+        while (iter.next()) {
+            const [count, entities, positions, timing] =
+                iter.current;
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const startTicks = timing[FireBurst.StartTick];
+            const durations = timing[FireBurst.DurationTicks];
+            const radii = timing[FireBurst.Radius];
+            for (let row = 0; row < count; row++) {
+                if (this.fireBurstCount >= MAX_FIRE_BURSTS) return;
+                const duration = Math.max(1, durations[row]);
+                const progress = Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        (tick - startTicks[row]) / duration,
+                    ),
+                );
+                const diameter =
+                    radii[row] *
+                    FIRE_BURST_PIXELS_PER_WORLD_UNIT *
+                    (0.45 + Math.sqrt(progress) * 0.55) *
+                    2;
+                this.camera.project(
+                    xs[row],
+                    ys[row],
+                    zs[row],
+                    this.projected,
+                );
+                const halfWidth = diameter * 0.5;
+                const halfHeight = halfWidth * 0.62;
+                if (
+                    this.projected.x + halfWidth < 0 ||
+                    this.projected.x - halfWidth >
+                        this.logicalWidth ||
+                    this.projected.y + halfHeight < 0 ||
+                    this.projected.y - halfHeight >
+                        this.logicalHeight
+                ) {
+                    continue;
+                }
+                const item = this.queue.acquire();
+                this.fireBurstCount++;
+                item.kind = RenderKind.FireBurst;
+                item.sprite = 0;
+                item.layer = DemoRenderLayer.ForegroundEffect;
+                item.depth = this.projected.depth;
+                item.subOrder = -2;
+                item.stableId = entities[row];
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                item.width = diameter;
+                item.height = diameter * 0.62;
+                item.amount = progress;
+                item.alpha = 1 - progress;
+            }
+        }
+    }
+
     private readRunTick(runs: Runs): number {
         const iter = runs.iter();
         while (iter.next()) {
@@ -1268,6 +1342,8 @@ export class DemoRenderService extends Service {
                 drawFusionAura(context, item);
             } else if (item.kind === RenderKind.LightningArc) {
                 drawLightningArc(context, item);
+            } else if (item.kind === RenderKind.FireBurst) {
+                drawFireBurst(context, item);
             } else if (item.kind === RenderKind.Damage) {
                 drawDamageDisplay(context, item);
             }
@@ -1329,6 +1405,8 @@ export class DemoRenderService extends Service {
         let lightningDamageMultiplier = 0;
         let metalMaximumMomentum = 0;
         let metalDamagePerMomentum = 0;
+        let fireBurstThreshold = 0;
+        let fireBurstDamageMultiplier = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -1365,7 +1443,7 @@ export class DemoRenderService extends Service {
         }
         const buildIter = swordBuilds.iter();
         while (buildIter.next()) {
-            const [count, entities, , lightning, metal] =
+            const [count, entities, , lightning, metal, fire] =
                 buildIter.current;
             const chainCounts =
                 lightning[LightningSwordIntent.ChainCount];
@@ -1375,12 +1453,19 @@ export class DemoRenderService extends Service {
                 metal[MetalSwordIntent.MaximumMomentum];
             const damagePerMomentum =
                 metal[MetalSwordIntent.DamagePerMomentum];
+            const burstThresholds =
+                fire[FireSwordIntent.BurstThreshold];
+            const burstDamageMultipliers =
+                fire[FireSwordIntent.BurstDamageMultiplier];
             for (let row = 0; row < count; row++) {
                 if (entities[row] !== scene.swordGroup) continue;
                 lightningChainCount = chainCounts[row];
                 lightningDamageMultiplier = damageMultipliers[row];
                 metalMaximumMomentum = maximumMomentum[row];
                 metalDamagePerMomentum = damagePerMomentum[row];
+                fireBurstThreshold = burstThresholds[row];
+                fireBurstDamageMultiplier =
+                    burstDamageMultipliers[row];
                 break;
             }
         }
@@ -1427,9 +1512,23 @@ export class DemoRenderService extends Service {
                 metalDamagePerMomentum * 100,
             )}%×${metalMaximumMomentum}`
             : "";
-        const activeIntents = lightningIntent && metalIntent
-            ? `${lightningIntent} · ${metalIntent}`
-            : lightningIntent || metalIntent || "剑意未悟";
+        const fireIntent = fireBurstThreshold > 0
+            ? `火意·焚心 ${fireBurstThreshold}印/${Math.round(
+                fireBurstDamageMultiplier * 100,
+            )}%`
+            : "";
+        let activeIntents = lightningIntent;
+        if (metalIntent) {
+            activeIntents = activeIntents
+                ? `${activeIntents} · ${metalIntent}`
+                : metalIntent;
+        }
+        if (fireIntent) {
+            activeIntents = activeIntents
+                ? `${activeIntents} · ${fireIntent}`
+                : fireIntent;
+        }
+        if (!activeIntents) activeIntents = "剑意未悟";
         this.view.intent.textContent = activeIntents;
         this.view.defeatOverlay.hidden =
             runPhase !== RogueRunPhase.Defeat;
@@ -1669,6 +1768,57 @@ function drawLightningArc(
     context.globalAlpha = item.alpha;
     context.lineWidth = 2;
     traceLightningArc(context, item, normalX, normalY, 7);
+    context.globalAlpha = 1;
+}
+
+function drawFireBurst(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const halfWidth = item.width * 0.5;
+    const halfHeight = item.height * 0.5;
+    context.fillStyle = "#ff5a24";
+    context.globalAlpha = item.alpha * 0.18;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        halfWidth,
+        halfHeight,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.fill();
+    context.strokeStyle = "#ff8a38";
+    context.globalAlpha = item.alpha * 0.9;
+    context.lineWidth = 5;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        halfWidth,
+        halfHeight,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    const innerScale = 0.28 + item.amount * 0.34;
+    context.strokeStyle = "#ffe38a";
+    context.globalAlpha = item.alpha;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        halfWidth * innerScale,
+        halfHeight * innerScale,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
     context.globalAlpha = 1;
 }
 
@@ -1972,6 +2122,8 @@ const STATUS_UPDATE_INTERVAL_FRAMES = 6;
 const MAX_SWORD_TRAILS = 160;
 const MAX_LIGHTNING_ARCS = 96;
 const LIGHTNING_ARC_CULL_PADDING = 32;
+const MAX_FIRE_BURSTS = 48;
+const FIRE_BURST_PIXELS_PER_WORLD_UNIT = 62;
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
 const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1983,6 +2135,7 @@ const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.SwordBodyUnity]: "#ff9b68",
         [DamageDisplayStyle.LightningChain]: "#8de8ff",
         [DamageDisplayStyle.MetalBreak]: "#ffd56a",
+        [DamageDisplayStyle.FireBurst]: "#ff8a42",
     });
 const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1994,6 +2147,7 @@ const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.SwordBodyUnity]: "800 24px monospace",
         [DamageDisplayStyle.LightningChain]: "800 21px monospace",
         [DamageDisplayStyle.MetalBreak]: "900 22px monospace",
+        [DamageDisplayStyle.FireBurst]: "900 23px monospace",
     });
 const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -2010,4 +2164,6 @@ const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
             "brightness(3) saturate(2.4) hue-rotate(145deg)",
         [DamageKind.MetalBreak]:
             "brightness(2.8) sepia(1) saturate(3.2) hue-rotate(355deg)",
+        [DamageKind.FireBurst]:
+            "brightness(3.1) sepia(1) saturate(4) hue-rotate(330deg)",
     });

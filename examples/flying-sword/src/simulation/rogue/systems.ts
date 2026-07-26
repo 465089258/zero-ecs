@@ -51,6 +51,7 @@ import {
     EnemyIdentity,
     ExperiencePickup,
     ExperienceReward,
+    FireSwordIntent,
     FlyingSwordCombat,
     FlyingSwordCombatType,
     FlyingSwordPiercingSequence,
@@ -632,7 +633,7 @@ function applyUpgradeToSwordGroup(
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
-        const [count, entities, auto, lightning, metal] =
+        const [count, entities, auto, lightning, metal, fire] =
             iter.current;
         if (count === 0) continue;
         const formationRadii =
@@ -700,6 +701,16 @@ function applyUpgradeToSwordGroup(
                 maximumMomentum[0] = 4;
             } else {
                 damagePerMomentum[0] *= 1.2;
+            }
+        } else if (upgrade === RogueUpgrade.FireIntent) {
+            const burstThresholds =
+                fire[FireSwordIntent.BurstThreshold];
+            const burstDamageMultipliers =
+                fire[FireSwordIntent.BurstDamageMultiplier];
+            if (burstThresholds[0] === 0) {
+                burstThresholds[0] = 4;
+            } else {
+                burstDamageMultipliers[0] *= 1.2;
             }
         }
         return;
@@ -1268,6 +1279,7 @@ const FORMATION_HIT_FLASH_TICKS = 3;
 const FUSION_HIT_FLASH_TICKS = 8;
 const LIGHTNING_HIT_FLASH_TICKS = 7;
 const METAL_BREAK_HIT_FLASH_TICKS = 7;
+const FIRE_BURST_HIT_FLASH_TICKS = 8;
 const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
     Object.freeze({
         [DamageKind.Generic]: GENERIC_HIT_FLASH_TICKS,
@@ -1277,6 +1289,7 @@ const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
         [DamageKind.SwordBodyUnity]: FUSION_HIT_FLASH_TICKS,
         [DamageKind.LightningChain]: LIGHTNING_HIT_FLASH_TICKS,
         [DamageKind.MetalBreak]: METAL_BREAK_HIT_FLASH_TICKS,
+        [DamageKind.FireBurst]: FIRE_BURST_HIT_FLASH_TICKS,
     });
 const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
 const MINIMUM_FUSION_STAMINA_DRAIN = 10;

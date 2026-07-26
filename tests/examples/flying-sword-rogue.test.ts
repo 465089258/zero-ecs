@@ -32,6 +32,7 @@ import {
     GRID_HALF_EXTENT,
     GRID_WIDTH,
     CombatScratchState,
+    FireSwordIntentAccessState,
     FocusPiercingCandidateState,
     LightningChainAccessState,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
@@ -59,6 +60,11 @@ import {
     lightningChainDamage,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/lightning-chain-system";
 import {
+    applyFireSwordIntentSystem,
+    canTriggerFireBurst,
+    fireBurstDamage,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/fire-burst-system";
+import {
     applyMetalBreakSystem,
     canTriggerMetalBreak,
     metalBreakDamage,
@@ -69,6 +75,8 @@ import {
     DamageRequestType,
     EnemyBody,
     EnemyBodyType,
+    EnemyFireAccumulation,
+    EnemyFireAccumulationType,
     FlyingSwordDamageSource,
     FlyingSwordDamageSourceType,
     PiercingDamage,
@@ -76,6 +84,7 @@ import {
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
+    RogueFireBurstQuery,
     RogueLightningArcQuery,
 } from "../../examples/flying-sword/src/simulation/rogue/queries";
 import {
@@ -192,6 +201,72 @@ const setupMetalBreakTestSystem = defSystem(
     [Commands, Write(CombatScratchState)],
 );
 
+const setupFireBurstTestSystem = defSystem(
+    Startup,
+    (
+        commands: Commands,
+        scratch: Mut<CombatScratchState>,
+        index: Mut<EnemySpatialIndexState>,
+    ): void => {
+        const group = commands.spawn();
+        group.submit();
+        const source = commands.spawn();
+        source.submit();
+        const primary = commands.spawn();
+        primary
+            .add(Position3Type)
+            .add(EnemyFireAccumulationType)
+            .set(Position3Type, Float3.X, 0)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(
+                EnemyFireAccumulationType,
+                EnemyFireAccumulation.SourceGroup,
+                group.entity,
+            )
+            .set(
+                EnemyFireAccumulationType,
+                EnemyFireAccumulation.Stacks,
+                3,
+            )
+            .submit();
+        const nearby = commands.spawn();
+        nearby.submit();
+        commands
+            .spawn()
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .set(DamageRequestType, DamageRequest.Source, source.entity)
+            .set(DamageRequestType, DamageRequest.Target, primary.entity)
+            .set(DamageRequestType, DamageRequest.Amount, 20)
+            .set(
+                DamageRequestType,
+                DamageRequest.Kind,
+                DamageKind.FocusSword,
+            )
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                group.entity,
+            )
+            .submit();
+        scratch.groupFireBurstThresholds.set(group.entity, 4);
+        scratch.groupFireBurstRadii.set(group.entity, 2.6);
+        scratch.groupFireBurstDamageMultipliers.set(
+            group.entity,
+            0.85,
+        );
+        index.reset(0, 0);
+        index.insert(primary.entity, 0, 0.8, 0, 0.5);
+        index.insert(nearby.entity, 2, 0.8, 0, 0.5);
+    },
+    [
+        Commands,
+        Write(CombatScratchState),
+        Write(EnemySpatialIndexState),
+    ],
+);
+
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
     let right = 0;
@@ -215,7 +290,7 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.MetalIntent + 1);
+    expect(catalog.count).toBe(RogueUpgrade.FireIntent + 1);
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -236,6 +311,8 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
         .toContain("雷意");
     expect(catalog.names[RogueUpgrade.MetalIntent])
         .toContain("金意");
+    expect(catalog.names[RogueUpgrade.FireIntent])
+        .toContain("火意");
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {
@@ -497,6 +574,54 @@ test("metal intent emits one capped breakthrough damage fact", () => {
         }
     }
     expect(metalRequests).toBe(1);
+    game.dispose();
+});
+
+test("fire intent accumulates only focus and formation hits", () => {
+    expect(canTriggerFireBurst(DamageKind.FocusSword)).toBe(true);
+    expect(canTriggerFireBurst(DamageKind.FormationSword)).toBe(true);
+    expect(canTriggerFireBurst(DamageKind.ScatterSword)).toBe(false);
+    expect(canTriggerFireBurst(DamageKind.FireBurst)).toBe(false);
+    expect(fireBurstDamage(20, 0.85)).toBeCloseTo(17);
+    expect(fireBurstDamage(-20, 0.85)).toBe(0);
+});
+
+test("fire intent consumes four marks into one area burst", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addResource(EnemyCatalog, new EnemyCatalog())
+        .addState(CombatScratchState)
+        .addState(EnemySpatialIndexState)
+        .addState(FireSwordIntentAccessState)
+        .addService(RogueContentService);
+    builder.addSystem(setupFireBurstTestSystem);
+    builder.addSystem(applyFireSwordIntentSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let burstRequests = 0;
+    const requestIter =
+        game.world.query(RogueDamageRequestQuery).iter();
+    while (requestIter.next()) {
+        const [count, , data] = requestIter.current;
+        const amounts = data[DamageRequest.Amount];
+        const kinds = data[DamageRequest.Kind];
+        for (let row = 0; row < count; row++) {
+            if (kinds[row] !== DamageKind.FireBurst) continue;
+            burstRequests++;
+            expect(amounts[row]).toBeCloseTo(17);
+        }
+    }
+    expect(burstRequests).toBe(2);
+
+    let effectCount = 0;
+    const effectIter = game.world.query(RogueFireBurstQuery).iter();
+    while (effectIter.next()) effectCount += effectIter.current[0];
+    expect(effectCount).toBe(1);
     game.dispose();
 });
 

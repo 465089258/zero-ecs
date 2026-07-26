@@ -19,6 +19,7 @@ import {
 import {
     AutoFlyingSwordSkill,
     EnemyFeedback,
+    FireSwordIntent,
     FlyingSwordCombat,
     LightningSwordIntent,
     MetalSwordIntent,
@@ -116,9 +117,12 @@ function buildActionSnapshots(
     scratch.groupLightningDamageMultipliers.clear();
     scratch.groupMetalMaximumMomentum.clear();
     scratch.groupMetalDamagePerMomentum.clear();
+    scratch.groupFireBurstThresholds.clear();
+    scratch.groupFireBurstRadii.clear();
+    scratch.groupFireBurstDamageMultipliers.clear();
     const groupIter = groups.iter();
     while (groupIter.next()) {
-        const [count, entities, data, lightning, metal] =
+        const [count, entities, data, lightning, metal, fire] =
             groupIter.current;
         const damages = data[AutoFlyingSwordSkill.Damage];
         const focusDamageMultipliers =
@@ -139,6 +143,12 @@ function buildActionSnapshots(
             metal[MetalSwordIntent.MaximumMomentum];
         const metalDamagePerMomentum =
             metal[MetalSwordIntent.DamagePerMomentum];
+        const fireBurstThresholds =
+            fire[FireSwordIntent.BurstThreshold];
+        const fireBurstRadii =
+            fire[FireSwordIntent.BurstRadius];
+        const fireBurstDamageMultipliers =
+            fire[FireSwordIntent.BurstDamageMultiplier];
         for (let row = 0; row < count; row++) {
             scratch.groupDamages.set(entities[row], damages[row]);
             scratch.groupFocusDamages.set(
@@ -177,6 +187,20 @@ function buildActionSnapshots(
                 entities[row],
                 metalDamagePerMomentum[row],
             );
+            if (fireBurstThresholds[row] > 0) {
+                scratch.groupFireBurstThresholds.set(
+                    entities[row],
+                    fireBurstThresholds[row],
+                );
+                scratch.groupFireBurstRadii.set(
+                    entities[row],
+                    fireBurstRadii[row],
+                );
+                scratch.groupFireBurstDamageMultipliers.set(
+                    entities[row],
+                    fireBurstDamageMultipliers[row],
+                );
+            }
         }
     }
     const iter = actions.iter();

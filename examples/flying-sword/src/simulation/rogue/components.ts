@@ -208,6 +208,20 @@ implements Component<MetalSwordIntent> {
     readonly [MetalSwordIntent.DamagePerMomentum] = Types.F32;
 }
 
+/** 示例构筑中的火意规则参数，归属于飞剑控制组。 */
+export enum FireSwordIntent {
+    BurstThreshold,
+    BurstRadius,
+    BurstDamageMultiplier,
+}
+
+export class FireSwordIntentType
+implements Component<FireSwordIntent> {
+    readonly [FireSwordIntent.BurstThreshold] = Types.U8;
+    readonly [FireSwordIntent.BurstRadius] = Types.F32;
+    readonly [FireSwordIntent.BurstDamageMultiplier] = Types.F32;
+}
+
 export enum EnemyIdentity {
     Kind,
     Visual,
@@ -315,6 +329,18 @@ implements Component<EnemyFeedback> {
     readonly [EnemyFeedback.HitKind] = Types.U8;
 }
 
+/** 单控制组示例中的敌人火印积累。 */
+export enum EnemyFireAccumulation {
+    SourceGroup,
+    Stacks,
+}
+
+export class EnemyFireAccumulationType
+implements Component<EnemyFireAccumulation> {
+    readonly [EnemyFireAccumulation.SourceGroup] = Types.Entity;
+    readonly [EnemyFireAccumulation.Stacks] = Types.U8;
+}
+
 /** 玩家身剑合一动作；常驻组件避免动作开始时迁移玩家 Archetype。 */
 export enum SwordBodyUnity {
     Active,
@@ -363,6 +389,7 @@ export enum DamageKind {
     SwordBodyUnity,
     LightningChain,
     MetalBreak,
+    FireBurst,
 }
 
 export class DamageRequestType implements Component<DamageRequest> {
@@ -413,6 +440,19 @@ export class LightningArcEnd3Type implements Component<Float3> {
     readonly [Float3.X] = Types.F32;
     readonly [Float3.Y] = Types.F32;
     readonly [Float3.Z] = Types.F32;
+}
+
+export enum FireBurst {
+    StartTick,
+    DurationTicks,
+    Radius,
+}
+
+/** 火意达到阈值后产生的短生命周期表现事实。 */
+export class FireBurstType implements Component<FireBurst> {
+    readonly [FireBurst.StartTick] = Types.U32;
+    readonly [FireBurst.DurationTicks] = Types.U16;
+    readonly [FireBurst.Radius] = Types.F32;
 }
 
 export enum ExperiencePickup {

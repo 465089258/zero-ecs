@@ -13,6 +13,7 @@ export enum DamageDisplayStyle {
     SwordBodyUnity,
     LightningChain,
     MetalBreak,
+    FireBurst,
 }
 
 export enum DamageDisplay {

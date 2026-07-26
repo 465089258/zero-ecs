@@ -30,6 +30,8 @@ import {
     EnemyCombatType,
     EnemyFeedback,
     EnemyFeedbackType,
+    EnemyFireAccumulation,
+    EnemyFireAccumulationType,
     EnemyIdentity,
     EnemyIdentityType,
     ExperiencePickup,
@@ -38,6 +40,8 @@ import {
     ExperienceRewardType,
     FocusSwordHitHistory,
     FocusSwordHitHistoryType,
+    FireBurst,
+    FireBurstType,
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
     FlyingSwordDamageSource,
@@ -84,6 +88,7 @@ export class RogueContentService extends Service {
             .add(ExperienceRewardType)
             .add(FlyingSwordContactCooldownType)
             .add(FocusSwordHitHistoryType)
+            .add(EnemyFireAccumulationType)
             .set(Position3Type, Float3.X, x)
             .set(Position3Type, Float3.Y, 0)
             .set(Position3Type, Float3.Z, z)
@@ -175,6 +180,16 @@ export class RogueContentService extends Service {
             .set(
                 FocusSwordHitHistoryType,
                 FocusSwordHitHistory.SwordMaskHigh,
+                0,
+            )
+            .set(
+                EnemyFireAccumulationType,
+                EnemyFireAccumulation.SourceGroup,
+                INVALID_ENTITY,
+            )
+            .set(
+                EnemyFireAccumulationType,
+                EnemyFireAccumulation.Stacks,
                 0,
             )
             .submit();
@@ -306,6 +321,33 @@ export class RogueContentService extends Service {
             .set(LightningArcEnd3Type, Float3.X, endX)
             .set(LightningArcEnd3Type, Float3.Y, endY)
             .set(LightningArcEnd3Type, Float3.Z, endZ)
+            .submit();
+        return entity;
+    }
+
+    spawnFireBurst(
+        x: number,
+        y: number,
+        z: number,
+        radius: number,
+        startTick: number,
+        durationTicks: number,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(Position3Type)
+            .add(FireBurstType)
+            .set(Position3Type, Float3.X, x)
+            .set(Position3Type, Float3.Y, y)
+            .set(Position3Type, Float3.Z, z)
+            .set(FireBurstType, FireBurst.StartTick, startTick)
+            .set(
+                FireBurstType,
+                FireBurst.DurationTicks,
+                durationTicks,
+            )
+            .set(FireBurstType, FireBurst.Radius, radius)
             .submit();
         return entity;
     }

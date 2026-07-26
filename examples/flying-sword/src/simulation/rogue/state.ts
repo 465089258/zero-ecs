@@ -92,6 +92,14 @@ export class LightningChainAccessState extends State {
     };
 }
 
+/** 火意积累结算复用的实体定位结果。 */
+export class FireSwordIntentAccessState extends State {
+    readonly access: EntityAccess = {
+        archetype: null,
+        row: 0 as EntityAccess["row"],
+    };
+}
+
 /** 飞剑接触系统每 Tick 派生的动作快照，避免逐剑重复遍历动作 Query。 */
 export class CombatScratchState extends State {
     actionEntities = new Uint32Array(4);
@@ -113,6 +121,10 @@ export class CombatScratchState extends State {
         new Map<Entity, number>();
     readonly groupMetalMaximumMomentum = new Map<Entity, number>();
     readonly groupMetalDamagePerMomentum = new Map<Entity, number>();
+    readonly groupFireBurstThresholds = new Map<Entity, number>();
+    readonly groupFireBurstRadii = new Map<Entity, number>();
+    readonly groupFireBurstDamageMultipliers =
+        new Map<Entity, number>();
     readonly targetedSwordCounts = new Map<Entity, number>();
 
     reset(required: number): void {
@@ -145,6 +157,9 @@ export class CombatScratchState extends State {
         this.groupLightningDamageMultipliers.clear();
         this.groupMetalMaximumMomentum.clear();
         this.groupMetalDamagePerMomentum.clear();
+        this.groupFireBurstThresholds.clear();
+        this.groupFireBurstRadii.clear();
+        this.groupFireBurstDamageMultipliers.clear();
         this.targetedSwordCounts.clear();
         this.actionCount = 0;
     }
