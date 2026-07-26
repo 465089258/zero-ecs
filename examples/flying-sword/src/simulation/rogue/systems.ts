@@ -110,6 +110,10 @@ export const RogueSystemSet = Object.freeze({
     Clock: new SystemSet(Update.fixed, "flying-sword-rogue:clock"),
     Spawn: new SystemSet(Update.fixed, "flying-sword-rogue:spawn"),
     Intent: new SystemSet(Update.fixed, "flying-sword-rogue:intent"),
+    EnemyResolve: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:enemy-resolve",
+    ),
     Targeting: new SystemSet(Update.fixed, "flying-sword-rogue:targeting"),
     Spatial: new SystemSet(Update.fixed, "flying-sword-rogue:spatial"),
     CombatSnapshot: new SystemSet(
@@ -238,6 +242,7 @@ export const RogueSystemOptions = Object.freeze({
         before: [
             RogueSystemSet.Spawn,
             RogueSystemSet.Intent,
+            RogueSystemSet.EnemyResolve,
             RogueSystemSet.Targeting,
         ],
     },
@@ -249,6 +254,14 @@ export const RogueSystemOptions = Object.freeze({
     intent: {
         inSet: RogueSystemSet.Intent,
         after: RogueSystemSet.Spawn,
+        before: [
+            RogueSystemSet.EnemyResolve,
+            MotionSystemSet.Integrate3,
+        ],
+    },
+    enemyResolve: {
+        inSet: RogueSystemSet.EnemyResolve,
+        after: RogueSystemSet.Intent,
         before: MotionSystemSet.Integrate3,
     },
     targeting: {

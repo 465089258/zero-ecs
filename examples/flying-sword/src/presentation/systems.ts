@@ -15,6 +15,7 @@ import {
     RoguePlayerQuery,
     RogueRunQuery,
     RogueStoneGolemChargeRenderQuery,
+    RogueSwordWraithEmpowermentRenderQuery,
 } from "../simulation/rogue/queries";
 import {
     DemoRenderFrameState,
@@ -37,6 +38,7 @@ export const renderFlyingSwordDemoSystem = defSystem(
         RoguePlayerQuery,
         RogueEnemyRenderQuery,
         RogueStoneGolemChargeRenderQuery,
+        RogueSwordWraithEmpowermentRenderQuery,
         RogueExperiencePickupQuery,
         DamageDisplayQuery,
         RogueLightningArcQuery,
@@ -59,13 +61,15 @@ function renderFlyingSwordDemo(
     cultivators: Parameters<DemoRenderService["render"]>[3],
     enemies: Parameters<DemoRenderService["render"]>[4],
     stoneGolemCharges: Parameters<DemoRenderService["render"]>[5],
-    pickups: Parameters<DemoRenderService["render"]>[6],
-    damages: Parameters<DemoRenderService["render"]>[7],
-    lightningArcs: Parameters<DemoRenderService["render"]>[8],
-    fireBursts: Parameters<DemoRenderService["render"]>[9],
-    swordBuilds: Parameters<DemoRenderService["render"]>[10],
-    groups: Parameters<DemoRenderService["render"]>[11],
-    swords: Parameters<DemoRenderService["render"]>[12],
+    swordWraithEmpowerments:
+        Parameters<DemoRenderService["render"]>[6],
+    pickups: Parameters<DemoRenderService["render"]>[7],
+    damages: Parameters<DemoRenderService["render"]>[8],
+    lightningArcs: Parameters<DemoRenderService["render"]>[9],
+    fireBursts: Parameters<DemoRenderService["render"]>[10],
+    swordBuilds: Parameters<DemoRenderService["render"]>[11],
+    groups: Parameters<DemoRenderService["render"]>[12],
+    swords: Parameters<DemoRenderService["render"]>[13],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -74,6 +78,7 @@ function renderFlyingSwordDemo(
         cultivators,
         enemies,
         stoneGolemCharges,
+        swordWraithEmpowerments,
         pickups,
         damages,
         lightningArcs,

@@ -6,8 +6,10 @@ import {
     CommandModule,
     Commands,
     GameBuilder,
+    QueryType,
     Startup,
     Update,
+    With,
     Write,
     defSystem,
     type Entity,
@@ -91,6 +93,10 @@ import {
     EnemyBodyType,
     EnemyColdAccumulation,
     EnemyColdAccumulationType,
+    EnemyCombat,
+    EnemyCombatType,
+    EnemyEmpowerment,
+    EnemyEmpowermentType,
     EnemyLocomotion,
     EnemyLocomotionType,
     EnemyFireAccumulation,
@@ -99,6 +105,8 @@ import {
     FlyingSwordDamageSourceType,
     PiercingDamage,
     PiercingDamageType,
+    Health,
+    HealthType,
     RogueRunClock,
     RogueRunClockType,
     RogueRunPhase,
@@ -107,6 +115,8 @@ import {
     StoneGolemCharge,
     StoneGolemChargePhase,
     StoneGolemChargeType,
+    SwordWraithEmpowerment,
+    SwordWraithEmpowermentType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
@@ -115,6 +125,7 @@ import {
     RogueLightningArcQuery,
     RogueRunPhaseQuery,
     RogueStoneGolemChargeQuery,
+    RogueSwordWraithEmpowermentQuery,
 } from "../../examples/flying-sword/src/simulation/rogue/queries";
 import {
     RogueContentService,
@@ -137,9 +148,24 @@ import {
 import {
     CultivatorTag,
 } from "../../examples/flying-sword/src/simulation/components";
+import {
+    resolveEnemyCombatSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/enemy/combat-system";
+import {
+    applyEnemyEmpowermentModifiersSystem,
+    isWithinSwordWraithEmpowerment,
+    pulseSwordWraithEmpowermentSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/enemy/sword-wraith-empowerment-system";
 
 type TestDamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 type TestRunPhases = QueryOf<typeof RogueRunPhaseQuery>;
+
+const TestEmpoweredEnemyQuery = QueryType.from(With(
+    Position3Type,
+    MoveTowards3Type,
+    EnemyCombatType,
+    EnemyEmpowermentType,
+));
 
 const setupLightningChainTestSystem = defSystem(
     Startup,
@@ -430,6 +456,14 @@ const setupEnemyAbilityCompositionTestSystem = defSystem(
             0,
             1,
         );
+        content.spawnEnemy(
+            EnemyKind.SwordWraith,
+            4,
+            0,
+            0,
+            0,
+            1,
+        );
     },
     [RogueContentService],
 );
@@ -537,6 +571,170 @@ const advanceStoneGolemChargeTestClockSystem = defSystem(
     },
     [RogueRunPhaseQuery],
 );
+
+const setupSwordWraithEmpowermentTestSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        commands
+            .spawn()
+            .add(RogueRunClockType)
+            .add(RogueRunStatusType)
+            .set(RogueRunClockType, RogueRunClock.Tick, 0)
+            .set(
+                RogueRunStatusType,
+                RogueRunStatus.Phase,
+                RogueRunPhase.Playing,
+            )
+            .submit();
+        commands
+            .spawn()
+            .add(Position3Type)
+            .add(HealthType)
+            .add(EnemyEmpowermentType)
+            .add(SwordWraithEmpowermentType)
+            .set(Position3Type, Float3.X, 0)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(HealthType, Health.Current, 100)
+            .set(HealthType, Health.Maximum, 100)
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.Source,
+                0,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.ExpireTick,
+                0,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.SpeedMultiplier,
+                1,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.ContactDamageMultiplier,
+                1,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.Radius,
+                5,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.IntervalTicks,
+                1000,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.DurationTicks,
+                3,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.NextPulseTick,
+                0,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.SpeedMultiplier,
+                1.25,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.ContactDamageMultiplier,
+                1.5,
+            )
+            .set(
+                SwordWraithEmpowermentType,
+                SwordWraithEmpowerment.PulseEndTick,
+                0,
+            )
+            .submit();
+        spawnEmpowermentTestTarget(commands, 3);
+        spawnEmpowermentTestTarget(commands, 8);
+    },
+    [Commands],
+);
+
+function spawnEmpowermentTestTarget(
+    commands: Commands,
+    x: number,
+): void {
+    commands
+        .spawn()
+        .add(Position3Type)
+        .add(HealthType)
+        .add(MoveTowards3Type)
+        .add(EnemyLocomotionType)
+        .add(EnemyCombatType)
+        .add(EnemyEmpowermentType)
+        .set(Position3Type, Float3.X, x)
+        .set(Position3Type, Float3.Y, 0)
+        .set(Position3Type, Float3.Z, 0)
+        .set(HealthType, Health.Current, 100)
+        .set(HealthType, Health.Maximum, 100)
+        .set(MoveTowards3Type, MoveTowards3.TargetX, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+        .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+        .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 10)
+        .set(MoveTowards3Type, MoveTowards3.Acceleration, 20)
+        .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0)
+        .set(
+            EnemyLocomotionType,
+            EnemyLocomotion.BaseSpeed,
+            10,
+        )
+        .set(
+            EnemyLocomotionType,
+            EnemyLocomotion.BaseAcceleration,
+            20,
+        )
+        .set(
+            EnemyLocomotionType,
+            EnemyLocomotion.DesiredSpeed,
+            10,
+        )
+        .set(
+            EnemyLocomotionType,
+            EnemyLocomotion.DesiredAcceleration,
+            20,
+        )
+        .set(
+            EnemyCombatType,
+            EnemyCombat.BaseContactDamage,
+            20,
+        )
+        .set(
+            EnemyCombatType,
+            EnemyCombat.ContactDamage,
+            20,
+        )
+        .set(EnemyCombatType, EnemyCombat.NextContactTick, 0)
+        .set(
+            EnemyEmpowermentType,
+            EnemyEmpowerment.Source,
+            0,
+        )
+        .set(
+            EnemyEmpowermentType,
+            EnemyEmpowerment.ExpireTick,
+            0,
+        )
+        .set(
+            EnemyEmpowermentType,
+            EnemyEmpowerment.SpeedMultiplier,
+            1,
+        )
+        .set(
+            EnemyEmpowermentType,
+            EnemyEmpowerment.ContactDamageMultiplier,
+            1,
+        )
+        .submit();
+}
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -951,7 +1149,7 @@ test("cold intent modifies behavior-selected movement without compounding", () =
     game.dispose();
 });
 
-test("only stone golems receive the charge capability component", () => {
+test("enemy kinds receive only their composed ability components", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addResource(EnemyCatalog, new EnemyCatalog())
@@ -967,6 +1165,110 @@ test("only stone golems receive the charge capability component", () => {
     const iter = game.world.query(RogueStoneGolemChargeQuery).iter();
     while (iter.next()) chargeCapabilities += iter.current[0];
     expect(chargeCapabilities).toBe(1);
+
+    let empowermentCapabilities = 0;
+    const empowermentIter =
+        game.world.query(RogueSwordWraithEmpowermentQuery).iter();
+    while (empowermentIter.next()) {
+        empowermentCapabilities += empowermentIter.current[0];
+    }
+    expect(empowermentCapabilities).toBe(1);
+    game.dispose();
+});
+
+test("sword wraith pulse empowers only nearby allies then expires", () => {
+    expect(
+        isWithinSwordWraithEmpowerment(0, 0, 3, 4, 5),
+    ).toBe(true);
+    expect(
+        isWithinSwordWraithEmpowerment(0, 0, 5.01, 0, 5),
+    ).toBe(false);
+    expect(
+        isWithinSwordWraithEmpowerment(0, 0, 0, 0, -1),
+    ).toBe(false);
+
+    const builder = new GameBuilder().addModule(new CommandModule());
+    builder.addSystem(setupSwordWraithEmpowermentTestSystem);
+    builder.addSystem(advanceStoneGolemChargeTestClockSystem);
+    builder.addSystem(pulseSwordWraithEmpowermentSystem);
+    builder.addSystem(resolveEnemyMovementSpeedSystem);
+    builder.addSystem(resolveEnemyCombatSystem);
+    builder.addSystem(applyEnemyEmpowermentModifiersSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    const sourceIter =
+        game.world.query(RogueSwordWraithEmpowermentQuery).iter();
+    expect(sourceIter.next()).toBe(true);
+    const [, , , sourceAbilities] = sourceIter.current;
+    expect(
+        sourceAbilities[SwordWraithEmpowerment.NextPulseTick][0],
+    ).toBe(1001);
+    expect(
+        sourceAbilities[SwordWraithEmpowerment.PulseEndTick][0],
+    ).toBeGreaterThan(1);
+
+    let checkedInside = false;
+    let checkedOutside = false;
+    let targetIter = game.world.query(TestEmpoweredEnemyQuery).iter();
+    while (targetIter.next()) {
+        const [
+            count,
+            ,
+            positions,
+            motions,
+            combats,
+            empowerments,
+        ] = targetIter.current;
+        const xs = positions[Float3.X];
+        const speeds = motions[MoveTowards3.MaximumSpeed];
+        const damages = combats[EnemyCombat.ContactDamage];
+        const expireTicks =
+            empowerments[EnemyEmpowerment.ExpireTick];
+        for (let row = 0; row < count; row++) {
+            if (xs[row] === 3) {
+                checkedInside = true;
+                expect(speeds[row]).toBeCloseTo(12.5);
+                expect(damages[row]).toBeCloseTo(30);
+                expect(expireTicks[row]).toBe(4);
+            } else if (xs[row] === 8) {
+                checkedOutside = true;
+                expect(speeds[row]).toBeCloseTo(10);
+                expect(damages[row]).toBeCloseTo(20);
+                expect(expireTicks[row]).toBe(0);
+            }
+        }
+    }
+    expect(checkedInside).toBe(true);
+    expect(checkedOutside).toBe(true);
+
+    for (let tick = 0; tick < 3; tick++) game.update();
+    targetIter = game.world.query(TestEmpoweredEnemyQuery).iter();
+    while (targetIter.next()) {
+        const [
+            count,
+            ,
+            positions,
+            motions,
+            combats,
+            empowerments,
+        ] = targetIter.current;
+        const xs = positions[Float3.X];
+        for (let row = 0; row < count; row++) {
+            if (xs[row] !== 3) continue;
+            expect(motions[MoveTowards3.MaximumSpeed][row])
+                .toBeCloseTo(10);
+            expect(combats[EnemyCombat.ContactDamage][row])
+                .toBeCloseTo(20);
+            expect(empowerments[EnemyEmpowerment.ExpireTick][row])
+                .toBe(0);
+            expect(empowerments[EnemyEmpowerment.SpeedMultiplier][row])
+                .toBe(1);
+        }
+    }
     game.dispose();
 });
 

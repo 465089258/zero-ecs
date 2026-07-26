@@ -10,7 +10,6 @@ import {
 import { EnemyLocomotion } from "../components";
 import { RogueEnemyMovementQuery } from "../queries";
 import { RogueSystemSet } from "../systems";
-import { updateStoneGolemChargeSystem } from "./stone-golem-charge-system";
 
 type MovingEnemies = QueryOf<typeof RogueEnemyMovementQuery>;
 
@@ -21,8 +20,8 @@ export const resolveEnemyMovementSpeedSystem = defSystem(
 );
 
 export const EnemyMovementSpeedSystemOptions = Object.freeze({
-    inSet: RogueSystemSet.Intent,
-    after: updateStoneGolemChargeSystem,
+    inSet: RogueSystemSet.EnemyResolve,
+    after: RogueSystemSet.Intent,
     before: MotionSystemSet.Integrate3,
 });
 

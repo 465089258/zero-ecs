@@ -20,4 +20,9 @@ export class EnemyCatalog extends Resource {
     readonly experience = new Float32Array([1, 2, 6, 12]);
     readonly priority = new Uint8Array([0, 0, 0, 1]);
     readonly cost = new Float32Array([0.65, 1, 3.2, 8]);
+    readonly swordWraithEmpowermentRadius = 7;
+    readonly swordWraithEmpowermentIntervalTicks = 180;
+    readonly swordWraithEmpowermentDurationTicks = 240;
+    readonly swordWraithEmpowermentSpeedMultiplier = 1.28;
+    readonly swordWraithEmpowermentDamageMultiplier = 1.35;
 }

@@ -66,7 +66,7 @@ export const applyColdMovementModifierSystem = defSystem(
 );
 
 export const ColdMovementModifierSystemOptions = Object.freeze({
-    inSet: RogueSystemSet.Intent,
+    inSet: RogueSystemSet.EnemyResolve,
     after: resolveEnemyMovementSpeedSystem,
     before: MotionSystemSet.Integrate3,
 });

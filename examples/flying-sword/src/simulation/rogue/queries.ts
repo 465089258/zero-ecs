@@ -28,6 +28,7 @@ import {
     EnemyCombatType,
     EnemyColdAccumulationType,
     EnemyDirectorType,
+    EnemyEmpowermentType,
     EnemyFeedbackType,
     EnemyIdentityType,
     EnemyLocomotionType,
@@ -61,6 +62,7 @@ import {
     SwordBodyUnityType,
     SwordBodyUnityPiercingSequenceType,
     StoneGolemChargeType,
+    SwordWraithEmpowermentType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -142,6 +144,7 @@ export const RogueEnemyRenderQuery = QueryType.from(With(
     HealthType,
     EnemyFeedbackType,
     EnemyColdAccumulationType,
+    EnemyEmpowermentType,
 ));
 
 /** 战斗快照只写表现反馈列，避免依赖敌人的完整玩法组件集合。 */
@@ -203,6 +206,31 @@ export const RogueEnemyMovementQuery = QueryType.from(With(
     MoveTowards3Type,
 ));
 
+/** 基础接触伤害归并使用的最窄查询。 */
+export const RogueEnemyCombatResolveQuery = QueryType.from(With(
+    EnemyCombatType,
+));
+
+/** 强化脉冲只扫描存活、可强化敌人。 */
+export const RogueEmpowerableEnemyQuery = QueryType.from(With(
+    Position3Type,
+    HealthType,
+    EnemyEmpowermentType,
+));
+
+/** 剑魇精英能力查询，不在通用敌人循环中按 Kind 分派。 */
+export const RogueSwordWraithEmpowermentQuery = QueryType.from(With(
+    Position3Type,
+    SwordWraithEmpowermentType,
+));
+
+/** 强化状态归并到最终移动与接触伤害。 */
+export const RogueEnemyEmpowermentModifierQuery = QueryType.from(With(
+    MoveTowards3Type,
+    EnemyCombatType,
+    EnemyEmpowermentType,
+));
+
 /** 镇山石傀专属行为查询，不按 EnemyKind 在通用敌人循环中分派。 */
 export const RogueStoneGolemChargeQuery = QueryType.from(With(
     Position3Type,
@@ -216,6 +244,12 @@ export const RogueStoneGolemChargeQuery = QueryType.from(With(
 export const RogueStoneGolemChargeRenderQuery = QueryType.from(With(
     Position3Type,
     StoneGolemChargeType,
+));
+
+/** 表现层只读取剑魇脉冲的空间与时序事实。 */
+export const RogueSwordWraithEmpowermentRenderQuery = QueryType.from(With(
+    Position3Type,
+    SwordWraithEmpowermentType,
 ));
 
 export const RogueChooseUpgradeRequestQuery = QueryType.from(With(

@@ -305,13 +305,53 @@ implements Component<StoneGolemCharge> {
 }
 
 export enum EnemyCombat {
+    BaseContactDamage,
     ContactDamage,
     NextContactTick,
 }
 
 export class EnemyCombatType implements Component<EnemyCombat> {
+    readonly [EnemyCombat.BaseContactDamage] = Types.F32;
     readonly [EnemyCombat.ContactDamage] = Types.F32;
     readonly [EnemyCombat.NextContactTick] = Types.U32;
+}
+
+/** 所有敌人都可持有的剑魇强化状态；重复脉冲只刷新而不叠乘。 */
+export enum EnemyEmpowerment {
+    Source,
+    ExpireTick,
+    SpeedMultiplier,
+    ContactDamageMultiplier,
+}
+
+export class EnemyEmpowermentType
+implements Component<EnemyEmpowerment> {
+    readonly [EnemyEmpowerment.Source] = Types.Entity;
+    readonly [EnemyEmpowerment.ExpireTick] = Types.U32;
+    readonly [EnemyEmpowerment.SpeedMultiplier] = Types.F32;
+    readonly [EnemyEmpowerment.ContactDamageMultiplier] = Types.F32;
+}
+
+/** 仅剑魇精英拥有的周期范围强化能力。 */
+export enum SwordWraithEmpowerment {
+    Radius,
+    IntervalTicks,
+    DurationTicks,
+    NextPulseTick,
+    SpeedMultiplier,
+    ContactDamageMultiplier,
+    PulseEndTick,
+}
+
+export class SwordWraithEmpowermentType
+implements Component<SwordWraithEmpowerment> {
+    readonly [SwordWraithEmpowerment.Radius] = Types.F32;
+    readonly [SwordWraithEmpowerment.IntervalTicks] = Types.U16;
+    readonly [SwordWraithEmpowerment.DurationTicks] = Types.U16;
+    readonly [SwordWraithEmpowerment.NextPulseTick] = Types.U32;
+    readonly [SwordWraithEmpowerment.SpeedMultiplier] = Types.F32;
+    readonly [SwordWraithEmpowerment.ContactDamageMultiplier] = Types.F32;
+    readonly [SwordWraithEmpowerment.PulseEndTick] = Types.U32;
 }
 
 export enum ExperienceReward {

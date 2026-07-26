@@ -53,6 +53,7 @@ import {
     DamageKind,
     EnemyColdAccumulation,
     EnemyBody,
+    EnemyEmpowerment,
     EnemyFeedback,
     EnemyIdentity,
     ExperiencePickup,
@@ -71,6 +72,7 @@ import {
     RogueRunTarget,
     StoneGolemCharge,
     StoneGolemChargePhase,
+    SwordWraithEmpowerment,
     SwordBodyUnity,
     UpgradeSelection,
 } from "../simulation/rogue/components";
@@ -83,10 +85,14 @@ import {
     RoguePlayerQuery,
     RogueRunQuery,
     RogueStoneGolemChargeRenderQuery,
+    RogueSwordWraithEmpowermentRenderQuery,
 } from "../simulation/rogue/queries";
 import {
     STONE_GOLEM_CHARGE_WINDUP_TICKS,
 } from "../simulation/rogue/enemy/stone-golem-charge-system";
+import {
+    SWORD_WRAITH_PULSE_VISUAL_TICKS,
+} from "../simulation/rogue/enemy/sword-wraith-empowerment-system";
 import { DemoFlyingSwordRenderQuery } from "./queries";
 import type { Vector3Out } from "./types";
 
@@ -96,6 +102,8 @@ type Cultivators = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
 type StoneGolemCharges =
     QueryOf<typeof RogueStoneGolemChargeRenderQuery>;
+type SwordWraithEmpowerments =
+    QueryOf<typeof RogueSwordWraithEmpowermentRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
 type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
@@ -133,6 +141,7 @@ interface DemoRenderItem extends DepthRenderItem {
     style: number;
     targeted: number;
     flash: number;
+    empowered: number;
     trailX: number;
     trailY: number;
     trailStrength: number;
@@ -179,6 +188,7 @@ export class DemoRenderService extends Service {
         style: DamageDisplayStyle.Dealt,
         targeted: 0,
         flash: 0,
+        empowered: 0,
         trailX: 0,
         trailY: 0,
         trailStrength: 0,
@@ -247,6 +257,7 @@ export class DemoRenderService extends Service {
     private lightningArcCount = 0;
     private fireBurstCount = 0;
     private coldAuraCount = 0;
+    private empowermentAuraCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -309,6 +320,7 @@ export class DemoRenderService extends Service {
         cultivators: Cultivators,
         enemies: Enemies,
         stoneGolemCharges: StoneGolemCharges,
+        swordWraithEmpowerments: SwordWraithEmpowerments,
         pickups: Pickups,
         damages: DamageDisplays,
         lightningArcs: LightningArcs,
@@ -336,6 +348,10 @@ export class DemoRenderService extends Service {
             fusionActive,
         );
         this.drawStoneGolemChargeWarnings(stoneGolemCharges, tick);
+        this.drawSwordWraithEmpowermentPulses(
+            swordWraithEmpowerments,
+            tick,
+        );
         this.queue.begin();
         this.collectCultivators(cultivators, interpolation, tick);
         this.collectEnemies(enemies, interpolation, tick);
@@ -375,6 +391,7 @@ export class DemoRenderService extends Service {
         this.lightningArcCount = 0;
         this.fireBurstCount = 0;
         this.coldAuraCount = 0;
+        this.empowermentAuraCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -743,6 +760,78 @@ export class DemoRenderService extends Service {
         context.globalAlpha = 1;
     }
 
+    private drawSwordWraithEmpowermentPulses(
+        swordWraiths: SwordWraithEmpowerments,
+        tick: number,
+    ): void {
+        const context = this.view.context;
+        let drawn = 0;
+        const iter = swordWraiths.iter();
+        while (
+            drawn < MAX_SWORD_WRAITH_PULSES &&
+            iter.next()
+        ) {
+            const [count, , positions, abilities] = iter.current;
+            const xs = positions[Float3.X];
+            const zs = positions[Float3.Z];
+            const radii =
+                abilities[SwordWraithEmpowerment.Radius];
+            const pulseEndTicks =
+                abilities[SwordWraithEmpowerment.PulseEndTick];
+            for (
+                let row = 0;
+                row < count && drawn < MAX_SWORD_WRAITH_PULSES;
+                row++
+            ) {
+                const remaining = pulseEndTicks[row] - tick;
+                if (
+                    remaining <= 0 ||
+                    remaining > SWORD_WRAITH_PULSE_VISUAL_TICKS
+                ) {
+                    continue;
+                }
+                const progress =
+                    1 -
+                    remaining / SWORD_WRAITH_PULSE_VISUAL_TICKS;
+                const radius =
+                    Math.max(0, radii[row]) * Math.max(0.08, progress);
+                context.strokeStyle = "#c789ff";
+                context.lineWidth = 2.5 - progress;
+                context.globalAlpha = (1 - progress) * 0.72;
+                context.beginPath();
+                for (
+                    let sample = 0;
+                    sample <= SWORD_WRAITH_PULSE_SAMPLES;
+                    sample++
+                ) {
+                    const angle =
+                        sample / SWORD_WRAITH_PULSE_SAMPLES *
+                        Math.PI * 2;
+                    this.camera.project(
+                        xs[row] + Math.cos(angle) * radius,
+                        0.04,
+                        zs[row] + Math.sin(angle) * radius,
+                        this.projected,
+                    );
+                    if (sample === 0) {
+                        context.moveTo(
+                            this.projected.x,
+                            this.projected.y,
+                        );
+                    } else {
+                        context.lineTo(
+                            this.projected.x,
+                            this.projected.y,
+                        );
+                    }
+                }
+                context.stroke();
+                drawn++;
+            }
+        }
+        context.globalAlpha = 1;
+    }
+
     private drawFormationDebug(
         context: CanvasRenderingContext2D,
         tick: number,
@@ -971,6 +1060,7 @@ export class DemoRenderService extends Service {
                 health,
                 feedback,
                 cold,
+                empowerment,
             ] = iter.current;
             const previousXs = previousPositions[Float3.X];
             const previousYs = previousPositions[Float3.Y];
@@ -989,6 +1079,8 @@ export class DemoRenderService extends Service {
             const hitKinds = feedback[EnemyFeedback.HitKind];
             const coldStacks =
                 cold[EnemyColdAccumulation.Stacks];
+            const empowermentExpireTicks =
+                empowerment[EnemyEmpowerment.ExpireTick];
             for (let row = 0; row < count; row++) {
                 if (currentHealth[row] <= 0) continue;
                 const x = lerp(previousXs[row], xs[row], interpolation);
@@ -1040,6 +1132,16 @@ export class DemoRenderService extends Service {
                     this.coldAuraCount++;
                 } else {
                     item.amount = 0;
+                }
+                if (
+                    tick < empowermentExpireTicks[row] &&
+                    this.empowermentAuraCount <
+                        MAX_ENEMY_EMPOWERMENT_AURAS
+                ) {
+                    item.empowered = 1;
+                    this.empowermentAuraCount++;
+                } else {
+                    item.empowered = 0;
                 }
                 this.visibleEnemyCount++;
             }
@@ -1490,6 +1592,9 @@ export class DemoRenderService extends Service {
                 if (item.amount > 0) {
                     drawEnemyColdAura(context, item);
                 }
+                if (item.empowered !== 0) {
+                    drawEnemyEmpowermentAura(context, item);
+                }
                 drawActorSprite(
                     context,
                     item,
@@ -1936,6 +2041,41 @@ function drawEnemyColdAura(
     context.globalAlpha = 1;
 }
 
+function drawEnemyEmpowermentAura(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const radiusX = Math.min(48, item.width * 0.48);
+    const radiusY = Math.max(12, radiusX * 0.32);
+    context.strokeStyle = "#c789ff";
+    context.globalAlpha = 0.72;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        radiusX,
+        radiusY,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    context.globalAlpha = 0.34;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        radiusX * 0.7,
+        radiusY * 0.7,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    context.globalAlpha = 1;
+}
+
 function drawSwordTrail(
     context: CanvasRenderingContext2D,
     item: Readonly<DemoRenderItem>,
@@ -2369,7 +2509,10 @@ const LIGHTNING_ARC_CULL_PADDING = 32;
 const MAX_FIRE_BURSTS = 48;
 const FIRE_BURST_PIXELS_PER_WORLD_UNIT = 62;
 const MAX_COLD_AURAS = 96;
+const MAX_ENEMY_EMPOWERMENT_AURAS = 96;
 const MAX_STONE_GOLEM_CHARGE_WARNINGS = 16;
+const MAX_SWORD_WRAITH_PULSES = 16;
+const SWORD_WRAITH_PULSE_SAMPLES = 24;
 const STONE_GOLEM_WARNING_DASH = Object.freeze([10, 7]);
 const SOLID_LINE_DASH = Object.freeze([] as number[]);
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;

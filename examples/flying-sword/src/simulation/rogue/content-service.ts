@@ -30,6 +30,8 @@ import {
     EnemyBodyType,
     EnemyCombat,
     EnemyCombatType,
+    EnemyEmpowerment,
+    EnemyEmpowermentType,
     EnemyFeedback,
     EnemyFeedbackType,
     EnemyFireAccumulation,
@@ -61,6 +63,8 @@ import {
     StoneGolemCharge,
     StoneGolemChargePhase,
     StoneGolemChargeType,
+    SwordWraithEmpowerment,
+    SwordWraithEmpowermentType,
 } from "./components";
 
 /** 示例组合根：集中组装“敌人具有生命、移动、伤害与经验”等跨模块规则。 */
@@ -91,6 +95,7 @@ export class RogueContentService extends Service {
             .add(EnemyBodyType)
             .add(EnemyLocomotionType)
             .add(EnemyCombatType)
+            .add(EnemyEmpowermentType)
             .add(EnemyFeedbackType)
             .add(HealthType)
             .add(ExperienceRewardType)
@@ -159,10 +164,35 @@ export class RogueContentService extends Service {
             )
             .set(
                 EnemyCombatType,
+                EnemyCombat.BaseContactDamage,
+                catalog.contactDamage[kind],
+            )
+            .set(
+                EnemyCombatType,
                 EnemyCombat.ContactDamage,
                 catalog.contactDamage[kind],
             )
             .set(EnemyCombatType, EnemyCombat.NextContactTick, 0)
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.Source,
+                INVALID_ENTITY,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.ExpireTick,
+                0,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.SpeedMultiplier,
+                1,
+            )
+            .set(
+                EnemyEmpowermentType,
+                EnemyEmpowerment.ContactDamageMultiplier,
+                1,
+            )
             .set(
                 EnemyFeedbackType,
                 EnemyFeedback.TargetedSwordCount,
@@ -258,6 +288,45 @@ export class RogueContentService extends Service {
                     StoneGolemChargeType,
                     StoneGolemCharge.DirectionZ,
                     1,
+                );
+        }
+        if (kind === EnemyKind.SwordWraith) {
+            command
+                .add(SwordWraithEmpowermentType)
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.Radius,
+                    catalog.swordWraithEmpowermentRadius,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.IntervalTicks,
+                    catalog.swordWraithEmpowermentIntervalTicks,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.DurationTicks,
+                    catalog.swordWraithEmpowermentDurationTicks,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.NextPulseTick,
+                    0,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.SpeedMultiplier,
+                    catalog.swordWraithEmpowermentSpeedMultiplier,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.ContactDamageMultiplier,
+                    catalog.swordWraithEmpowermentDamageMultiplier,
+                )
+                .set(
+                    SwordWraithEmpowermentType,
+                    SwordWraithEmpowerment.PulseEndTick,
+                    0,
                 );
         }
         command.submit();

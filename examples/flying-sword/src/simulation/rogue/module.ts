@@ -76,6 +76,15 @@ import {
     StoneGolemChargeSystemOptions,
     updateStoneGolemChargeSystem,
 } from "./enemy/stone-golem-charge-system";
+import {
+    EnemyCombatSystemOptions,
+    resolveEnemyCombatSystem,
+} from "./enemy/combat-system";
+import {
+    SwordWraithEmpowermentSystemOptions,
+    applyEnemyEmpowermentModifiersSystem,
+    pulseSwordWraithEmpowermentSystem,
+} from "./enemy/sword-wraith-empowerment-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -116,8 +125,20 @@ export class FlyingSwordRogueSimulationModule implements Module {
             StoneGolemChargeSystemOptions,
         );
         builder.addSystem(
+            pulseSwordWraithEmpowermentSystem,
+            SwordWraithEmpowermentSystemOptions.pulse,
+        );
+        builder.addSystem(
             resolveEnemyMovementSpeedSystem,
             EnemyMovementSpeedSystemOptions,
+        );
+        builder.addSystem(
+            resolveEnemyCombatSystem,
+            EnemyCombatSystemOptions,
+        );
+        builder.addSystem(
+            applyEnemyEmpowermentModifiersSystem,
+            SwordWraithEmpowermentSystemOptions.modifiers,
         );
         builder.addSystem(
             applyColdMovementModifierSystem,
