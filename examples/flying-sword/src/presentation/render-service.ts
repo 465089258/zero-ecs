@@ -69,6 +69,8 @@ import {
     RogueRunStatistics,
     RogueRunStatus,
     RogueRunTarget,
+    StoneGolemCharge,
+    StoneGolemChargePhase,
     SwordBodyUnity,
     UpgradeSelection,
 } from "../simulation/rogue/components";
@@ -80,7 +82,11 @@ import {
     RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
+    RogueStoneGolemChargeRenderQuery,
 } from "../simulation/rogue/queries";
+import {
+    STONE_GOLEM_CHARGE_WINDUP_TICKS,
+} from "../simulation/rogue/enemy/stone-golem-charge-system";
 import { DemoFlyingSwordRenderQuery } from "./queries";
 import type { Vector3Out } from "./types";
 
@@ -88,6 +94,8 @@ type Swords = QueryOf<typeof DemoFlyingSwordRenderQuery>;
 type Runs = QueryOf<typeof RogueRunQuery>;
 type Cultivators = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
+type StoneGolemCharges =
+    QueryOf<typeof RogueStoneGolemChargeRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
 type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
@@ -300,6 +308,7 @@ export class DemoRenderService extends Service {
         runs: Runs,
         cultivators: Cultivators,
         enemies: Enemies,
+        stoneGolemCharges: StoneGolemCharges,
         pickups: Pickups,
         damages: DamageDisplays,
         lightningArcs: LightningArcs,
@@ -326,6 +335,7 @@ export class DemoRenderService extends Service {
             tick,
             fusionActive,
         );
+        this.drawStoneGolemChargeWarnings(stoneGolemCharges, tick);
         this.queue.begin();
         this.collectCultivators(cultivators, interpolation, tick);
         this.collectEnemies(enemies, interpolation, tick);
@@ -578,6 +588,158 @@ export class DemoRenderService extends Service {
         if (this.formationDebug) {
             this.drawFormationDebug(context, tick);
         }
+        context.globalAlpha = 1;
+    }
+
+    private drawStoneGolemChargeWarnings(
+        stoneGolems: StoneGolemCharges,
+        tick: number,
+    ): void {
+        const context = this.view.context;
+        let drawn = 0;
+        const iter = stoneGolems.iter();
+        while (
+            drawn < MAX_STONE_GOLEM_CHARGE_WARNINGS &&
+            iter.next()
+        ) {
+            const [count, , positions, charges] = iter.current;
+            const xs = positions[Float3.X];
+            const zs = positions[Float3.Z];
+            const phases = charges[StoneGolemCharge.Phase];
+            const phaseStartTicks =
+                charges[StoneGolemCharge.PhaseStartTick];
+            const directionXs =
+                charges[StoneGolemCharge.DirectionX];
+            const directionZs =
+                charges[StoneGolemCharge.DirectionZ];
+            for (
+                let row = 0;
+                row < count &&
+                drawn < MAX_STONE_GOLEM_CHARGE_WARNINGS;
+                row++
+            ) {
+                const phase = phases[row];
+                if (
+                    phase !== StoneGolemChargePhase.Windup &&
+                    phase !== StoneGolemChargePhase.Charging
+                ) {
+                    continue;
+                }
+                const x = xs[row];
+                const z = zs[row];
+                const length =
+                    phase === StoneGolemChargePhase.Windup ? 11 : 6;
+                this.camera.project(x, 0.03, z, this.projected);
+                this.camera.project(
+                    x + directionXs[row] * length,
+                    0.03,
+                    z + directionZs[row] * length,
+                    this.projectedSecond,
+                );
+                if (
+                    Math.max(
+                        this.projected.x,
+                        this.projectedSecond.x,
+                    ) < -32 ||
+                    Math.min(
+                        this.projected.x,
+                        this.projectedSecond.x,
+                    ) > this.logicalWidth + 32 ||
+                    Math.max(
+                        this.projected.y,
+                        this.projectedSecond.y,
+                    ) < -32 ||
+                    Math.min(
+                        this.projected.y,
+                        this.projectedSecond.y,
+                    ) > this.logicalHeight + 32
+                ) {
+                    continue;
+                }
+                const dx =
+                    this.projectedSecond.x - this.projected.x;
+                const dy =
+                    this.projectedSecond.y - this.projected.y;
+                const screenLength = Math.sqrt(dx * dx + dy * dy);
+                if (screenLength < 1e-5) continue;
+                const inverseLength = 1 / screenLength;
+                const perpendicularX = -dy * inverseLength;
+                const perpendicularY = dx * inverseLength;
+                const startWidth =
+                    phase === StoneGolemChargePhase.Windup ? 15 : 11;
+                const endWidth =
+                    phase === StoneGolemChargePhase.Windup ? 5 : 2;
+                const progress = phase === StoneGolemChargePhase.Windup
+                    ? Math.min(
+                        1,
+                        Math.max(
+                            0,
+                            (tick - phaseStartTicks[row]) /
+                                STONE_GOLEM_CHARGE_WINDUP_TICKS,
+                        ),
+                    )
+                    : 1;
+                context.globalAlpha =
+                    phase === StoneGolemChargePhase.Windup
+                        ? 0.12 + progress * 0.18
+                        : 0.26;
+                context.fillStyle =
+                    phase === StoneGolemChargePhase.Windup
+                        ? "#ffb24b"
+                        : "#ff6b35";
+                context.beginPath();
+                context.moveTo(
+                    this.projected.x +
+                        perpendicularX * startWidth,
+                    this.projected.y +
+                        perpendicularY * startWidth,
+                );
+                context.lineTo(
+                    this.projectedSecond.x +
+                        perpendicularX * endWidth,
+                    this.projectedSecond.y +
+                        perpendicularY * endWidth,
+                );
+                context.lineTo(
+                    this.projectedSecond.x -
+                        perpendicularX * endWidth,
+                    this.projectedSecond.y -
+                        perpendicularY * endWidth,
+                );
+                context.lineTo(
+                    this.projected.x -
+                        perpendicularX * startWidth,
+                    this.projected.y -
+                        perpendicularY * startWidth,
+                );
+                context.closePath();
+                context.fill();
+                context.globalAlpha =
+                    phase === StoneGolemChargePhase.Windup
+                        ? 0.45 + progress * 0.45
+                        : 0.9;
+                context.strokeStyle =
+                    phase === StoneGolemChargePhase.Windup
+                        ? "#ffd37a"
+                        : "#fff0b3";
+                context.lineWidth =
+                    phase === StoneGolemChargePhase.Windup ? 2 : 3;
+                context.setLineDash(
+                    phase === StoneGolemChargePhase.Windup
+                        ? STONE_GOLEM_WARNING_DASH
+                        : SOLID_LINE_DASH,
+                );
+                context.beginPath();
+                context.moveTo(this.projected.x, this.projected.y);
+                context.lineTo(
+                    this.projectedSecond.x,
+                    this.projectedSecond.y,
+                );
+                context.stroke();
+                drawn++;
+            }
+        }
+        context.setLineDash(SOLID_LINE_DASH);
         context.globalAlpha = 1;
     }
 
@@ -2207,6 +2369,9 @@ const LIGHTNING_ARC_CULL_PADDING = 32;
 const MAX_FIRE_BURSTS = 48;
 const FIRE_BURST_PIXELS_PER_WORLD_UNIT = 62;
 const MAX_COLD_AURAS = 96;
+const MAX_STONE_GOLEM_CHARGE_WARNINGS = 16;
+const STONE_GOLEM_WARNING_DASH = Object.freeze([10, 7]);
+const SOLID_LINE_DASH = Object.freeze([] as number[]);
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
 const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
     Object.freeze({

@@ -64,8 +64,18 @@ import {
     expireFireBurstsSystem,
 } from "./flying-sword/fire-burst-system";
 import {
+    ColdMovementModifierSystemOptions,
     applyColdSwordIntentSystem,
+    applyColdMovementModifierSystem,
 } from "./flying-sword/cold-slow-system";
+import {
+    EnemyMovementSpeedSystemOptions,
+    resolveEnemyMovementSpeedSystem,
+} from "./enemy/movement-speed-system";
+import {
+    StoneGolemChargeSystemOptions,
+    updateStoneGolemChargeSystem,
+} from "./enemy/stone-golem-charge-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -100,6 +110,18 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             updateEnemyIntentSystem,
             RogueSystemOptions.intent,
+        );
+        builder.addSystem(
+            updateStoneGolemChargeSystem,
+            StoneGolemChargeSystemOptions,
+        );
+        builder.addSystem(
+            resolveEnemyMovementSpeedSystem,
+            EnemyMovementSpeedSystemOptions,
+        );
+        builder.addSystem(
+            applyColdMovementModifierSystem,
+            ColdMovementModifierSystemOptions,
         );
         builder.addSystem(
             driveScatterFlyingSwordsSystem,

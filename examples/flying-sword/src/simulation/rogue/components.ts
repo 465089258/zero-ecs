@@ -251,13 +251,57 @@ export class EnemyIdentityType implements Component<EnemyIdentity> {
 export enum EnemyBody {
     Radius,
     CenterHeight,
-    MoveSpeed,
 }
 
 export class EnemyBodyType implements Component<EnemyBody> {
     readonly [EnemyBody.Radius] = Types.F32;
     readonly [EnemyBody.CenterHeight] = Types.F32;
-    readonly [EnemyBody.MoveSpeed] = Types.F32;
+}
+
+/**
+ * 敌人的移动数值归并上下文。
+ *
+ * Base 字段由内容目录初始化；行为 System 写 Desired 字段；最终修正 System
+ * 再把期望值与寒意等状态效果归并到 Motion 组件。
+ */
+export enum EnemyLocomotion {
+    BaseSpeed,
+    BaseAcceleration,
+    DesiredSpeed,
+    DesiredAcceleration,
+}
+
+export class EnemyLocomotionType
+implements Component<EnemyLocomotion> {
+    readonly [EnemyLocomotion.BaseSpeed] = Types.F32;
+    readonly [EnemyLocomotion.BaseAcceleration] = Types.F32;
+    readonly [EnemyLocomotion.DesiredSpeed] = Types.F32;
+    readonly [EnemyLocomotion.DesiredAcceleration] = Types.F32;
+}
+
+export enum StoneGolemChargePhase {
+    Pursuit,
+    Windup,
+    Charging,
+    Recovery,
+}
+
+/** 仅镇山石傀拥有的冲撞能力事实。 */
+export enum StoneGolemCharge {
+    Phase,
+    PhaseStartTick,
+    NextChargeTick,
+    DirectionX,
+    DirectionZ,
+}
+
+export class StoneGolemChargeType
+implements Component<StoneGolemCharge> {
+    readonly [StoneGolemCharge.Phase] = Types.U8;
+    readonly [StoneGolemCharge.PhaseStartTick] = Types.U32;
+    readonly [StoneGolemCharge.NextChargeTick] = Types.U32;
+    readonly [StoneGolemCharge.DirectionX] = Types.F32;
+    readonly [StoneGolemCharge.DirectionZ] = Types.F32;
 }
 
 export enum EnemyCombat {

@@ -11,16 +11,17 @@ import {
 } from "@zero-ecs/game";
 import { TimeState } from "@zero-ecs/game/time";
 import {
+    MotionSystemSet,
     MoveTowards3,
     MoveTowards3Type,
 } from "@zero-ecs/motion/3d";
 import {
     DamageKind,
     DamageRequest,
-    EnemyBody,
-    EnemyBodyType,
     EnemyColdAccumulation,
     EnemyColdAccumulationType,
+    EnemyLocomotion,
+    EnemyLocomotionType,
     FlyingSwordDamageSource,
 } from "../components";
 import {
@@ -31,10 +32,16 @@ import {
     ColdSwordIntentAccessState,
     CombatScratchState,
 } from "../state";
+import {
+    resolveEnemyMovementSpeedSystem,
+} from "../enemy/movement-speed-system";
+import { RogueSystemSet } from "../systems";
 
 type ColdEnemies = QueryOf<typeof RogueColdEnemyQuery>;
 type FlyingSwordDamageRequests =
-    QueryOf<typeof RogueFlyingSwordDamageRequestQuery>;
+    QueryOf<
+        typeof RogueFlyingSwordDamageRequestQuery
+    >;
 
 export const applyColdSwordIntentSystem = defSystem(
     Update.fixed,
@@ -44,29 +51,44 @@ export const applyColdSwordIntentSystem = defSystem(
         TimeState,
         Write(ColdSwordIntentAccessState),
         CombatScratchState,
-        RogueColdEnemyQuery,
         RogueFlyingSwordDamageRequestQuery,
     ],
 );
+
+export const applyColdMovementModifierSystem = defSystem(
+    Update.fixed,
+    applyColdMovementModifier,
+    [
+        TimeState,
+        CombatScratchState,
+        RogueColdEnemyQuery,
+    ],
+);
+
+export const ColdMovementModifierSystemOptions = Object.freeze({
+    inSet: RogueSystemSet.Intent,
+    after: resolveEnemyMovementSpeedSystem,
+    before: MotionSystemSet.Integrate3,
+});
 
 function applyColdSwordIntent(
     world: World,
     time: Readonly<TimeState>,
     accessState: Mut<ColdSwordIntentAccessState>,
     scratch: Readonly<CombatScratchState>,
-    enemies: ColdEnemies,
     requests: FlyingSwordDamageRequests,
 ): void {
-    maintainColdAccumulations(time.tick, scratch, enemies);
     if (scratch.groupColdMaximumStacks.size === 0) return;
     const accumulationId = world.findComponent(
         EnemyColdAccumulationType,
     )?.id;
-    const bodyId = world.findComponent(EnemyBodyType)?.id;
+    const locomotionId = world.findComponent(
+        EnemyLocomotionType,
+    )?.id;
     const motionId = world.findComponent(MoveTowards3Type)?.id;
     if (
         accumulationId === undefined ||
-        bodyId === undefined ||
+        locomotionId === undefined ||
         motionId === undefined
     ) {
         return;
@@ -92,15 +114,20 @@ function applyColdSwordIntent(
                 access.row,
                 accumulationId,
             ) as ComponentColumns<EnemyColdAccumulationType> | null;
-            const bodies = archetype?.getComp(
+            const locomotions = archetype?.getComp(
                 access.row,
-                bodyId,
-            ) as ComponentColumns<EnemyBodyType> | null;
+                locomotionId,
+            ) as ComponentColumns<EnemyLocomotionType> | null;
             const motions = archetype?.getComp(
                 access.row,
                 motionId,
             ) as ComponentColumns<MoveTowards3Type> | null;
-            if (!archetype || !accumulations || !bodies || !motions) {
+            if (
+                !archetype ||
+                !accumulations ||
+                !locomotions ||
+                !motions
+            ) {
                 continue;
             }
             const targetRow = archetype.rowIdxOf(access.row);
@@ -123,7 +150,7 @@ function applyColdSwordIntent(
                 time.tick +
                 (scratch.groupColdDurationTicks.get(group) ?? 0);
             motions[MoveTowards3.MaximumSpeed][targetRow] =
-                bodies[EnemyBody.MoveSpeed][targetRow] *
+                locomotions[EnemyLocomotion.DesiredSpeed][targetRow] *
                 coldSpeedMultiplier(
                     nextStacks,
                     scratch.groupColdSlowPerStack.get(group) ?? 0,
@@ -132,16 +159,17 @@ function applyColdSwordIntent(
     }
 }
 
-function maintainColdAccumulations(
-    tick: number,
+function applyColdMovementModifier(
+    time: Readonly<TimeState>,
     scratch: Readonly<CombatScratchState>,
     enemies: ColdEnemies,
 ): void {
     const iter = enemies.iter();
     while (iter.next()) {
-        const [count, , bodies, motions, accumulations] =
+        const [count, , locomotions, motions, accumulations] =
             iter.current;
-        const baseSpeeds = bodies[EnemyBody.MoveSpeed];
+        const desiredSpeeds =
+            locomotions[EnemyLocomotion.DesiredSpeed];
         const maximumSpeeds = motions[MoveTowards3.MaximumSpeed];
         const sourceGroups =
             accumulations[EnemyColdAccumulation.SourceGroup];
@@ -154,15 +182,17 @@ function maintainColdAccumulations(
             const group = sourceGroups[row] as Entity;
             const slowPerStack =
                 scratch.groupColdSlowPerStack.get(group);
-            if (slowPerStack === undefined || tick >= expireTicks[row]) {
+            if (
+                slowPerStack === undefined ||
+                time.tick >= expireTicks[row]
+            ) {
                 sourceGroups[row] = INVALID_ENTITY;
                 stacks[row] = 0;
                 expireTicks[row] = 0;
-                maximumSpeeds[row] = baseSpeeds[row];
                 continue;
             }
             maximumSpeeds[row] =
-                baseSpeeds[row] *
+                desiredSpeeds[row] *
                 coldSpeedMultiplier(stacks[row], slowPerStack);
         }
     }

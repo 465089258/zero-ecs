@@ -50,6 +50,7 @@ import {
     EnemyFeedback,
     EnemyFeedbackType,
     EnemyIdentity,
+    EnemyLocomotion,
     ExperiencePickup,
     ExperienceReward,
     FireSwordIntent,
@@ -81,6 +82,7 @@ import {
     RogueAutoFlyingSwordGroupQuery,
     RogueChooseUpgradeRequestQuery,
     RogueDamageRequestQuery,
+    RogueEnemyIntentQuery,
     RogueEnemyQuery,
     RogueExperiencePickupQuery,
     RoguePlayerQuery,
@@ -93,6 +95,7 @@ import {
 type Runs = QueryOf<typeof RogueRunQuery>;
 type Players = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyQuery>;
+type EnemyIntents = QueryOf<typeof RogueEnemyIntentQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 type AutoGroups = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
@@ -162,7 +165,7 @@ export const directEnemySpawnsSystem = defSystem(
 export const updateEnemyIntentSystem = defSystem(
     Update.fixed,
     updateEnemyIntent,
-    [RogueRunQuery, RoguePlayerQuery, RogueEnemyQuery],
+    [RogueRunQuery, RoguePlayerQuery, RogueEnemyIntentQuery],
 );
 
 export const collideEnemiesWithPlayerSystem = defSystem(
@@ -867,7 +870,7 @@ function directEnemySpawns(
 function updateEnemyIntent(
     runs: Runs,
     players: Players,
-    enemies: Enemies,
+    enemies: EnemyIntents,
 ): void {
     let playing = false;
     const runIter = runs.iter();
@@ -895,7 +898,8 @@ function updateEnemyIntent(
     }
     const iter = enemies.iter();
     while (iter.next()) {
-        const [count, , , , velocities, , motion] = iter.current;
+        const [count, , velocities, motion, locomotion] =
+            iter.current;
         const velocityXs = velocities[Float3.X];
         const velocityYs = velocities[Float3.Y];
         const velocityZs = velocities[Float3.Z];
@@ -903,14 +907,26 @@ function updateEnemyIntent(
         const targetYs = motion[MoveTowards3.TargetY];
         const targetZs = motion[MoveTowards3.TargetZ];
         const maximumSpeeds = motion[MoveTowards3.MaximumSpeed];
+        const baseSpeeds =
+            locomotion[EnemyLocomotion.BaseSpeed];
+        const baseAccelerations =
+            locomotion[EnemyLocomotion.BaseAcceleration];
+        const desiredSpeeds =
+            locomotion[EnemyLocomotion.DesiredSpeed];
+        const desiredAccelerations =
+            locomotion[EnemyLocomotion.DesiredAcceleration];
         for (let row = 0; row < count; row++) {
             if (!playing) {
+                desiredSpeeds[row] = 0;
+                desiredAccelerations[row] = baseAccelerations[row];
                 maximumSpeeds[row] = 0;
                 velocityXs[row] = 0;
                 velocityYs[row] = 0;
                 velocityZs[row] = 0;
                 continue;
             }
+            desiredSpeeds[row] = baseSpeeds[row];
+            desiredAccelerations[row] = baseAccelerations[row];
             targetXs[row] = playerX;
             targetYs[row] = playerY;
             targetZs[row] = playerZ;

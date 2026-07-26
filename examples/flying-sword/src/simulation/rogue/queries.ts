@@ -30,6 +30,7 @@ import {
     EnemyDirectorType,
     EnemyFeedbackType,
     EnemyIdentityType,
+    EnemyLocomotionType,
     ExperiencePickupType,
     ExperienceRewardType,
     FireBurstType,
@@ -59,6 +60,7 @@ import {
     UpgradeSelectionType,
     SwordBodyUnityType,
     SwordBodyUnityPiercingSequenceType,
+    StoneGolemChargeType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -87,6 +89,18 @@ export const RoguePlayerQuery = QueryType.from(With(
     PlayerStaminaType,
 ));
 
+/** 敌人行为只读取玩家空间位置，不耦合玩家战斗与成长组件。 */
+export const RogueCultivatorPositionQuery = QueryType.from(With(
+    Position3Type,
+    CultivatorTag,
+));
+
+/** 敌人行为只读取单局时钟与阶段。 */
+export const RogueRunPhaseQuery = QueryType.from(With(
+    RogueRunClockType,
+    RogueRunStatusType,
+));
+
 /** 输入层驱动身剑合一时使用的窄查询。 */
 export const SwordBodyUnityControlQuery = QueryType.from(With(
     Position3Type,
@@ -111,6 +125,13 @@ export const RogueEnemyQuery = QueryType.from(With(
     ExperienceRewardType,
     FlyingSwordContactCooldownType,
     FocusSwordHitHistoryType,
+));
+
+/** 通用追逐行为只写速度、目标与行为期望值。 */
+export const RogueEnemyIntentQuery = QueryType.from(With(
+    Velocity3Type,
+    MoveTowards3Type,
+    EnemyLocomotionType,
 ));
 
 export const RogueEnemyRenderQuery = QueryType.from(With(
@@ -171,9 +192,30 @@ export const RogueFireBurstQuery = QueryType.from(With(
 ));
 
 export const RogueColdEnemyQuery = QueryType.from(With(
-    EnemyBodyType,
+    EnemyLocomotionType,
     MoveTowards3Type,
     EnemyColdAccumulationType,
+));
+
+/** 最终运动输入归并只访问行为期望与 Motion。 */
+export const RogueEnemyMovementQuery = QueryType.from(With(
+    EnemyLocomotionType,
+    MoveTowards3Type,
+));
+
+/** 镇山石傀专属行为查询，不按 EnemyKind 在通用敌人循环中分派。 */
+export const RogueStoneGolemChargeQuery = QueryType.from(With(
+    Position3Type,
+    Velocity3Type,
+    MoveTowards3Type,
+    EnemyLocomotionType,
+    StoneGolemChargeType,
+));
+
+/** 表现层只读取冲撞能力的空间与阶段事实。 */
+export const RogueStoneGolemChargeRenderQuery = QueryType.from(With(
+    Position3Type,
+    StoneGolemChargeType,
 ));
 
 export const RogueChooseUpgradeRequestQuery = QueryType.from(With(

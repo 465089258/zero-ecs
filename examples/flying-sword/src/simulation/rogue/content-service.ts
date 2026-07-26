@@ -18,7 +18,7 @@ import {
 } from "@zero-ecs/motion/3d";
 import {
     EnemyCatalog,
-    type EnemyKind,
+    EnemyKind,
 } from "../../content/enemies";
 import {
     DamageKind,
@@ -36,6 +36,8 @@ import {
     EnemyFireAccumulationType,
     EnemyIdentity,
     EnemyIdentityType,
+    EnemyLocomotion,
+    EnemyLocomotionType,
     ExperiencePickup,
     ExperiencePickupType,
     ExperienceReward,
@@ -56,6 +58,9 @@ import {
     LightningArcType,
     PiercingDamage,
     PiercingDamageType,
+    StoneGolemCharge,
+    StoneGolemChargePhase,
+    StoneGolemChargeType,
 } from "./components";
 
 /** 示例组合根：集中组装“敌人具有生命、移动、伤害与经验”等跨模块规则。 */
@@ -84,6 +89,7 @@ export class RogueContentService extends Service {
             .add(MoveTowards3Type)
             .add(EnemyIdentityType)
             .add(EnemyBodyType)
+            .add(EnemyLocomotionType)
             .add(EnemyCombatType)
             .add(EnemyFeedbackType)
             .add(HealthType)
@@ -132,9 +138,24 @@ export class RogueContentService extends Service {
                 catalog.centerHeight[kind],
             )
             .set(
-                EnemyBodyType,
-                EnemyBody.MoveSpeed,
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseSpeed,
                 catalog.speed[kind],
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseAcceleration,
+                catalog.acceleration[kind],
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredSpeed,
+                catalog.speed[kind],
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredAcceleration,
+                catalog.acceleration[kind],
             )
             .set(
                 EnemyCombatType,
@@ -209,8 +230,37 @@ export class RogueContentService extends Service {
                 EnemyColdAccumulationType,
                 EnemyColdAccumulation.ExpireTick,
                 0,
-            )
-            .submit();
+            );
+        if (kind === EnemyKind.StoneGolem) {
+            command
+                .add(StoneGolemChargeType)
+                .set(
+                    StoneGolemChargeType,
+                    StoneGolemCharge.Phase,
+                    StoneGolemChargePhase.Pursuit,
+                )
+                .set(
+                    StoneGolemChargeType,
+                    StoneGolemCharge.PhaseStartTick,
+                    0,
+                )
+                .set(
+                    StoneGolemChargeType,
+                    StoneGolemCharge.NextChargeTick,
+                    0,
+                )
+                .set(
+                    StoneGolemChargeType,
+                    StoneGolemCharge.DirectionX,
+                    0,
+                )
+                .set(
+                    StoneGolemChargeType,
+                    StoneGolemCharge.DirectionZ,
+                    1,
+                );
+        }
+        command.submit();
         return entity;
     }
 

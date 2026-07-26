@@ -21,6 +21,7 @@ import {
 import {
     Float3,
     Position3Type,
+    Velocity3Type,
 } from "@zero-ecs/math/3d";
 import {
     MoveTowards3,
@@ -67,6 +68,7 @@ import {
     lightningChainDamage,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/lightning-chain-system";
 import {
+    applyColdMovementModifierSystem,
     applyColdSwordIntentSystem,
     canTriggerColdSlow,
     coldSpeedMultiplier,
@@ -89,27 +91,55 @@ import {
     EnemyBodyType,
     EnemyColdAccumulation,
     EnemyColdAccumulationType,
+    EnemyLocomotion,
+    EnemyLocomotionType,
     EnemyFireAccumulation,
     EnemyFireAccumulationType,
     FlyingSwordDamageSource,
     FlyingSwordDamageSourceType,
     PiercingDamage,
     PiercingDamageType,
+    RogueRunClock,
+    RogueRunClockType,
+    RogueRunPhase,
+    RogueRunStatus,
+    RogueRunStatusType,
+    StoneGolemCharge,
+    StoneGolemChargePhase,
+    StoneGolemChargeType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
     RogueColdEnemyQuery,
     RogueFireBurstQuery,
     RogueLightningArcQuery,
+    RogueRunPhaseQuery,
+    RogueStoneGolemChargeQuery,
 } from "../../examples/flying-sword/src/simulation/rogue/queries";
 import {
     RogueContentService,
 } from "../../examples/flying-sword/src/simulation/rogue/content-service";
 import {
     EnemyCatalog,
+    EnemyKind,
 } from "../../examples/flying-sword/src/content/enemies";
+import {
+    resolveEnemyMovementSpeedSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/enemy/movement-speed-system";
+import {
+    STONE_GOLEM_CHARGE_DURATION_TICKS,
+    STONE_GOLEM_CHARGE_RECOVERY_TICKS,
+    STONE_GOLEM_CHARGE_SPEED,
+    STONE_GOLEM_CHARGE_WINDUP_TICKS,
+    shouldStartStoneGolemCharge,
+    updateStoneGolemChargeSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/enemy/stone-golem-charge-system";
+import {
+    CultivatorTag,
+} from "../../examples/flying-sword/src/simulation/components";
 
 type TestDamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
+type TestRunPhases = QueryOf<typeof RogueRunPhaseQuery>;
 
 const setupLightningChainTestSystem = defSystem(
     Startup,
@@ -134,7 +164,6 @@ const setupLightningChainTestSystem = defSystem(
             .set(Position3Type, Float3.Z, 0)
             .set(EnemyBodyType, EnemyBody.Radius, 0.5)
             .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
-            .set(EnemyBodyType, EnemyBody.MoveSpeed, 0)
             .submit();
         const chainedCommand = commands.spawn();
         const chained = chainedCommand.entity;
@@ -146,7 +175,6 @@ const setupLightningChainTestSystem = defSystem(
             .set(Position3Type, Float3.Z, 0)
             .set(EnemyBodyType, EnemyBody.Radius, 0.5)
             .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
-            .set(EnemyBodyType, EnemyBody.MoveSpeed, 0)
             .submit();
         commands
             .spawn()
@@ -296,12 +324,29 @@ const setupColdSlowTestSystem = defSystem(
         source.submit();
         const target = commands.spawn();
         target
-            .add(EnemyBodyType)
+            .add(EnemyLocomotionType)
             .add(MoveTowards3Type)
             .add(EnemyColdAccumulationType)
-            .set(EnemyBodyType, EnemyBody.Radius, 0.5)
-            .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
-            .set(EnemyBodyType, EnemyBody.MoveSpeed, 10)
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseSpeed,
+                10,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseAcceleration,
+                10,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredSpeed,
+                10,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredAcceleration,
+                10,
+            )
             .set(MoveTowards3Type, MoveTowards3.TargetX, 0)
             .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
             .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
@@ -364,6 +409,133 @@ const cleanupColdTestDamageRequestsSystem = defSystem(
         }
     },
     [Commands, RogueDamageRequestQuery],
+);
+
+const setupEnemyAbilityCompositionTestSystem = defSystem(
+    Startup,
+    (content: RogueContentService): void => {
+        content.spawnEnemy(
+            EnemyKind.CorruptedBat,
+            -2,
+            0,
+            0,
+            0,
+            1,
+        );
+        content.spawnEnemy(
+            EnemyKind.StoneGolem,
+            2,
+            0,
+            0,
+            0,
+            1,
+        );
+    },
+    [RogueContentService],
+);
+
+const setupStoneGolemChargeLifecycleTestSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        commands
+            .spawn()
+            .add(RogueRunClockType)
+            .add(RogueRunStatusType)
+            .set(RogueRunClockType, RogueRunClock.Tick, 0)
+            .set(
+                RogueRunStatusType,
+                RogueRunStatus.Phase,
+                RogueRunPhase.Playing,
+            )
+            .submit();
+        commands
+            .spawn()
+            .add(Position3Type)
+            .add(CultivatorTag)
+            .set(Position3Type, Float3.X, 5)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .submit();
+        commands
+            .spawn()
+            .add(Position3Type)
+            .add(Velocity3Type)
+            .add(MoveTowards3Type)
+            .add(EnemyLocomotionType)
+            .add(StoneGolemChargeType)
+            .set(Position3Type, Float3.X, 0)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(Velocity3Type, Float3.X, 0)
+            .set(Velocity3Type, Float3.Y, 0)
+            .set(Velocity3Type, Float3.Z, 0)
+            .set(MoveTowards3Type, MoveTowards3.TargetX, 5)
+            .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+            .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+            .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 1.35)
+            .set(MoveTowards3Type, MoveTowards3.Acceleration, 13)
+            .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0)
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseSpeed,
+                1.35,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.BaseAcceleration,
+                13,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredSpeed,
+                1.35,
+            )
+            .set(
+                EnemyLocomotionType,
+                EnemyLocomotion.DesiredAcceleration,
+                13,
+            )
+            .set(
+                StoneGolemChargeType,
+                StoneGolemCharge.Phase,
+                StoneGolemChargePhase.Pursuit,
+            )
+            .set(
+                StoneGolemChargeType,
+                StoneGolemCharge.PhaseStartTick,
+                0,
+            )
+            .set(
+                StoneGolemChargeType,
+                StoneGolemCharge.NextChargeTick,
+                0,
+            )
+            .set(
+                StoneGolemChargeType,
+                StoneGolemCharge.DirectionX,
+                0,
+            )
+            .set(
+                StoneGolemChargeType,
+                StoneGolemCharge.DirectionZ,
+                1,
+            )
+            .submit();
+    },
+    [Commands],
+);
+
+const advanceStoneGolemChargeTestClockSystem = defSystem(
+    Update.fixed,
+    (runs: TestRunPhases): void => {
+        const iter = runs.iter();
+        while (iter.next()) {
+            const [count, , clocks] = iter.current;
+            const ticks = clocks[RogueRunClock.Tick];
+            for (let row = 0; row < count; row++) ticks[row]++;
+        }
+    },
+    [RogueRunPhaseQuery],
 );
 
 test("rogue random sequence is deterministic and never remains zero", () => {
@@ -735,13 +907,15 @@ test("cold intent only slows scatter and formation targets", () => {
     expect(coldSpeedMultiplier(20, 0.08)).toBe(0.4);
 });
 
-test("cold intent adds a renewable stack from base movement speed", () => {
+test("cold intent modifies behavior-selected movement without compounding", () => {
     const builder = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
         .addState(CombatScratchState)
         .addState(ColdSwordIntentAccessState);
     builder.addSystem(setupColdSlowTestSystem);
+    builder.addSystem(resolveEnemyMovementSpeedSystem);
+    builder.addSystem(applyColdMovementModifierSystem);
     builder.addSystem(applyColdSwordIntentSystem);
     builder.addSystem(cleanupColdTestDamageRequestsSystem);
     const game = builder.build();
@@ -774,6 +948,106 @@ test("cold intent adds a renewable stack from base movement speed", () => {
         expiredAccumulations[EnemyColdAccumulation.Stacks][0],
     ).toBe(0);
     expect(expiredMotions[MoveTowards3.MaximumSpeed][0]).toBe(10);
+    game.dispose();
+});
+
+test("only stone golems receive the charge capability component", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addResource(EnemyCatalog, new EnemyCatalog())
+        .addService(RogueContentService);
+    builder.addSystem(setupEnemyAbilityCompositionTestSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let chargeCapabilities = 0;
+    const iter = game.world.query(RogueStoneGolemChargeQuery).iter();
+    while (iter.next()) chargeCapabilities += iter.current[0];
+    expect(chargeCapabilities).toBe(1);
+    game.dispose();
+});
+
+test("stone golem locks a charge line then recovers to pursuit", () => {
+    expect(
+        shouldStartStoneGolemCharge(0, 0, 5, 0, 10, 10),
+    ).toBe(true);
+    expect(
+        shouldStartStoneGolemCharge(0, 0, 9, 0, 10, 10),
+    ).toBe(false);
+    expect(
+        shouldStartStoneGolemCharge(0, 0, 5, 0, 9, 10),
+    ).toBe(false);
+
+    const builder = new GameBuilder().addModule(new CommandModule());
+    builder.addSystem(setupStoneGolemChargeLifecycleTestSystem);
+    builder.addSystem(advanceStoneGolemChargeTestClockSystem);
+    builder.addSystem(updateStoneGolemChargeSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let iter = game.world.query(RogueStoneGolemChargeQuery).iter();
+    expect(iter.next()).toBe(true);
+    let [, , , , , locomotions, charges] = iter.current;
+    expect(charges[StoneGolemCharge.Phase][0])
+        .toBe(StoneGolemChargePhase.Windup);
+    expect(locomotions[EnemyLocomotion.DesiredSpeed][0]).toBe(0);
+    expect(charges[StoneGolemCharge.DirectionX][0]).toBeCloseTo(1);
+    expect(charges[StoneGolemCharge.DirectionZ][0]).toBeCloseTo(0);
+
+    for (
+        let tick = 0;
+        tick < STONE_GOLEM_CHARGE_WINDUP_TICKS;
+        tick++
+    ) {
+        game.update();
+    }
+    iter = game.world.query(RogueStoneGolemChargeQuery).iter();
+    expect(iter.next()).toBe(true);
+    let [, , , velocities, motions] = iter.current;
+    locomotions = iter.current[5];
+    charges = iter.current[6];
+    expect(charges[StoneGolemCharge.Phase][0])
+        .toBe(StoneGolemChargePhase.Charging);
+    expect(locomotions[EnemyLocomotion.DesiredSpeed][0])
+        .toBe(STONE_GOLEM_CHARGE_SPEED);
+    expect(velocities[Float3.X][0])
+        .toBeCloseTo(STONE_GOLEM_CHARGE_SPEED);
+    expect(motions[MoveTowards3.TargetX][0]).toBeGreaterThan(15);
+
+    for (
+        let tick = 0;
+        tick < STONE_GOLEM_CHARGE_DURATION_TICKS;
+        tick++
+    ) {
+        game.update();
+    }
+    iter = game.world.query(RogueStoneGolemChargeQuery).iter();
+    expect(iter.next()).toBe(true);
+    charges = iter.current[6];
+    expect(charges[StoneGolemCharge.Phase][0])
+        .toBe(StoneGolemChargePhase.Recovery);
+
+    for (
+        let tick = 0;
+        tick < STONE_GOLEM_CHARGE_RECOVERY_TICKS;
+        tick++
+    ) {
+        game.update();
+    }
+    iter = game.world.query(RogueStoneGolemChargeQuery).iter();
+    expect(iter.next()).toBe(true);
+    locomotions = iter.current[5];
+    charges = iter.current[6];
+    expect(charges[StoneGolemCharge.Phase][0])
+        .toBe(StoneGolemChargePhase.Pursuit);
+    expect(locomotions[EnemyLocomotion.DesiredSpeed][0])
+        .toBeCloseTo(1.35);
     game.dispose();
 });
 
