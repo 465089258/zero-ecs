@@ -120,6 +120,7 @@ function collideFocusSwordContacts(
                 content,
                 index,
                 entities[row],
+                groupEntities[row] as Entity,
                 actionEntity,
                 slots[row],
                 scratch.damages[action],
@@ -141,6 +142,7 @@ function collideFocusSegment(
     content: RogueContentService,
     index: Readonly<EnemySpatialIndexState>,
     source: Entity,
+    sourceGroup: Entity,
     action: Entity,
     slot: number,
     damage: number,
@@ -232,8 +234,9 @@ function collideFocusSegment(
                                     slot,
                                 )
                             ) {
-                                content.requestDamage(
+                                content.requestFlyingSwordDamage(
                                     source,
+                                    sourceGroup,
                                     enemy,
                                     damage,
                                     DamageKind.FocusSword,

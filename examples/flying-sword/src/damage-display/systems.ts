@@ -198,6 +198,7 @@ const DAMAGE_DISPLAY_DURATION_TICKS = 42;
 const SCATTER_DAMAGE_DISPLAY_DURATION_TICKS = 34;
 const FORMATION_DAMAGE_DISPLAY_DURATION_TICKS = 30;
 const FUSION_DAMAGE_DISPLAY_DURATION_TICKS = 48;
+const LIGHTNING_DAMAGE_DISPLAY_DURATION_TICKS = 38;
 const DAMAGE_DISPLAY_STYLE_BY_KIND: Readonly<
     Record<number, DamageDisplayStyle>
 > = Object.freeze({
@@ -206,6 +207,7 @@ const DAMAGE_DISPLAY_STYLE_BY_KIND: Readonly<
     [DamageKind.FocusSword]: DamageDisplayStyle.FocusSword,
     [DamageKind.FormationSword]: DamageDisplayStyle.FormationSword,
     [DamageKind.SwordBodyUnity]: DamageDisplayStyle.SwordBodyUnity,
+    [DamageKind.LightningChain]: DamageDisplayStyle.LightningChain,
 });
 const DAMAGE_DISPLAY_DURATION_BY_STYLE: Readonly<
     Record<number, number>
@@ -219,4 +221,6 @@ const DAMAGE_DISPLAY_DURATION_BY_STYLE: Readonly<
         FORMATION_DAMAGE_DISPLAY_DURATION_TICKS,
     [DamageDisplayStyle.SwordBodyUnity]:
         FUSION_DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.LightningChain]:
+        LIGHTNING_DAMAGE_DISPLAY_DURATION_TICKS,
 });

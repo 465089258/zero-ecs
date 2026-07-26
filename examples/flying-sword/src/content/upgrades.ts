@@ -15,6 +15,7 @@ export enum RogueUpgrade {
     FusionEfficiency,
     FusionEndurance,
     FormationRange,
+    LightningIntent,
 }
 
 export class RogueUpgradeCatalog extends Resource {
@@ -33,6 +34,7 @@ export class RogueUpgradeCatalog extends Resource {
         "合一 · 流转",
         "合一 · 踏虚",
         "周天 · 广域",
+        "雷意 · 惊蛰",
     ]);
 
     readonly descriptions = Object.freeze([
@@ -50,6 +52,7 @@ export class RogueUpgradeCatalog extends Resource {
         "身剑合一每秒体力消耗降低 15%",
         "最大体力增加 20，体力恢复提高 10%",
         "周天剑阵运行范围提高 18%",
+        "飞剑首次命中后向附近敌人连锁雷霆；再次感悟提高雷霆伤害",
     ]);
 
     readonly count = this.names.length;

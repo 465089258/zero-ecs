@@ -113,8 +113,9 @@ function collideScatterSwordContacts(
             ) {
                 continue;
             }
-            content.requestDamage(
+            content.requestFlyingSwordDamage(
                 entities[row],
+                groupEntities[row] as Entity,
                 target,
                 scratch.groupDamages.get(groupEntities[row]) ??
                     DEFAULT_SWORD_DAMAGE,

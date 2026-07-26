@@ -20,6 +20,7 @@ import {
     AutoFlyingSwordSkill,
     EnemyFeedback,
     FlyingSwordCombat,
+    LightningSwordIntent,
 } from "../components";
 import {
     RogueAutoFlyingSwordGroupQuery,
@@ -109,9 +110,13 @@ function buildActionSnapshots(
     scratch.groupFormationDamages.clear();
     scratch.groupReattackDelays.clear();
     scratch.groupFormationContactCooldowns.clear();
+    scratch.groupLightningChainCounts.clear();
+    scratch.groupLightningChainRadii.clear();
+    scratch.groupLightningDamageMultipliers.clear();
     const groupIter = groups.iter();
     while (groupIter.next()) {
-        const [count, entities, data] = groupIter.current;
+        const [count, entities, data, lightning] =
+            groupIter.current;
         const damages = data[AutoFlyingSwordSkill.Damage];
         const focusDamageMultipliers =
             data[AutoFlyingSwordSkill.FocusDamageMultiplier];
@@ -121,6 +126,12 @@ function buildActionSnapshots(
             data[AutoFlyingSwordSkill.ReattackDelayTicks];
         const formationContactCooldowns =
             data[AutoFlyingSwordSkill.FormationContactCooldownTicks];
+        const lightningChainCounts =
+            lightning[LightningSwordIntent.ChainCount];
+        const lightningChainRadii =
+            lightning[LightningSwordIntent.ChainRadius];
+        const lightningDamageMultipliers =
+            lightning[LightningSwordIntent.DamageMultiplier];
         for (let row = 0; row < count; row++) {
             scratch.groupDamages.set(entities[row], damages[row]);
             scratch.groupFocusDamages.set(
@@ -138,6 +149,18 @@ function buildActionSnapshots(
             scratch.groupFormationContactCooldowns.set(
                 entities[row],
                 formationContactCooldowns[row],
+            );
+            scratch.groupLightningChainCounts.set(
+                entities[row],
+                lightningChainCounts[row],
+            );
+            scratch.groupLightningChainRadii.set(
+                entities[row],
+                lightningChainRadii[row],
+            );
+            scratch.groupLightningDamageMultipliers.set(
+                entities[row],
+                lightningDamageMultipliers[row],
             );
         }
     }

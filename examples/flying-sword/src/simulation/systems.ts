@@ -61,6 +61,8 @@ import {
     HealthType,
     LevelExperience,
     LevelExperienceType,
+    LightningSwordIntent,
+    LightningSwordIntentType,
     PlayerMovement,
     PlayerMovementType,
     PlayerPickup,
@@ -306,6 +308,7 @@ function setupFlyingSwordDemo(
     commands
         .entity(group)
         .add(AutoFlyingSwordSkillType)
+        .add(LightningSwordIntentType)
         .set(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.ReattackDelayTicks,
@@ -355,6 +358,21 @@ function setupFlyingSwordDemo(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.FormationAngularSpeed,
             tuning.initialFormationAngularSpeed,
+        )
+        .set(
+            LightningSwordIntentType,
+            LightningSwordIntent.ChainCount,
+            0,
+        )
+        .set(
+            LightningSwordIntentType,
+            LightningSwordIntent.ChainRadius,
+            6,
+        )
+        .set(
+            LightningSwordIntentType,
+            LightningSwordIntent.DamageMultiplier,
+            0.55,
         )
         .submit();
 

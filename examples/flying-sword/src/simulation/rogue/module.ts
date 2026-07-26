@@ -12,6 +12,7 @@ import {
     EnemySpatialIndexState,
     FocusSwordContactAccessState,
     FlyingSwordTargetingState,
+    LightningChainAccessState,
     RogueEntityAccessState,
 } from "./state";
 import {
@@ -47,6 +48,10 @@ import {
 import {
     collideSwordBodyUnitySystem,
 } from "./flying-sword/sword-body-unity-system";
+import {
+    chainLightningDamageSystem,
+    expireLightningArcsSystem,
+} from "./flying-sword/lightning-chain-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -57,6 +62,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
             .addState(EnemySpatialIndexState)
             .addState(CombatScratchState)
             .addState(FocusSwordContactAccessState)
+            .addState(LightningChainAccessState)
             .addState(FlyingSwordTargetingState)
             .addState(RogueEntityAccessState)
             .addService(RogueContentService)
@@ -104,6 +110,14 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             collideSwordBodyUnitySystem,
             RogueSystemOptions.swordContact,
+        );
+        builder.addSystem(
+            chainLightningDamageSystem,
+            RogueSystemOptions.damageEffects,
+        );
+        builder.addSystem(
+            expireLightningArcsSystem,
+            RogueSystemOptions.damageEffects,
         );
         builder.addSystem(
             collideEnemiesWithPlayerSystem,

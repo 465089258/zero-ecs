@@ -56,6 +56,7 @@ import {
     Health,
     HealthType,
     LevelExperience,
+    LightningSwordIntent,
     PlayerPickup,
     PlayerStamina,
     PlayerMovement,
@@ -108,6 +109,10 @@ export const RogueSystemSet = Object.freeze({
         "flying-sword-rogue:combat-snapshot",
     ),
     Contact: new SystemSet(Update.fixed, "flying-sword-rogue:contact"),
+    DamageEffects: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:damage-effects",
+    ),
     Damage: new SystemSet(Update.fixed, "flying-sword-rogue:damage"),
     Death: new SystemSet(Update.fixed, "flying-sword-rogue:death"),
     Progression: new SystemSet(Update.fixed, "flying-sword-rogue:progression"),
@@ -266,9 +271,14 @@ export const RogueSystemOptions = Object.freeze({
         after: RogueSystemSet.Spatial,
         before: RogueSystemSet.Damage,
     },
+    damageEffects: {
+        inSet: RogueSystemSet.DamageEffects,
+        after: RogueSystemSet.Contact,
+        before: RogueSystemSet.Damage,
+    },
     damage: {
         inSet: RogueSystemSet.Damage,
-        after: RogueSystemSet.Contact,
+        after: RogueSystemSet.DamageEffects,
         before: RogueSystemSet.Death,
     },
     death: {
@@ -608,7 +618,7 @@ function applyUpgradeToSwordGroup(
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
-        const [count, entities, auto] = iter.current;
+        const [count, entities, auto, lightning] = iter.current;
         if (count === 0) continue;
         const formationRadii =
             auto[AutoFlyingSwordSkill.FormationRadius];
@@ -656,6 +666,16 @@ function applyUpgradeToSwordGroup(
                 formationRadii[0],
                 formationAngularSpeeds[0],
             );
+        } else if (upgrade === RogueUpgrade.LightningIntent) {
+            const chainCounts =
+                lightning[LightningSwordIntent.ChainCount];
+            const damageMultipliers =
+                lightning[LightningSwordIntent.DamageMultiplier];
+            if (chainCounts[0] === 0) {
+                chainCounts[0] = 1;
+            } else {
+                damageMultipliers[0] *= 1.2;
+            }
         }
         return;
     }
@@ -1218,6 +1238,7 @@ const SCATTER_HIT_FLASH_TICKS = 4;
 const FOCUS_HIT_FLASH_TICKS = 6;
 const FORMATION_HIT_FLASH_TICKS = 3;
 const FUSION_HIT_FLASH_TICKS = 8;
+const LIGHTNING_HIT_FLASH_TICKS = 7;
 const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
     Object.freeze({
         [DamageKind.Generic]: GENERIC_HIT_FLASH_TICKS,
@@ -1225,6 +1246,7 @@ const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
         [DamageKind.FocusSword]: FOCUS_HIT_FLASH_TICKS,
         [DamageKind.FormationSword]: FORMATION_HIT_FLASH_TICKS,
         [DamageKind.SwordBodyUnity]: FUSION_HIT_FLASH_TICKS,
+        [DamageKind.LightningChain]: LIGHTNING_HIT_FLASH_TICKS,
     });
 const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
 const MINIMUM_FUSION_STAMINA_DRAIN = 10;

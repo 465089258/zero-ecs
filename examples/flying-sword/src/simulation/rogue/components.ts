@@ -2,6 +2,7 @@ import {
     Types,
     type Component,
 } from "@zero-ecs/game";
+import { Float3 } from "@zero-ecs/math/3d";
 
 /** 单局所拥有的核心实体。 */
 export enum RogueRunIdentity {
@@ -181,6 +182,20 @@ implements Component<AutoFlyingSwordSkill> {
     readonly [AutoFlyingSwordSkill.FormationAngularSpeed] = Types.F32;
 }
 
+/** 示例构筑中的雷意规则参数，归属于飞剑控制组。 */
+export enum LightningSwordIntent {
+    ChainCount,
+    ChainRadius,
+    DamageMultiplier,
+}
+
+export class LightningSwordIntentType
+implements Component<LightningSwordIntent> {
+    readonly [LightningSwordIntent.ChainCount] = Types.U8;
+    readonly [LightningSwordIntent.ChainRadius] = Types.F32;
+    readonly [LightningSwordIntent.DamageMultiplier] = Types.F32;
+}
+
 export enum EnemyIdentity {
     Kind,
     Visual,
@@ -310,6 +325,7 @@ export enum DamageKind {
     FocusSword,
     FormationSword,
     SwordBodyUnity,
+    LightningChain,
 }
 
 export class DamageRequestType implements Component<DamageRequest> {
@@ -317,6 +333,39 @@ export class DamageRequestType implements Component<DamageRequest> {
     readonly [DamageRequest.Target] = Types.Entity;
     readonly [DamageRequest.Amount] = Types.F32;
     readonly [DamageRequest.Kind] = Types.U8;
+}
+
+/** 飞剑伤害事实携带的控制组上下文，供宿主剑意规则解释。 */
+export enum FlyingSwordDamageSource {
+    Group,
+}
+
+export class FlyingSwordDamageSourceType
+implements Component<FlyingSwordDamageSource> {
+    readonly [FlyingSwordDamageSource.Group] = Types.Entity;
+}
+
+export enum LightningArc {
+    StartTick,
+    DurationTicks,
+}
+
+/** 雷意连锁产生的短生命周期表现事实。 */
+export class LightningArcType implements Component<LightningArc> {
+    readonly [LightningArc.StartTick] = Types.U32;
+    readonly [LightningArc.DurationTicks] = Types.U16;
+}
+
+export class LightningArcStart3Type implements Component<Float3> {
+    readonly [Float3.X] = Types.F32;
+    readonly [Float3.Y] = Types.F32;
+    readonly [Float3.Z] = Types.F32;
+}
+
+export class LightningArcEnd3Type implements Component<Float3> {
+    readonly [Float3.X] = Types.F32;
+    readonly [Float3.Y] = Types.F32;
+    readonly [Float3.Z] = Types.F32;
 }
 
 export enum ExperiencePickup {

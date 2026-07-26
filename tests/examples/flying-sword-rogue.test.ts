@@ -2,7 +2,24 @@ import {
     expect,
     test,
 } from "@rstest/core";
-import type { Entity } from "@zero-ecs/game";
+import {
+    CommandModule,
+    Commands,
+    GameBuilder,
+    Startup,
+    Write,
+    defSystem,
+    type Entity,
+    type Mut,
+} from "@zero-ecs/game";
+import {
+    FixedTimeResource,
+    TimeModule,
+} from "@zero-ecs/game/time";
+import {
+    Float3,
+    Position3Type,
+} from "@zero-ecs/math/3d";
 import {
     nextRogueRandom,
     rogueRequiredExperienceFor,
@@ -13,6 +30,8 @@ import {
     GRID_CELL_SIZE,
     GRID_HALF_EXTENT,
     GRID_WIDTH,
+    CombatScratchState,
+    LightningChainAccessState,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
 import {
     RogueUpgrade,
@@ -31,6 +50,100 @@ import {
     focusPiercingSegmentStartRatio,
     recordFocusSwordHit,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/focus-contact-system";
+import {
+    canTriggerLightningChain,
+    chainLightningDamageSystem,
+    findClosestLightningChainCandidate,
+    lightningChainDamage,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/lightning-chain-system";
+import {
+    DamageKind,
+    DamageRequest,
+    DamageRequestType,
+    EnemyBody,
+    EnemyBodyType,
+    FlyingSwordDamageSource,
+    FlyingSwordDamageSourceType,
+} from "../../examples/flying-sword/src/simulation/rogue/components";
+import {
+    RogueDamageRequestQuery,
+    RogueLightningArcQuery,
+} from "../../examples/flying-sword/src/simulation/rogue/queries";
+import {
+    RogueContentService,
+} from "../../examples/flying-sword/src/simulation/rogue/content-service";
+import {
+    EnemyCatalog,
+} from "../../examples/flying-sword/src/content/enemies";
+
+const setupLightningChainTestSystem = defSystem(
+    Startup,
+    (
+        commands: Commands,
+        scratch: Mut<CombatScratchState>,
+        index: Mut<EnemySpatialIndexState>,
+    ): void => {
+        const groupCommand = commands.spawn();
+        const group = groupCommand.entity;
+        groupCommand.submit();
+        const sourceCommand = commands.spawn();
+        const source = sourceCommand.entity;
+        sourceCommand.submit();
+        const primaryCommand = commands.spawn();
+        const primary = primaryCommand.entity;
+        primaryCommand
+            .add(Position3Type)
+            .add(EnemyBodyType)
+            .set(Position3Type, Float3.X, 0)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(EnemyBodyType, EnemyBody.Radius, 0.5)
+            .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
+            .set(EnemyBodyType, EnemyBody.MoveSpeed, 0)
+            .submit();
+        const chainedCommand = commands.spawn();
+        const chained = chainedCommand.entity;
+        chainedCommand
+            .add(Position3Type)
+            .add(EnemyBodyType)
+            .set(Position3Type, Float3.X, 2)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(EnemyBodyType, EnemyBody.Radius, 0.5)
+            .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
+            .set(EnemyBodyType, EnemyBody.MoveSpeed, 0)
+            .submit();
+        commands
+            .spawn()
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .set(DamageRequestType, DamageRequest.Source, source)
+            .set(DamageRequestType, DamageRequest.Target, primary)
+            .set(DamageRequestType, DamageRequest.Amount, 20)
+            .set(
+                DamageRequestType,
+                DamageRequest.Kind,
+                DamageKind.ScatterSword,
+            )
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                group,
+            )
+            .submit();
+        scratch.groupLightningChainCounts.set(group, 1);
+        scratch.groupLightningChainRadii.set(group, 6);
+        scratch.groupLightningDamageMultipliers.set(group, 0.55);
+        index.reset(0, 0);
+        index.insert(primary, 0, 0.8, 0, 0.5);
+        index.insert(chained, 2, 0.8, 0, 0.5);
+    },
+    [
+        Commands,
+        Write(CombatScratchState),
+        Write(EnemySpatialIndexState),
+    ],
+);
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -55,7 +168,7 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.FormationRange + 1);
+    expect(catalog.count).toBe(RogueUpgrade.LightningIntent + 1);
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -72,6 +185,8 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
         .toContain("广域");
     expect(catalog.descriptions[RogueUpgrade.FormationTempo])
         .toContain("运行速度提高");
+    expect(catalog.names[RogueUpgrade.LightningIntent])
+        .toContain("雷意");
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {
@@ -178,6 +293,88 @@ test("focus piercing records every sword once per enemy and action", () => {
     ).toBe(true);
     expect(actions[0]).toBe(nextAction);
     expect(highMasks[0]).toBe(0);
+});
+
+test("lightning intent chains to the closest different enemy", () => {
+    const index = new EnemySpatialIndexState();
+    const primary = 0x1001 as Entity;
+    const closest = 0x2001 as Entity;
+    const farther = 0x3001 as Entity;
+    index.reset(0, 0);
+    index.insert(primary, 0, 0.8, 0, 0.5);
+    index.insert(closest, 2, 0.8, 0, 0.5);
+    index.insert(farther, 4, 0.8, 0, 0.5);
+
+    const candidate = findClosestLightningChainCandidate(
+        index,
+        primary,
+        0,
+        0.8,
+        0,
+        6,
+    );
+    expect(candidate).toBeGreaterThanOrEqual(0);
+    expect(index.entities[candidate]).toBe(closest);
+    expect(
+        findClosestLightningChainCandidate(
+            index,
+            primary,
+            0,
+            0.8,
+            0,
+            1,
+        ),
+    ).toBe(-1);
+});
+
+test("lightning intent only reacts to scatter and focus damage", () => {
+    expect(canTriggerLightningChain(DamageKind.ScatterSword)).toBe(true);
+    expect(canTriggerLightningChain(DamageKind.FocusSword)).toBe(true);
+    expect(canTriggerLightningChain(DamageKind.FormationSword))
+        .toBe(false);
+    expect(canTriggerLightningChain(DamageKind.LightningChain))
+        .toBe(false);
+    expect(lightningChainDamage(20, 0.55)).toBeCloseTo(11);
+    expect(lightningChainDamage(-20, 0.55)).toBe(0);
+});
+
+test("lightning intent system emits one chained damage and arc fact", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addResource(EnemyCatalog, new EnemyCatalog())
+        .addState(CombatScratchState)
+        .addState(EnemySpatialIndexState)
+        .addState(LightningChainAccessState)
+        .addService(RogueContentService);
+    builder.addSystem(setupLightningChainTestSystem);
+    builder.addSystem(chainLightningDamageSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let lightningRequests = 0;
+    const requestIter =
+        game.world.query(RogueDamageRequestQuery).iter();
+    while (requestIter.next()) {
+        const [count, , data] = requestIter.current;
+        const amounts = data[DamageRequest.Amount];
+        const kinds = data[DamageRequest.Kind];
+        for (let row = 0; row < count; row++) {
+            if (kinds[row] !== DamageKind.LightningChain) continue;
+            lightningRequests++;
+            expect(amounts[row]).toBeCloseTo(11);
+        }
+    }
+    expect(lightningRequests).toBe(1);
+
+    let arcCount = 0;
+    const arcIter = game.world.query(RogueLightningArcQuery).iter();
+    while (arcIter.next()) arcCount += arcIter.current[0];
+    expect(arcCount).toBe(1);
+    game.dispose();
 });
 
 test("enemy spatial grid reuses storage, links cells, and clips outside", () => {

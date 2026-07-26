@@ -84,6 +84,14 @@ export class FocusSwordContactAccessState extends State {
     };
 }
 
+/** 雷意伤害后处理复用的实体定位结果。 */
+export class LightningChainAccessState extends State {
+    readonly access: EntityAccess = {
+        archetype: null,
+        row: 0 as EntityAccess["row"],
+    };
+}
+
 /** 飞剑接触系统每 Tick 派生的动作快照，避免逐剑重复遍历动作 Query。 */
 export class CombatScratchState extends State {
     actionEntities = new Uint32Array(4);
@@ -98,6 +106,10 @@ export class CombatScratchState extends State {
     readonly groupFormationDamages = new Map<Entity, number>();
     readonly groupReattackDelays = new Map<Entity, number>();
     readonly groupFormationContactCooldowns =
+        new Map<Entity, number>();
+    readonly groupLightningChainCounts = new Map<Entity, number>();
+    readonly groupLightningChainRadii = new Map<Entity, number>();
+    readonly groupLightningDamageMultipliers =
         new Map<Entity, number>();
     readonly targetedSwordCounts = new Map<Entity, number>();
 
@@ -126,6 +138,9 @@ export class CombatScratchState extends State {
         this.groupFormationDamages.clear();
         this.groupReattackDelays.clear();
         this.groupFormationContactCooldowns.clear();
+        this.groupLightningChainCounts.clear();
+        this.groupLightningChainRadii.clear();
+        this.groupLightningDamageMultipliers.clear();
         this.targetedSwordCounts.clear();
         this.actionCount = 0;
     }

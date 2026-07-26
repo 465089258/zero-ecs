@@ -11,6 +11,7 @@ export enum DamageDisplayStyle {
     FocusSword,
     FormationSword,
     SwordBodyUnity,
+    LightningChain,
 }
 
 export enum DamageDisplay {

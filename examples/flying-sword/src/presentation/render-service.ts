@@ -56,6 +56,8 @@ import {
     ExperiencePickup,
     Health,
     LevelExperience,
+    LightningArc,
+    LightningSwordIntent,
     PlayerStamina,
     RogueRunClock,
     RogueRunPhase,
@@ -67,7 +69,9 @@ import {
 } from "../simulation/rogue/components";
 import {
     RogueEnemyRenderQuery,
+    RogueAutoFlyingSwordGroupQuery,
     RogueExperiencePickupQuery,
+    RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
 } from "../simulation/rogue/queries";
@@ -80,6 +84,8 @@ type Cultivators = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
+type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
+type SwordBuilds = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
 
 enum RenderKind {
@@ -90,6 +96,7 @@ enum RenderKind {
     Experience,
     Sword,
     FusionAura,
+    LightningArc,
     Damage,
 }
 
@@ -221,6 +228,7 @@ export class DemoRenderService extends Service {
     private visibleSwordCount = 0;
     private visibleEnemyCount = 0;
     private swordTrailCount = 0;
+    private lightningArcCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -284,6 +292,8 @@ export class DemoRenderService extends Service {
         enemies: Enemies,
         pickups: Pickups,
         damages: DamageDisplays,
+        lightningArcs: LightningArcs,
+        swordBuilds: SwordBuilds,
         groups: SwordGroups,
         swords: Swords,
     ): void {
@@ -315,10 +325,17 @@ export class DemoRenderService extends Service {
             tick,
             interpolation,
         );
+        this.collectLightningArcs(lightningArcs, tick);
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
-            this.drawStatus(scene, runs, cultivators, skillPhase);
+            this.drawStatus(
+                scene,
+                runs,
+                cultivators,
+                swordBuilds,
+                skillPhase,
+            );
             this.statusCountdown = STATUS_UPDATE_INTERVAL_FRAMES - 1;
         } else {
             this.statusCountdown--;
@@ -333,6 +350,7 @@ export class DemoRenderService extends Service {
         this.visibleSwordCount = 0;
         this.visibleEnemyCount = 0;
         this.swordTrailCount = 0;
+        this.lightningArcCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -1097,6 +1115,80 @@ export class DemoRenderService extends Service {
         }
     }
 
+    private collectLightningArcs(
+        arcs: LightningArcs,
+        tick: number,
+    ): void {
+        const iter = arcs.iter();
+        while (iter.next()) {
+            const [count, entities, timing, starts, ends] =
+                iter.current;
+            const startTicks = timing[LightningArc.StartTick];
+            const durations = timing[LightningArc.DurationTicks];
+            const startXs = starts[Float3.X];
+            const startYs = starts[Float3.Y];
+            const startZs = starts[Float3.Z];
+            const endXs = ends[Float3.X];
+            const endYs = ends[Float3.Y];
+            const endZs = ends[Float3.Z];
+            for (let row = 0; row < count; row++) {
+                if (this.lightningArcCount >= MAX_LIGHTNING_ARCS) {
+                    return;
+                }
+                const duration = Math.max(1, durations[row]);
+                const progress = Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        (tick - startTicks[row]) / duration,
+                    ),
+                );
+                this.camera.project(
+                    startXs[row],
+                    startYs[row],
+                    startZs[row],
+                    this.projected,
+                );
+                this.camera.project(
+                    endXs[row],
+                    endYs[row],
+                    endZs[row],
+                    this.projectedSecond,
+                );
+                if (
+                    Math.max(this.projected.x, this.projectedSecond.x) <
+                        -LIGHTNING_ARC_CULL_PADDING ||
+                    Math.min(this.projected.x, this.projectedSecond.x) >
+                        this.logicalWidth +
+                            LIGHTNING_ARC_CULL_PADDING ||
+                    Math.max(this.projected.y, this.projectedSecond.y) <
+                        -LIGHTNING_ARC_CULL_PADDING ||
+                    Math.min(this.projected.y, this.projectedSecond.y) >
+                        this.logicalHeight +
+                            LIGHTNING_ARC_CULL_PADDING
+                ) {
+                    continue;
+                }
+                const item = this.queue.acquire();
+                this.lightningArcCount++;
+                item.kind = RenderKind.LightningArc;
+                item.sprite = 0;
+                item.layer = DemoRenderLayer.ForegroundEffect;
+                item.depth =
+                    (this.projected.depth +
+                        this.projectedSecond.depth) * 0.5;
+                item.subOrder = -1;
+                item.stableId = entities[row];
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                item.x2 = this.projectedSecond.x;
+                item.y2 = this.projectedSecond.y;
+                item.alpha = 1 - progress;
+                item.style = tick;
+            }
+        }
+    }
+
     private readRunTick(runs: Runs): number {
         const iter = runs.iter();
         while (iter.next()) {
@@ -1173,6 +1265,8 @@ export class DemoRenderService extends Service {
                 }
             } else if (item.kind === RenderKind.FusionAura) {
                 drawFusionAura(context, item);
+            } else if (item.kind === RenderKind.LightningArc) {
+                drawLightningArc(context, item);
             } else if (item.kind === RenderKind.Damage) {
                 drawDamageDisplay(context, item);
             }
@@ -1183,6 +1277,7 @@ export class DemoRenderService extends Service {
         scene: Readonly<DemoSceneState>,
         runs: Runs,
         cultivators: Cultivators,
+        swordBuilds: SwordBuilds,
         skillPhase: FlyingSwordSkillPhaseValue,
     ): void {
         let tick = 0;
@@ -1229,6 +1324,8 @@ export class DemoRenderService extends Service {
         let stamina = 0;
         let maximumStamina = 1;
         let restartStamina = 0;
+        let lightningChainCount = 0;
+        let lightningDamageMultiplier = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -1263,6 +1360,21 @@ export class DemoRenderService extends Service {
                 staminaData[PlayerStamina.RestartThreshold][0];
             break;
         }
+        const buildIter = swordBuilds.iter();
+        while (buildIter.next()) {
+            const [count, entities, , lightning] =
+                buildIter.current;
+            const chainCounts =
+                lightning[LightningSwordIntent.ChainCount];
+            const damageMultipliers =
+                lightning[LightningSwordIntent.DamageMultiplier];
+            for (let row = 0; row < count; row++) {
+                if (entities[row] !== scene.swordGroup) continue;
+                lightningChainCount = chainCounts[row];
+                lightningDamageMultiplier = damageMultipliers[row];
+                break;
+            }
+        }
 
         this.view.healthFill.style.width =
             `${Math.max(0, Math.min(100, health / maximumHealth * 100))}%`;
@@ -1296,6 +1408,11 @@ export class DemoRenderService extends Service {
                 : scene.mode === FlyingSwordMode.Recall
                     ? "收剑护卫"
                     : "分散御剑";
+        this.view.intent.textContent = lightningChainCount > 0
+            ? `雷意 · 惊蛰 ${Math.round(
+                lightningDamageMultiplier * 100,
+            )}%`
+            : "剑意未悟";
         this.view.defeatOverlay.hidden =
             runPhase !== RogueRunPhase.Defeat;
         this.updateUpgradePanel(
@@ -1332,6 +1449,9 @@ export class DemoRenderService extends Service {
             `累计斩妖  ${kills}`,
             `当前状态  ${mode}`,
             `当前阵图  ${this.formationName}`,
+            `当前剑意  ${
+                lightningChainCount > 0 ? "雷意 · 惊蛰" : "尚未感悟"
+            }`,
             `剑诀阶段  ${skillPhase}`,
             `生命      ${Math.ceil(health)} / ${Math.ceil(maximumHealth)}`,
             `修为      ${experience.toFixed(0)} / ${requiredExperience.toFixed(0)}`,
@@ -1513,6 +1633,60 @@ function drawFusionAura(
     context.arc(item.x1, centerY, 18, 0, Math.PI * 2);
     context.stroke();
     context.globalAlpha = 1;
+}
+
+function drawLightningArc(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const dx = item.x2 - item.x1;
+    const dy = item.y2 - item.y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length < 1e-4) return;
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    context.strokeStyle = "#42bfff";
+    context.globalAlpha = item.alpha * 0.24;
+    context.lineWidth = 10;
+    traceLightningArc(context, item, normalX, normalY, 11);
+    context.strokeStyle = "#d9fbff";
+    context.globalAlpha = item.alpha;
+    context.lineWidth = 2;
+    traceLightningArc(context, item, normalX, normalY, 7);
+    context.globalAlpha = 1;
+}
+
+function traceLightningArc(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+    normalX: number,
+    normalY: number,
+    amplitude: number,
+): void {
+    let random = (
+        Math.imul(item.stableId, 0x9e3779b1) ^
+        Math.imul(item.style, 0x85ebca6b)
+    ) >>> 0;
+    context.beginPath();
+    context.moveTo(item.x1, item.y1);
+    for (let segment = 1; segment < 7; segment++) {
+        random ^= random << 13;
+        random ^= random >>> 17;
+        random ^= random << 5;
+        random >>>= 0;
+        const t = segment / 7;
+        const taper = Math.sin(t * Math.PI);
+        const offset =
+            ((random & 1023) / 1023 - 0.5) *
+            amplitude *
+            taper;
+        context.lineTo(
+            item.x1 + (item.x2 - item.x1) * t + normalX * offset,
+            item.y1 + (item.y2 - item.y1) * t + normalY * offset,
+        );
+    }
+    context.lineTo(item.x2, item.y2);
+    context.stroke();
 }
 
 function drawActorSprite(
@@ -1780,6 +1954,8 @@ const SPRITE_GLOW_PADDING = 12;
 const SPRITE_GLOW_BLUR = 9;
 const STATUS_UPDATE_INTERVAL_FRAMES = 6;
 const MAX_SWORD_TRAILS = 160;
+const MAX_LIGHTNING_ARCS = 96;
+const LIGHTNING_ARC_CULL_PADDING = 32;
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
 const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1789,6 +1965,7 @@ const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.FocusSword]: "#fff09b",
         [DamageDisplayStyle.FormationSword]: "#c7a2ff",
         [DamageDisplayStyle.SwordBodyUnity]: "#ff9b68",
+        [DamageDisplayStyle.LightningChain]: "#8de8ff",
     });
 const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1798,6 +1975,7 @@ const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.FocusSword]: "800 22px monospace",
         [DamageDisplayStyle.FormationSword]: "700 18px monospace",
         [DamageDisplayStyle.SwordBodyUnity]: "800 24px monospace",
+        [DamageDisplayStyle.LightningChain]: "800 21px monospace",
     });
 const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1810,4 +1988,6 @@ const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
             "brightness(2.3) saturate(2) hue-rotate(215deg)",
         [DamageKind.SwordBodyUnity]:
             "brightness(2.6) sepia(0.8) saturate(3) hue-rotate(330deg)",
+        [DamageKind.LightningChain]:
+            "brightness(3) saturate(2.4) hue-rotate(145deg)",
     });

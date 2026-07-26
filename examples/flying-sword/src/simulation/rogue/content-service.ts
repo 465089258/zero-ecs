@@ -40,8 +40,14 @@ import {
     FocusSwordHitHistoryType,
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
+    FlyingSwordDamageSource,
+    FlyingSwordDamageSourceType,
     Health,
     HealthType,
+    LightningArc,
+    LightningArcEnd3Type,
+    LightningArcStart3Type,
+    LightningArcType,
 } from "./components";
 
 /** 示例组合根：集中组装“敌人具有生命、移动、伤害与经验”等跨模块规则。 */
@@ -209,6 +215,63 @@ export class RogueContentService extends Service {
             .set(DamageRequestType, DamageRequest.Target, target)
             .set(DamageRequestType, DamageRequest.Amount, amount)
             .set(DamageRequestType, DamageRequest.Kind, kind)
+            .submit();
+        return entity;
+    }
+
+    requestFlyingSwordDamage(
+        source: Entity,
+        sourceGroup: Entity,
+        target: Entity,
+        amount: number,
+        kind: DamageKind,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .set(DamageRequestType, DamageRequest.Source, source)
+            .set(DamageRequestType, DamageRequest.Target, target)
+            .set(DamageRequestType, DamageRequest.Amount, amount)
+            .set(DamageRequestType, DamageRequest.Kind, kind)
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                sourceGroup,
+            )
+            .submit();
+        return entity;
+    }
+
+    spawnLightningArc(
+        startX: number,
+        startY: number,
+        startZ: number,
+        endX: number,
+        endY: number,
+        endZ: number,
+        startTick: number,
+        durationTicks: number,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(LightningArcType)
+            .add(LightningArcStart3Type)
+            .add(LightningArcEnd3Type)
+            .set(LightningArcType, LightningArc.StartTick, startTick)
+            .set(
+                LightningArcType,
+                LightningArc.DurationTicks,
+                durationTicks,
+            )
+            .set(LightningArcStart3Type, Float3.X, startX)
+            .set(LightningArcStart3Type, Float3.Y, startY)
+            .set(LightningArcStart3Type, Float3.Z, startZ)
+            .set(LightningArcEnd3Type, Float3.X, endX)
+            .set(LightningArcEnd3Type, Float3.Y, endY)
+            .set(LightningArcEnd3Type, Float3.Z, endZ)
             .submit();
         return entity;
     }

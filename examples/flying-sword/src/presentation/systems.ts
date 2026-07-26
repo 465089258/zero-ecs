@@ -8,7 +8,9 @@ import { DamageDisplayQuery } from "../damage-display/queries";
 import { DemoSceneState } from "../simulation/state";
 import {
     RogueEnemyRenderQuery,
+    RogueAutoFlyingSwordGroupQuery,
     RogueExperiencePickupQuery,
+    RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
 } from "../simulation/rogue/queries";
@@ -34,6 +36,8 @@ export const renderFlyingSwordDemoSystem = defSystem(
         RogueEnemyRenderQuery,
         RogueExperiencePickupQuery,
         DamageDisplayQuery,
+        RogueLightningArcQuery,
+        RogueAutoFlyingSwordGroupQuery,
         FlyingSwordGroupQuery,
         DemoFlyingSwordRenderQuery,
     ],
@@ -52,8 +56,10 @@ function renderFlyingSwordDemo(
     enemies: Parameters<DemoRenderService["render"]>[4],
     pickups: Parameters<DemoRenderService["render"]>[5],
     damages: Parameters<DemoRenderService["render"]>[6],
-    groups: Parameters<DemoRenderService["render"]>[7],
-    swords: Parameters<DemoRenderService["render"]>[8],
+    lightningArcs: Parameters<DemoRenderService["render"]>[7],
+    swordBuilds: Parameters<DemoRenderService["render"]>[8],
+    groups: Parameters<DemoRenderService["render"]>[9],
+    swords: Parameters<DemoRenderService["render"]>[10],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -63,6 +69,8 @@ function renderFlyingSwordDemo(
         enemies,
         pickups,
         damages,
+        lightningArcs,
+        swordBuilds,
         groups,
         swords,
     );

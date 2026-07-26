@@ -32,9 +32,14 @@ import {
     ExperienceRewardType,
     FlyingSwordCombatType,
     FlyingSwordContactCooldownType,
+    FlyingSwordDamageSourceType,
     FocusSwordHitHistoryType,
     HealthType,
     LevelExperienceType,
+    LightningArcEnd3Type,
+    LightningArcStart3Type,
+    LightningArcType,
+    LightningSwordIntentType,
     PlayerMovementType,
     PlayerPickupType,
     PlayerStaminaType,
@@ -125,8 +130,20 @@ export const RogueDamageRequestQuery = QueryType.from(With(
     DamageRequestType,
 ));
 
+export const RogueFlyingSwordDamageRequestQuery = QueryType.from(With(
+    DamageRequestType,
+    FlyingSwordDamageSourceType,
+));
+
 export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(
     AutoFlyingSwordSkillType,
+    LightningSwordIntentType,
+));
+
+export const RogueLightningArcQuery = QueryType.from(With(
+    LightningArcType,
+    LightningArcStart3Type,
+    LightningArcEnd3Type,
 ));
 
 export const RogueChooseUpgradeRequestQuery = QueryType.from(With(
