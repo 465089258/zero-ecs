@@ -103,6 +103,14 @@ implements Component<Float3> {
     readonly [Float3.Z] = Types.F32;
 }
 
+/** @internal 空闲编队剑尖的跨帧朝向缓存。 */
+export class FlyingSwordIdleDirection3Storage
+implements Component<Float3> {
+    readonly [Float3.X] = Types.F32;
+    readonly [Float3.Y] = Types.F32;
+    readonly [Float3.Z] = Types.F32;
+}
+
 /** @internal 技能预留期间才存在的动作能力。 */
 export class FlyingSwordSkillActionStorage
 implements FlyingSwordActionViewData {

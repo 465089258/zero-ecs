@@ -20,6 +20,7 @@ import {
     FlyingSwordFormationStorage,
     FlyingSwordFormationPlanStorage,
     FlyingSwordFormationGoal3Storage,
+    FlyingSwordIdleDirection3Storage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
     FlyingSwordGroupTarget3Storage,
@@ -165,6 +166,7 @@ export const FlyingSwordOrientationStorageQuery = QueryType.from(All(
     With(
         FlyingSwordMemberStorage,
         Direction3Type,
+        FlyingSwordIdleDirection3Storage,
     ),
     Optional(
         FlyingSwordSkillActionStorage,

@@ -425,6 +425,64 @@ test("formation plan request changes authoritative sword paths", () => {
     game.dispose();
 });
 
+test("formation stance blends sword direction instead of snapping", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        formationSize: 1,
+        orbitRadius: 2.5,
+        orbitHeight: 1.5,
+        angularSpeed: 1,
+    });
+    flyingSwords.createSword({
+        group,
+        position: { x: 0, y: 1, z: 0 },
+        maximumSpeed: 30,
+        acceleration: 100,
+    });
+    for (let tick = 0; tick < 30; tick++) game.update();
+
+    let iter = game.world.query(FlyingSwordQuery).iter();
+    expect(iter.next()).toBe(true);
+    let [, , , , , directions] = iter.current;
+    const beforeX = directions[Float3.X][0];
+    const beforeY = directions[Float3.Y][0];
+    const beforeZ = directions[Float3.Z][0];
+
+    flyingSwords.setStance(group, FlyingSwordStance.Formation);
+    game.update();
+    game.update();
+    iter = game.world.query(FlyingSwordQuery).iter();
+    expect(iter.next()).toBe(true);
+    [, , , , , directions] = iter.current;
+    const earlyDot =
+        beforeX * directions[Float3.X][0] +
+        beforeY * directions[Float3.Y][0] +
+        beforeZ * directions[Float3.Z][0];
+    expect(earlyDot).toBeGreaterThan(0.8);
+
+    for (let tick = 0; tick < 20; tick++) game.update();
+    iter = game.world.query(FlyingSwordQuery).iter();
+    expect(iter.next()).toBe(true);
+    [, , , , , directions] = iter.current;
+    const finalDot =
+        beforeX * directions[Float3.X][0] +
+        beforeY * directions[Float3.Y][0] +
+        beforeZ * directions[Float3.Z][0];
+    expect(finalDot).toBeLessThan(earlyDot - 0.2);
+
+    game.dispose();
+});
+
 test("independent attack rises, opens a dive contact window, and returns on time", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())

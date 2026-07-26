@@ -41,6 +41,7 @@ import {
     FlyingSwordFormationStorage,
     FlyingSwordFormationPlanStorage,
     FlyingSwordFormationGoal3Storage,
+    FlyingSwordIdleDirection3Storage,
     FlyingSwordGroupCenter3Storage,
     FlyingSwordGroupStorage,
     FlyingSwordGroupTarget3Storage,
@@ -171,6 +172,7 @@ export class FlyingSwordService extends Service {
             .add(Velocity3Type)
             .add(Direction3Type)
             .add(FlyingSwordFormationGoal3Storage)
+            .add(FlyingSwordIdleDirection3Storage)
             .add(MoveTowards3Type)
             .set(
                 FlyingSwordMemberStorage,
@@ -200,6 +202,9 @@ export class FlyingSwordService extends Service {
             .set(Direction3Type, Float3.X, 0)
             .set(Direction3Type, Float3.Y, 0)
             .set(Direction3Type, Float3.Z, 1)
+            .set(FlyingSwordIdleDirection3Storage, Float3.X, 0)
+            .set(FlyingSwordIdleDirection3Storage, Float3.Y, 1)
+            .set(FlyingSwordIdleDirection3Storage, Float3.Z, 0)
             .set(FlyingSwordFormationGoal3Storage, Float3.X, x)
             .set(FlyingSwordFormationGoal3Storage, Float3.Y, y)
             .set(FlyingSwordFormationGoal3Storage, Float3.Z, z)
