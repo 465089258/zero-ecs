@@ -226,27 +226,27 @@ function setupFlyingSwordDemo(
         .set(
             PlayerStaminaType,
             PlayerStamina.Current,
-            INITIAL_STAMINA,
+            tuning.initialStamina,
         )
         .set(
             PlayerStaminaType,
             PlayerStamina.Maximum,
-            INITIAL_STAMINA,
+            tuning.initialStamina,
         )
         .set(
             PlayerStaminaType,
             PlayerStamina.DrainPerSecond,
-            FUSION_STAMINA_DRAIN_PER_SECOND,
+            tuning.fusionStaminaDrainPerSecond,
         )
         .set(
             PlayerStaminaType,
             PlayerStamina.RecoveryPerSecond,
-            STAMINA_RECOVERY_PER_SECOND,
+            tuning.staminaRecoveryPerSecond,
         )
         .set(
             PlayerStaminaType,
             PlayerStamina.RestartThreshold,
-            FUSION_RESTART_STAMINA,
+            tuning.fusionRestartStamina,
         )
         .set(SwordBodyUnityType, SwordBodyUnity.Active, 0)
         .set(SwordBodyUnityType, SwordBodyUnity.StartTick, 0)
@@ -451,10 +451,6 @@ const FUSION_DASH_ARRIVAL_RADIUS = 0.08;
 const FUSION_RELEASE_ACCELERATION = 48;
 const FUSION_TARGET_LOOKAHEAD = 12;
 const FUSION_TURN_RADIANS_PER_SECOND = 1.35;
-const INITIAL_STAMINA = 100;
-const FUSION_STAMINA_DRAIN_PER_SECOND = 30;
-const STAMINA_RECOVERY_PER_SECOND = 22;
-const FUSION_RESTART_STAMINA = 25;
 
 function consumeFlyingSwordInput(
     commands: Commands,

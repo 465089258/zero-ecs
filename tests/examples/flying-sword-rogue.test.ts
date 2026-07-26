@@ -18,6 +18,9 @@ import {
     RogueUpgradeCatalog,
 } from "../../examples/flying-sword/src/content/upgrades";
 import {
+    RogueRunTuning,
+} from "../../examples/flying-sword/src/content/run-tuning";
+import {
     shouldLaunchScatterSword,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/scatter-system";
 import {
@@ -54,6 +57,22 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
     expect(catalog.names[RogueUpgrade.ScatterRange]).toContain("分光");
     expect(catalog.names[RogueUpgrade.FormationPower]).toContain("周天");
     expect(catalog.names[RogueUpgrade.FusionPower]).toContain("合一");
+    expect(
+        catalog.descriptions[RogueUpgrade.FusionEfficiency],
+    ).toContain("消耗降低");
+    expect(
+        catalog.descriptions[RogueUpgrade.FusionEndurance],
+    ).toContain("最大体力增加");
+});
+
+test("fusion starts with a meaningful stamina drain budget", () => {
+    const tuning = new RogueRunTuning("");
+    expect(tuning.initialStamina).toBe(100);
+    expect(tuning.fusionStaminaDrainPerSecond).toBe(40);
+    expect(
+        tuning.initialStamina /
+        tuning.fusionStaminaDrainPerSecond,
+    ).toBeCloseTo(2.5);
 });
 
 test("swept sword contact measures the whole segment", () => {
