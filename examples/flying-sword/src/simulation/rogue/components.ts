@@ -222,6 +222,20 @@ implements Component<FireSwordIntent> {
     readonly [FireSwordIntent.BurstDamageMultiplier] = Types.F32;
 }
 
+/** 示例构筑中的寒意规则参数，归属于飞剑控制组。 */
+export enum ColdSwordIntent {
+    MaximumStacks,
+    SlowPerStack,
+    DurationTicks,
+}
+
+export class ColdSwordIntentType
+implements Component<ColdSwordIntent> {
+    readonly [ColdSwordIntent.MaximumStacks] = Types.U8;
+    readonly [ColdSwordIntent.SlowPerStack] = Types.F32;
+    readonly [ColdSwordIntent.DurationTicks] = Types.U16;
+}
+
 export enum EnemyIdentity {
     Kind,
     Visual,
@@ -339,6 +353,20 @@ export class EnemyFireAccumulationType
 implements Component<EnemyFireAccumulation> {
     readonly [EnemyFireAccumulation.SourceGroup] = Types.Entity;
     readonly [EnemyFireAccumulation.Stacks] = Types.U8;
+}
+
+/** 敌人当前由单控制组施加的寒气层数与到期时间。 */
+export enum EnemyColdAccumulation {
+    SourceGroup,
+    Stacks,
+    ExpireTick,
+}
+
+export class EnemyColdAccumulationType
+implements Component<EnemyColdAccumulation> {
+    readonly [EnemyColdAccumulation.SourceGroup] = Types.Entity;
+    readonly [EnemyColdAccumulation.Stacks] = Types.U8;
+    readonly [EnemyColdAccumulation.ExpireTick] = Types.U32;
 }
 
 /** 玩家身剑合一动作；常驻组件避免动作开始时迁移玩家 Archetype。 */

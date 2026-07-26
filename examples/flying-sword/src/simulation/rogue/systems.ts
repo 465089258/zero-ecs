@@ -40,6 +40,7 @@ import { RogueRunControlService } from "../../app/run-control-service";
 import {
     AutoFlyingSwordSkill,
     ChooseUpgradeRequest,
+    ColdSwordIntent,
     DamageKind,
     DamageRequest,
     EnemyBody,
@@ -633,7 +634,15 @@ function applyUpgradeToSwordGroup(
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
-        const [count, entities, auto, lightning, metal, fire] =
+        const [
+            count,
+            entities,
+            auto,
+            lightning,
+            metal,
+            fire,
+            cold,
+        ] =
             iter.current;
         if (count === 0) continue;
         const formationRadii =
@@ -711,6 +720,16 @@ function applyUpgradeToSwordGroup(
                 burstThresholds[0] = 4;
             } else {
                 burstDamageMultipliers[0] *= 1.2;
+            }
+        } else if (upgrade === RogueUpgrade.ColdIntent) {
+            const maximumStacks =
+                cold[ColdSwordIntent.MaximumStacks];
+            const slowPerStack =
+                cold[ColdSwordIntent.SlowPerStack];
+            if (maximumStacks[0] === 0) {
+                maximumStacks[0] = 5;
+            } else {
+                slowPerStack[0] *= 1.15;
             }
         }
         return;

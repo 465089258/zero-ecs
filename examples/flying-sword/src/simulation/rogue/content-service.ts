@@ -24,6 +24,8 @@ import {
     DamageKind,
     DamageRequest,
     DamageRequestType,
+    EnemyColdAccumulation,
+    EnemyColdAccumulationType,
     EnemyBody,
     EnemyBodyType,
     EnemyCombat,
@@ -89,6 +91,7 @@ export class RogueContentService extends Service {
             .add(FlyingSwordContactCooldownType)
             .add(FocusSwordHitHistoryType)
             .add(EnemyFireAccumulationType)
+            .add(EnemyColdAccumulationType)
             .set(Position3Type, Float3.X, x)
             .set(Position3Type, Float3.Y, 0)
             .set(Position3Type, Float3.Z, z)
@@ -190,6 +193,21 @@ export class RogueContentService extends Service {
             .set(
                 EnemyFireAccumulationType,
                 EnemyFireAccumulation.Stacks,
+                0,
+            )
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.SourceGroup,
+                INVALID_ENTITY,
+            )
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.Stacks,
+                0,
+            )
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.ExpireTick,
                 0,
             )
             .submit();

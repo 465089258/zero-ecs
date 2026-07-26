@@ -7,10 +7,12 @@ import {
     Commands,
     GameBuilder,
     Startup,
+    Update,
     Write,
     defSystem,
     type Entity,
     type Mut,
+    type QueryOf,
 } from "@zero-ecs/game";
 import {
     FixedTimeResource,
@@ -20,6 +22,10 @@ import {
     Float3,
     Position3Type,
 } from "@zero-ecs/math/3d";
+import {
+    MoveTowards3,
+    MoveTowards3Type,
+} from "@zero-ecs/motion/3d";
 import {
     nextRogueRandom,
     progressAlongSegment3,
@@ -32,6 +38,7 @@ import {
     GRID_HALF_EXTENT,
     GRID_WIDTH,
     CombatScratchState,
+    ColdSwordIntentAccessState,
     FireSwordIntentAccessState,
     FocusPiercingCandidateState,
     LightningChainAccessState,
@@ -60,6 +67,11 @@ import {
     lightningChainDamage,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/lightning-chain-system";
 import {
+    applyColdSwordIntentSystem,
+    canTriggerColdSlow,
+    coldSpeedMultiplier,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/cold-slow-system";
+import {
     applyFireSwordIntentSystem,
     canTriggerFireBurst,
     fireBurstDamage,
@@ -75,6 +87,8 @@ import {
     DamageRequestType,
     EnemyBody,
     EnemyBodyType,
+    EnemyColdAccumulation,
+    EnemyColdAccumulationType,
     EnemyFireAccumulation,
     EnemyFireAccumulationType,
     FlyingSwordDamageSource,
@@ -84,6 +98,7 @@ import {
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
+    RogueColdEnemyQuery,
     RogueFireBurstQuery,
     RogueLightningArcQuery,
 } from "../../examples/flying-sword/src/simulation/rogue/queries";
@@ -93,6 +108,8 @@ import {
 import {
     EnemyCatalog,
 } from "../../examples/flying-sword/src/content/enemies";
+
+type TestDamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 
 const setupLightningChainTestSystem = defSystem(
     Startup,
@@ -267,6 +284,88 @@ const setupFireBurstTestSystem = defSystem(
     ],
 );
 
+const setupColdSlowTestSystem = defSystem(
+    Startup,
+    (
+        commands: Commands,
+        scratch: Mut<CombatScratchState>,
+    ): void => {
+        const group = commands.spawn();
+        group.submit();
+        const source = commands.spawn();
+        source.submit();
+        const target = commands.spawn();
+        target
+            .add(EnemyBodyType)
+            .add(MoveTowards3Type)
+            .add(EnemyColdAccumulationType)
+            .set(EnemyBodyType, EnemyBody.Radius, 0.5)
+            .set(EnemyBodyType, EnemyBody.CenterHeight, 0.8)
+            .set(EnemyBodyType, EnemyBody.MoveSpeed, 10)
+            .set(MoveTowards3Type, MoveTowards3.TargetX, 0)
+            .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+            .set(MoveTowards3Type, MoveTowards3.TargetZ, 0)
+            .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 10)
+            .set(MoveTowards3Type, MoveTowards3.Acceleration, 10)
+            .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0)
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.SourceGroup,
+                0,
+            )
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.Stacks,
+                0,
+            )
+            .set(
+                EnemyColdAccumulationType,
+                EnemyColdAccumulation.ExpireTick,
+                0,
+            )
+            .submit();
+        commands
+            .spawn()
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .set(DamageRequestType, DamageRequest.Source, source.entity)
+            .set(DamageRequestType, DamageRequest.Target, target.entity)
+            .set(DamageRequestType, DamageRequest.Amount, 10)
+            .set(
+                DamageRequestType,
+                DamageRequest.Kind,
+                DamageKind.ScatterSword,
+            )
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                group.entity,
+            )
+            .submit();
+        scratch.groupColdMaximumStacks.set(group.entity, 5);
+        scratch.groupColdSlowPerStack.set(group.entity, 0.08);
+        scratch.groupColdDurationTicks.set(group.entity, 180);
+    },
+    [Commands, Write(CombatScratchState)],
+);
+
+const cleanupColdTestDamageRequestsSystem = defSystem(
+    Update.fixed,
+    (
+        commands: Commands,
+        requests: TestDamageRequests,
+    ): void => {
+        const iter = requests.iter();
+        while (iter.next()) {
+            const [count, entities] = iter.current;
+            for (let row = 0; row < count; row++) {
+                commands.entity(entities[row]).despawn().submit();
+            }
+        }
+    },
+    [Commands, RogueDamageRequestQuery],
+);
+
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
     let right = 0;
@@ -290,7 +389,7 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.FireIntent + 1);
+    expect(catalog.count).toBe(RogueUpgrade.ColdIntent + 1);
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -313,6 +412,8 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
         .toContain("金意");
     expect(catalog.names[RogueUpgrade.FireIntent])
         .toContain("火意");
+    expect(catalog.names[RogueUpgrade.ColdIntent])
+        .toContain("寒意");
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {
@@ -622,6 +723,57 @@ test("fire intent consumes four marks into one area burst", () => {
     const effectIter = game.world.query(RogueFireBurstQuery).iter();
     while (effectIter.next()) effectCount += effectIter.current[0];
     expect(effectCount).toBe(1);
+    game.dispose();
+});
+
+test("cold intent only slows scatter and formation targets", () => {
+    expect(canTriggerColdSlow(DamageKind.ScatterSword)).toBe(true);
+    expect(canTriggerColdSlow(DamageKind.FormationSword)).toBe(true);
+    expect(canTriggerColdSlow(DamageKind.FocusSword)).toBe(false);
+    expect(coldSpeedMultiplier(0, 0.08)).toBe(1);
+    expect(coldSpeedMultiplier(3, 0.08)).toBeCloseTo(0.76);
+    expect(coldSpeedMultiplier(20, 0.08)).toBe(0.4);
+});
+
+test("cold intent adds a renewable stack from base movement speed", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addState(CombatScratchState)
+        .addState(ColdSwordIntentAccessState);
+    builder.addSystem(setupColdSlowTestSystem);
+    builder.addSystem(applyColdSwordIntentSystem);
+    builder.addSystem(cleanupColdTestDamageRequestsSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let coldEnemies = 0;
+    const iter = game.world.query(RogueColdEnemyQuery).iter();
+    while (iter.next()) {
+        const [count, , , motions, accumulations] = iter.current;
+        const maximumSpeeds = motions[MoveTowards3.MaximumSpeed];
+        const stacks =
+            accumulations[EnemyColdAccumulation.Stacks];
+        for (let row = 0; row < count; row++) {
+            coldEnemies++;
+            expect(stacks[row]).toBe(1);
+            expect(maximumSpeeds[row]).toBeCloseTo(9.2);
+        }
+    }
+    expect(coldEnemies).toBe(1);
+
+    for (let tick = 0; tick < 181; tick++) game.update();
+    const expiredIter = game.world.query(RogueColdEnemyQuery).iter();
+    expect(expiredIter.next()).toBe(true);
+    const [, , , expiredMotions, expiredAccumulations] =
+        expiredIter.current;
+    expect(
+        expiredAccumulations[EnemyColdAccumulation.Stacks][0],
+    ).toBe(0);
+    expect(expiredMotions[MoveTowards3.MaximumSpeed][0]).toBe(10);
     game.dispose();
 });
 

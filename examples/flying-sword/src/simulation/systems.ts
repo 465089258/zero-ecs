@@ -55,6 +55,8 @@ import {
 import {
     AutoFlyingSwordSkill,
     AutoFlyingSwordSkillType,
+    ColdSwordIntent,
+    ColdSwordIntentType,
     EnemyDirector,
     EnemyDirectorType,
     FireSwordIntent,
@@ -341,6 +343,7 @@ function setupFlyingSwordDemo(
         .add(LightningSwordIntentType)
         .add(MetalSwordIntentType)
         .add(FireSwordIntentType)
+        .add(ColdSwordIntentType)
         .set(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.ReattackDelayTicks,
@@ -430,6 +433,21 @@ function setupFlyingSwordDemo(
             FireSwordIntentType,
             FireSwordIntent.BurstDamageMultiplier,
             0.85,
+        )
+        .set(
+            ColdSwordIntentType,
+            ColdSwordIntent.MaximumStacks,
+            0,
+        )
+        .set(
+            ColdSwordIntentType,
+            ColdSwordIntent.SlowPerStack,
+            0.08,
+        )
+        .set(
+            ColdSwordIntentType,
+            ColdSwordIntent.DurationTicks,
+            180,
         )
         .submit();
 

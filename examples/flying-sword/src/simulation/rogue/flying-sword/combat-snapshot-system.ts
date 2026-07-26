@@ -18,6 +18,7 @@ import {
 } from "@zero-ecs/flying-sword";
 import {
     AutoFlyingSwordSkill,
+    ColdSwordIntent,
     EnemyFeedback,
     FireSwordIntent,
     FlyingSwordCombat,
@@ -120,10 +121,20 @@ function buildActionSnapshots(
     scratch.groupFireBurstThresholds.clear();
     scratch.groupFireBurstRadii.clear();
     scratch.groupFireBurstDamageMultipliers.clear();
+    scratch.groupColdMaximumStacks.clear();
+    scratch.groupColdSlowPerStack.clear();
+    scratch.groupColdDurationTicks.clear();
     const groupIter = groups.iter();
     while (groupIter.next()) {
-        const [count, entities, data, lightning, metal, fire] =
-            groupIter.current;
+        const [
+            count,
+            entities,
+            data,
+            lightning,
+            metal,
+            fire,
+            cold,
+        ] = groupIter.current;
         const damages = data[AutoFlyingSwordSkill.Damage];
         const focusDamageMultipliers =
             data[AutoFlyingSwordSkill.FocusDamageMultiplier];
@@ -149,6 +160,12 @@ function buildActionSnapshots(
             fire[FireSwordIntent.BurstRadius];
         const fireBurstDamageMultipliers =
             fire[FireSwordIntent.BurstDamageMultiplier];
+        const coldMaximumStacks =
+            cold[ColdSwordIntent.MaximumStacks];
+        const coldSlowPerStack =
+            cold[ColdSwordIntent.SlowPerStack];
+        const coldDurationTicks =
+            cold[ColdSwordIntent.DurationTicks];
         for (let row = 0; row < count; row++) {
             scratch.groupDamages.set(entities[row], damages[row]);
             scratch.groupFocusDamages.set(
@@ -199,6 +216,20 @@ function buildActionSnapshots(
                 scratch.groupFireBurstDamageMultipliers.set(
                     entities[row],
                     fireBurstDamageMultipliers[row],
+                );
+            }
+            if (coldMaximumStacks[row] > 0) {
+                scratch.groupColdMaximumStacks.set(
+                    entities[row],
+                    coldMaximumStacks[row],
+                );
+                scratch.groupColdSlowPerStack.set(
+                    entities[row],
+                    coldSlowPerStack[row],
+                );
+                scratch.groupColdDurationTicks.set(
+                    entities[row],
+                    coldDurationTicks[row],
                 );
             }
         }

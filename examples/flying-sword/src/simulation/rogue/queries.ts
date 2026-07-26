@@ -22,9 +22,11 @@ import { CultivatorTag } from "../components";
 import {
     AutoFlyingSwordSkillType,
     ChooseUpgradeRequestType,
+    ColdSwordIntentType,
     DamageRequestType,
     EnemyBodyType,
     EnemyCombatType,
+    EnemyColdAccumulationType,
     EnemyDirectorType,
     EnemyFeedbackType,
     EnemyIdentityType,
@@ -118,6 +120,7 @@ export const RogueEnemyRenderQuery = QueryType.from(With(
     EnemyBodyType,
     HealthType,
     EnemyFeedbackType,
+    EnemyColdAccumulationType,
 ));
 
 /** 战斗快照只写表现反馈列，避免依赖敌人的完整玩法组件集合。 */
@@ -153,6 +156,7 @@ export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(
     LightningSwordIntentType,
     MetalSwordIntentType,
     FireSwordIntentType,
+    ColdSwordIntentType,
 ));
 
 export const RogueLightningArcQuery = QueryType.from(With(
@@ -164,6 +168,12 @@ export const RogueLightningArcQuery = QueryType.from(With(
 export const RogueFireBurstQuery = QueryType.from(With(
     Position3Type,
     FireBurstType,
+));
+
+export const RogueColdEnemyQuery = QueryType.from(With(
+    EnemyBodyType,
+    MoveTowards3Type,
+    EnemyColdAccumulationType,
 ));
 
 export const RogueChooseUpgradeRequestQuery = QueryType.from(With(

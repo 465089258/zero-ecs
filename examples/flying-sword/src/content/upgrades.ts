@@ -18,6 +18,7 @@ export enum RogueUpgrade {
     LightningIntent,
     MetalIntent,
     FireIntent,
+    ColdIntent,
 }
 
 export class RogueUpgradeCatalog extends Resource {
@@ -39,6 +40,7 @@ export class RogueUpgradeCatalog extends Resource {
         "雷意 · 惊蛰",
         "金意 · 破势",
         "火意 · 焚心",
+        "寒意 · 凝霜",
     ]);
 
     readonly descriptions = Object.freeze([
@@ -59,6 +61,7 @@ export class RogueUpgradeCatalog extends Resource {
         "飞剑首次命中后向附近敌人连锁雷霆；再次感悟提高雷霆伤害",
         "集火与身剑合一贯穿同一直线的后续敌人时追加破势伤害",
         "集火与剑阵命中积累火印，达到四层时引爆周围敌人",
+        "分散与剑阵命中积累寒气，叠层降低敌人的移动速度",
     ]);
 
     readonly count = this.names.length;

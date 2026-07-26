@@ -49,7 +49,9 @@ import { DamageDisplayQuery } from "../damage-display/queries";
 import { RogueUpgradeCatalog } from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
 import {
+    ColdSwordIntent,
     DamageKind,
+    EnemyColdAccumulation,
     EnemyBody,
     EnemyFeedback,
     EnemyIdentity,
@@ -236,6 +238,7 @@ export class DemoRenderService extends Service {
     private swordTrailCount = 0;
     private lightningArcCount = 0;
     private fireBurstCount = 0;
+    private coldAuraCount = 0;
     private nearestDepth = 0;
     private farthestDepth = 0;
     private minimumHeight = 0;
@@ -361,6 +364,7 @@ export class DemoRenderService extends Service {
         this.swordTrailCount = 0;
         this.lightningArcCount = 0;
         this.fireBurstCount = 0;
+        this.coldAuraCount = 0;
         this.nearestDepth = Number.POSITIVE_INFINITY;
         this.farthestDepth = Number.NEGATIVE_INFINITY;
         this.minimumHeight = Number.POSITIVE_INFINITY;
@@ -804,6 +808,7 @@ export class DemoRenderService extends Service {
                 bodies,
                 health,
                 feedback,
+                cold,
             ] = iter.current;
             const previousXs = previousPositions[Float3.X];
             const previousYs = previousPositions[Float3.Y];
@@ -820,6 +825,8 @@ export class DemoRenderService extends Service {
             const flashEndTicks =
                 feedback[EnemyFeedback.HitFlashEndTick];
             const hitKinds = feedback[EnemyFeedback.HitKind];
+            const coldStacks =
+                cold[EnemyColdAccumulation.Stacks];
             for (let row = 0; row < count; row++) {
                 if (currentHealth[row] <= 0) continue;
                 const x = lerp(previousXs[row], xs[row], interpolation);
@@ -863,6 +870,15 @@ export class DemoRenderService extends Service {
                     ? 1
                     : 0;
                 item.style = hitKinds[row];
+                if (
+                    coldStacks[row] > 0 &&
+                    this.coldAuraCount < MAX_COLD_AURAS
+                ) {
+                    item.amount = coldStacks[row];
+                    this.coldAuraCount++;
+                } else {
+                    item.amount = 0;
+                }
                 this.visibleEnemyCount++;
             }
         }
@@ -1309,6 +1325,9 @@ export class DemoRenderService extends Service {
                 if (item.targeted > 0) {
                     drawEnemyTargetIndicator(context, item);
                 }
+                if (item.amount > 0) {
+                    drawEnemyColdAura(context, item);
+                }
                 drawActorSprite(
                     context,
                     item,
@@ -1407,6 +1426,8 @@ export class DemoRenderService extends Service {
         let metalDamagePerMomentum = 0;
         let fireBurstThreshold = 0;
         let fireBurstDamageMultiplier = 0;
+        let coldMaximumStacks = 0;
+        let coldSlowPerStack = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -1443,8 +1464,15 @@ export class DemoRenderService extends Service {
         }
         const buildIter = swordBuilds.iter();
         while (buildIter.next()) {
-            const [count, entities, , lightning, metal, fire] =
-                buildIter.current;
+            const [
+                count,
+                entities,
+                ,
+                lightning,
+                metal,
+                fire,
+                cold,
+            ] = buildIter.current;
             const chainCounts =
                 lightning[LightningSwordIntent.ChainCount];
             const damageMultipliers =
@@ -1457,6 +1485,10 @@ export class DemoRenderService extends Service {
                 fire[FireSwordIntent.BurstThreshold];
             const burstDamageMultipliers =
                 fire[FireSwordIntent.BurstDamageMultiplier];
+            const maximumColdStacks =
+                cold[ColdSwordIntent.MaximumStacks];
+            const slowPerColdStack =
+                cold[ColdSwordIntent.SlowPerStack];
             for (let row = 0; row < count; row++) {
                 if (entities[row] !== scene.swordGroup) continue;
                 lightningChainCount = chainCounts[row];
@@ -1466,6 +1498,8 @@ export class DemoRenderService extends Service {
                 fireBurstThreshold = burstThresholds[row];
                 fireBurstDamageMultiplier =
                     burstDamageMultipliers[row];
+                coldMaximumStacks = maximumColdStacks[row];
+                coldSlowPerStack = slowPerColdStack[row];
                 break;
             }
         }
@@ -1517,6 +1551,11 @@ export class DemoRenderService extends Service {
                 fireBurstDamageMultiplier * 100,
             )}%`
             : "";
+        const coldIntent = coldMaximumStacks > 0
+            ? `寒意·凝霜 ${Math.round(
+                coldSlowPerStack * 100,
+            )}%×${coldMaximumStacks}`
+            : "";
         let activeIntents = lightningIntent;
         if (metalIntent) {
             activeIntents = activeIntents
@@ -1527,6 +1566,11 @@ export class DemoRenderService extends Service {
             activeIntents = activeIntents
                 ? `${activeIntents} · ${fireIntent}`
                 : fireIntent;
+        }
+        if (coldIntent) {
+            activeIntents = activeIntents
+                ? `${activeIntents} · ${coldIntent}`
+                : coldIntent;
         }
         if (!activeIntents) activeIntents = "剑意未悟";
         this.view.intent.textContent = activeIntents;
@@ -1688,6 +1732,44 @@ function drawEnemyTargetIndicator(
     context.moveTo(item.x1 - 7, item.y1 - item.height - 3);
     context.lineTo(item.x1, item.y1 - item.height + 4);
     context.lineTo(item.x1 + 7, item.y1 - item.height - 3);
+    context.stroke();
+    context.globalAlpha = 1;
+}
+
+function drawEnemyColdAura(
+    context: CanvasRenderingContext2D,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const radiusX = Math.min(44, item.width * 0.44);
+    const radiusY = Math.max(10, radiusX * 0.3);
+    const strength = Math.min(1, item.amount / 5);
+    context.strokeStyle = "#8de9ff";
+    context.globalAlpha = 0.35 + strength * 0.35;
+    context.lineWidth = 2 + strength;
+    context.beginPath();
+    context.ellipse(
+        item.x1,
+        item.y1,
+        radiusX,
+        radiusY,
+        0,
+        0,
+        Math.PI * 2,
+    );
+    context.stroke();
+    const innerX = radiusX * 0.51;
+    const innerY = radiusY * 0.51;
+    const outerX = radiusX * 0.76;
+    const outerY = radiusY * 0.76;
+    context.beginPath();
+    context.moveTo(item.x1 + innerX, item.y1 + innerY);
+    context.lineTo(item.x1 + outerX, item.y1 + outerY);
+    context.moveTo(item.x1 - innerX, item.y1 + innerY);
+    context.lineTo(item.x1 - outerX, item.y1 + outerY);
+    context.moveTo(item.x1 + innerX, item.y1 - innerY);
+    context.lineTo(item.x1 + outerX, item.y1 - outerY);
+    context.moveTo(item.x1 - innerX, item.y1 - innerY);
+    context.lineTo(item.x1 - outerX, item.y1 - outerY);
     context.stroke();
     context.globalAlpha = 1;
 }
@@ -2124,6 +2206,7 @@ const MAX_LIGHTNING_ARCS = 96;
 const LIGHTNING_ARC_CULL_PADDING = 32;
 const MAX_FIRE_BURSTS = 48;
 const FIRE_BURST_PIXELS_PER_WORLD_UNIT = 62;
+const MAX_COLD_AURAS = 96;
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
 const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
     Object.freeze({

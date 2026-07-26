@@ -9,6 +9,7 @@ import { RogueUpgradeCatalog } from "../../content/upgrades";
 import { RogueContentService } from "./content-service";
 import {
     CombatScratchState,
+    ColdSwordIntentAccessState,
     EnemySpatialIndexState,
     FireSwordIntentAccessState,
     FocusSwordContactAccessState,
@@ -62,6 +63,9 @@ import {
     applyFireSwordIntentSystem,
     expireFireBurstsSystem,
 } from "./flying-sword/fire-burst-system";
+import {
+    applyColdSwordIntentSystem,
+} from "./flying-sword/cold-slow-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -75,6 +79,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
             .addState(FocusPiercingCandidateState)
             .addState(FusionPiercingCandidateState)
             .addState(FireSwordIntentAccessState)
+            .addState(ColdSwordIntentAccessState)
             .addState(LightningChainAccessState)
             .addState(FlyingSwordTargetingState)
             .addState(RogueEntityAccessState)
@@ -134,6 +139,10 @@ export class FlyingSwordRogueSimulationModule implements Module {
         );
         builder.addSystem(
             applyFireSwordIntentSystem,
+            RogueSystemOptions.damageEffects,
+        );
+        builder.addSystem(
+            applyColdSwordIntentSystem,
             RogueSystemOptions.damageEffects,
         );
         builder.addSystem(

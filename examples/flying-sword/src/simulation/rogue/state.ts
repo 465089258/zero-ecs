@@ -100,6 +100,14 @@ export class FireSwordIntentAccessState extends State {
     };
 }
 
+/** 寒意积层结算复用的实体定位结果。 */
+export class ColdSwordIntentAccessState extends State {
+    readonly access: EntityAccess = {
+        archetype: null,
+        row: 0 as EntityAccess["row"],
+    };
+}
+
 /** 飞剑接触系统每 Tick 派生的动作快照，避免逐剑重复遍历动作 Query。 */
 export class CombatScratchState extends State {
     actionEntities = new Uint32Array(4);
@@ -125,6 +133,9 @@ export class CombatScratchState extends State {
     readonly groupFireBurstRadii = new Map<Entity, number>();
     readonly groupFireBurstDamageMultipliers =
         new Map<Entity, number>();
+    readonly groupColdMaximumStacks = new Map<Entity, number>();
+    readonly groupColdSlowPerStack = new Map<Entity, number>();
+    readonly groupColdDurationTicks = new Map<Entity, number>();
     readonly targetedSwordCounts = new Map<Entity, number>();
 
     reset(required: number): void {
@@ -160,6 +171,9 @@ export class CombatScratchState extends State {
         this.groupFireBurstThresholds.clear();
         this.groupFireBurstRadii.clear();
         this.groupFireBurstDamageMultipliers.clear();
+        this.groupColdMaximumStacks.clear();
+        this.groupColdSlowPerStack.clear();
+        this.groupColdDurationTicks.clear();
         this.targetedSwordCounts.clear();
         this.actionCount = 0;
     }
