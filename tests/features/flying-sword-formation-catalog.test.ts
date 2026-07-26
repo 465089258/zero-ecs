@@ -84,6 +84,64 @@ test("formation slot schedule scales deterministically without changing routes",
             }
         }
     }
+
+    const routeCounts = new Uint16Array(3);
+    for (let slot = 0; slot < 500; slot++) {
+        catalog.resolveSlot(
+            FlyingSwordFormationPlanId.Lotus,
+            slot,
+            500,
+            out,
+        );
+        routeCounts[out.route]++;
+    }
+    expect(Array.from(routeCounts)).toEqual([250, 125, 125]);
+});
+
+test("formation route tangents follow the sampled path direction", () => {
+    const catalog = new FlyingSwordFormationCatalog();
+    const current = createRouteSample();
+    const ahead = createRouteSample();
+    for (
+        const planId of [
+            FlyingSwordFormationPlanId.EightGates,
+            FlyingSwordFormationPlanId.Lotus,
+        ]
+    ) {
+        const plan = catalog.require(planId);
+        for (let route = 0; route < plan.routeCount; route++) {
+            const period = catalog.routePeriod(planId, route);
+            for (let step = 0; step < 24; step++) {
+                const phase = period * (step + 0.37) / 24;
+                const epsilon = period * 1e-4;
+                catalog.sampleRoute(
+                    planId,
+                    route,
+                    phase,
+                    current,
+                );
+                catalog.sampleRoute(
+                    planId,
+                    route,
+                    phase + epsilon,
+                    ahead,
+                );
+                const dx = ahead.x - current.x;
+                const dy = ahead.y - current.y;
+                const dz = ahead.z - current.z;
+                const length = Math.sqrt(
+                    dx * dx + dy * dy + dz * dz,
+                );
+                const dot =
+                    (
+                        dx * current.tangentX +
+                        dy * current.tangentY +
+                        dz * current.tangentZ
+                    ) / length;
+                expect(dot).toBeGreaterThan(0.995);
+            }
+        }
+    }
 });
 
 test("formation catalog supports every initial path primitive", () => {

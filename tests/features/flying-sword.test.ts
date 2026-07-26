@@ -645,7 +645,7 @@ test("recalled flying swords form an animated directional fan behind their owner
     game.dispose();
 });
 
-test("flying sword requests update their target groups across multiple chunks", () => {
+test("flying sword control requests update groups across multiple chunks", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
@@ -658,6 +658,7 @@ test("flying sword requests update their target groups across multiple chunks", 
     const flyingSwords = game.service(FlyingSwordService);
     const expectedCenters =
         new Map<Entity, readonly [number, number, number]>();
+    const expectedPlans = new Map<Entity, number>();
     const groupCount = 320;
     for (let index = 0; index < groupCount; index++) {
         const group = flyingSwords.createGroup({
@@ -665,6 +666,12 @@ test("flying sword requests update their target groups across multiple chunks", 
             formationSize: 1,
         });
         expectedCenters.set(group, [index, index * 2, -index]);
+        expectedPlans.set(
+            group,
+            index % 2 === 0
+                ? FlyingSwordFormationPlanId.EightGates
+                : FlyingSwordFormationPlanId.Lotus,
+        );
     }
     game.update();
 
@@ -674,6 +681,10 @@ test("flying sword requests update their target groups across multiple chunks", 
             y: center[1],
             z: center[2],
         });
+        flyingSwords.setFormationPlan(
+            group,
+            expectedPlans.get(group)!,
+        );
     }
     game.update();
     game.update();
@@ -681,7 +692,8 @@ test("flying sword requests update their target groups across multiple chunks", 
     let visited = 0;
     const iter = game.world.query(FlyingSwordGroupQuery).iter();
     while (iter.next()) {
-        const [count, entities, , centers] = iter.current;
+        const [count, entities, , centers, , , , , plans] =
+            iter.current;
         const centerXs = centers[Float3.X];
         const centerYs = centers[Float3.Y];
         const centerZs = centers[Float3.Z];
@@ -691,6 +703,8 @@ test("flying sword requests update their target groups across multiple chunks", 
             expect(centerXs[row]).toBe(expected![0]);
             expect(centerYs[row]).toBe(expected![1]);
             expect(centerZs[row]).toBe(expected![2]);
+            expect(plans[FlyingSwordFormationPlan.Plan][row])
+                .toBe(expectedPlans.get(entities[row]));
             visited++;
         }
     }
