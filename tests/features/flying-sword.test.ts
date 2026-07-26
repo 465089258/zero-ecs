@@ -156,6 +156,21 @@ test("fusion formation interrupts sword tasks without replacing the stance", () 
     while (taskIter.next()) activeTasks += taskIter.current[0];
     expect(activeTasks).toBe(0);
 
+    flyingSwords.steerFusionSpiral(group, 0, 1);
+    game.update();
+    game.update();
+    const steeredGroupIter =
+        game.world.query(FlyingSwordGroupQuery).iter();
+    expect(steeredGroupIter.next()).toBe(true);
+    const [, , , , , , , steeredBehavior] =
+        steeredGroupIter.current;
+    expect(
+        steeredBehavior[FlyingSwordBehavior.ActiveForwardX][0],
+    ).toBeCloseTo(0);
+    expect(
+        steeredBehavior[FlyingSwordBehavior.ActiveForwardZ][0],
+    ).toBeCloseTo(1);
+
     flyingSwords.endActiveFormation(group);
     game.update();
     game.update();
@@ -187,7 +202,7 @@ test("fusion formation interrupts sword tasks without replacing the stance", () 
     game.dispose();
 });
 
-test("fusion swords form a forward cone and point along the dash axis", () => {
+test("fusion swords form one rotating umbrella and point at its shared tip", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
@@ -220,6 +235,7 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
     let maximumX = Number.NEGATIVE_INFINITY;
     let minimumForward = Number.POSITIVE_INFINITY;
     let swordCount = 0;
+    const longitudinalXs = new Float32Array(7);
     const beforeYs = new Float32Array(7);
     const beforeZs = new Float32Array(7);
     const iter = game.world.query(FlyingSwordQuery).iter();
@@ -232,6 +248,7 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
         const zs = positions[Float3.Z];
         const directionXs = directions[Float3.X];
         for (let row = 0; row < count; row++) {
+            longitudinalXs[slots[row]] = xs[row];
             beforeYs[slots[row]] = ys[row];
             beforeZs[slots[row]] = zs[row];
             minimumX = Math.min(minimumX, xs[row]);
@@ -245,8 +262,22 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
     }
     expect(swordCount).toBe(7);
     expect(minimumX).toBeGreaterThan(0.4);
-    expect(maximumX - minimumX).toBeGreaterThan(2.5);
-    expect(minimumForward).toBeGreaterThan(0.82);
+    expect(maximumX - minimumX).toBeGreaterThan(2.2);
+    expect(minimumForward).toBeGreaterThan(0.7);
+    let canopyMinimumX = Number.POSITIVE_INFINITY;
+    let canopyMaximumX = Number.NEGATIVE_INFINITY;
+    for (let slot = 0; slot < 6; slot++) {
+        canopyMinimumX = Math.min(
+            canopyMinimumX,
+            longitudinalXs[slot],
+        );
+        canopyMaximumX = Math.max(
+            canopyMaximumX,
+            longitudinalXs[slot],
+        );
+    }
+    expect(canopyMaximumX - canopyMinimumX).toBeLessThan(0.3);
+    expect(longitudinalXs[6] - canopyMaximumX).toBeGreaterThan(2);
 
     for (let tick = 0; tick < 6; tick++) game.update();
     let radialMovement = 0;
@@ -266,6 +297,60 @@ test("fusion swords form a forward cone and point along the dash axis", () => {
         }
     }
     expect(radialMovement).toBeGreaterThan(1);
+
+    game.dispose();
+});
+
+test("fusion umbrella adds outer canopy layers as sword count grows", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 0, y: 0, z: 0 },
+        formationSize: 19,
+    });
+    for (let slot = 0; slot < 19; slot++) {
+        flyingSwords.createSword({
+            group,
+            position: { x: 0, y: 1, z: 0 },
+            slot,
+            maximumSpeed: 14,
+            acceleration: 48,
+        });
+    }
+    game.update();
+    flyingSwords.beginFusionSpiral(group, 1, 0);
+    for (let tick = 0; tick < 100; tick++) game.update();
+
+    let innerLayerX = 0;
+    let outerLayerX = 0;
+    let tipX = 0;
+    const iter = game.world.query(FlyingSwordQuery).iter();
+    while (iter.next()) {
+        const [count, , members, , positions] = iter.current;
+        const slots = members[FlyingSwordMember.Slot];
+        const xs = positions[Float3.X];
+        for (let row = 0; row < count; row++) {
+            const slot = slots[row];
+            if (slot < 6) {
+                innerLayerX += xs[row] / 6;
+            } else if (slot < 18) {
+                outerLayerX += xs[row] / 12;
+            } else {
+                tipX = xs[row];
+            }
+        }
+    }
+    expect(innerLayerX).toBeGreaterThan(outerLayerX + 0.7);
+    expect(tipX).toBeGreaterThan(innerLayerX + 0.9);
 
     game.dispose();
 });

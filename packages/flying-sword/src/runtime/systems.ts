@@ -535,17 +535,22 @@ function applyFlyingSwordActiveFormationRequests(
                 ) as ComponentColumns<FlyingSwordBehaviorStorage> | null;
                 if (archetype && behaviors) {
                     const groupRow = archetype.rowIdxOf(access.row);
-                    behaviors[FlyingSwordBehavior.ActiveFormation][groupRow] =
-                        formations[row];
+                    const activeFormations =
+                        behaviors[FlyingSwordBehavior.ActiveFormation];
+                    const formationChanged =
+                        activeFormations[groupRow] !== formations[row];
+                    activeFormations[groupRow] = formations[row];
                     behaviors[FlyingSwordBehavior.ActiveForwardX][groupRow] =
                         forwardXs[row];
                     behaviors[FlyingSwordBehavior.ActiveForwardZ][groupRow] =
                         forwardZs[row];
-                    markFormationTransition(
-                        runtime,
-                        groups[row],
-                        time.tick,
-                    );
+                    if (formationChanged) {
+                        markFormationTransition(
+                            runtime,
+                            groups[row],
+                            time.tick,
+                        );
+                    }
                 }
             }
             commands.entity(entities[row]).despawn().submit();
@@ -968,25 +973,26 @@ function orientIdleFlyingSwords(
                         );
                         continue;
                     }
-                    const progress =
-                        (
-                            fusionSlotPoint.longitudinal -
-                            FUSION_SPIRAL_START
-                        ) / FUSION_SPIRAL_LENGTH;
-                    const directionWeight =
-                        FUSION_DIRECTION_WEIGHT +
-                        progress * FUSION_TIP_DIRECTION_BONUS;
+                    const cosine = Math.cos(fusionSlotPoint.angle);
+                    const sine = Math.sin(fusionSlotPoint.angle);
+                    const radial = cosine * fusionSlotPoint.radius;
+                    const height = sine * fusionSlotPoint.radius;
+                    const axisDistance =
+                        FUSION_UMBRELLA_APEX -
+                        fusionSlotPoint.longitudinal;
                     const tangentX =
-                        forwardX * directionWeight -
-                        rightX * Math.sin(fusionSlotPoint.angle) *
-                            FUSION_TANGENT_WEIGHT;
+                        forwardX * axisDistance -
+                        rightX * radial -
+                        rightX * sine *
+                            FUSION_UMBRELLA_TANGENT_WEIGHT;
                     const tangentY =
-                        Math.cos(fusionSlotPoint.angle) *
-                        FUSION_TANGENT_WEIGHT;
+                        -height +
+                        cosine * FUSION_UMBRELLA_TANGENT_WEIGHT;
                     const tangentZ =
-                        forwardZ * directionWeight -
-                        rightZ * Math.sin(fusionSlotPoint.angle) *
-                            FUSION_TANGENT_WEIGHT;
+                        forwardZ * axisDistance -
+                        rightZ * radial -
+                        rightZ * sine *
+                            FUSION_UMBRELLA_TANGENT_WEIGHT;
                     const length = Math.sqrt(
                         tangentX * tangentX +
                         tangentY * tangentY +
@@ -1198,8 +1204,7 @@ function writeFusionSlot(
     const normalizedSlot = slot % size;
     const spin = elapsed * FUSION_SPIRAL_SPEED;
     if (size === 1 || normalizedSlot === size - 1) {
-        out.longitudinal =
-            FUSION_SPIRAL_START + FUSION_SPIRAL_LENGTH;
+        out.longitudinal = FUSION_UMBRELLA_APEX;
         out.radius = 0;
         out.angle = spin;
         out.tip = true;
@@ -1207,27 +1212,48 @@ function writeFusionSlot(
     }
 
     const bodyCount = size - 1;
-    const bladeCount = Math.min(FUSION_RING_BLADE_COUNT, bodyCount);
-    const ring = Math.floor(normalizedSlot / bladeCount);
-    const ringCount = Math.ceil(bodyCount / bladeCount);
-    const ringStart = ring * bladeCount;
-    const ringSize = Math.min(bladeCount, bodyCount - ringStart);
-    const blade = normalizedSlot - ringStart;
-    const progress = ringCount <= 1 ? 0 : ring / (ringCount - 1);
-    out.longitudinal =
-        FUSION_SPIRAL_START +
-        progress * FUSION_SPIRAL_LENGTH *
-            FUSION_BODY_LENGTH_FRACTION;
-    out.radius =
-        FUSION_SPIRAL_BACK_RADIUS +
+    const layer = Math.ceil(
         (
-            FUSION_SPIRAL_FRONT_RADIUS -
-            FUSION_SPIRAL_BACK_RADIUS
-        ) * progress;
+            Math.sqrt(
+                1 +
+                4 * (normalizedSlot + 1) /
+                    FUSION_UMBRELLA_CUMULATIVE_LAYER_FACTOR,
+            ) - 1
+        ) * 0.5,
+    );
+    const layerCount = Math.ceil(
+        (
+            Math.sqrt(
+                1 +
+                4 * bodyCount /
+                    FUSION_UMBRELLA_CUMULATIVE_LAYER_FACTOR,
+            ) - 1
+        ) * 0.5,
+    );
+    const previousLayerCount =
+        FUSION_UMBRELLA_CUMULATIVE_LAYER_FACTOR *
+        (layer - 1) * layer;
+    const layerCapacity =
+        FUSION_UMBRELLA_BASE_LAYER_SIZE * layer;
+    const layerSize = Math.min(
+        layerCapacity,
+        bodyCount - previousLayerCount,
+    );
+    const blade = normalizedSlot - previousLayerCount;
+    const progress = layer / layerCount;
+    out.longitudinal =
+        FUSION_UMBRELLA_APEX -
+        FUSION_UMBRELLA_DEPTH * Math.pow(
+            progress,
+            FUSION_UMBRELLA_DEPTH_EXPONENT,
+        );
+    out.radius =
+        FUSION_UMBRELLA_RADIUS *
+        Math.sin(progress * Math.PI * 0.5);
     out.angle =
         spin +
-        blade * Math.PI * 2 / ringSize +
-        ring * FUSION_RING_TWIST;
+        blade * Math.PI * 2 / layerSize +
+        (layer - 1) * FUSION_UMBRELLA_LAYER_TWIST;
     out.tip = false;
 }
 
@@ -1334,17 +1360,16 @@ const FORMATION_GUIDANCE_LOOKAHEAD_SECONDS = 0.1;
 const FORMATION_HEIGHT_MULTIPLIER = 0.76;
 const FORMATION_TRANSITION_TICKS = 18;
 const FUSION_SPIRAL_SPEED = 18;
-const FUSION_SPIRAL_START = 0.65;
-const FUSION_SPIRAL_LENGTH = 4.35;
-const FUSION_SPIRAL_BACK_RADIUS = 1.28;
-const FUSION_SPIRAL_FRONT_RADIUS = 0.36;
 const FUSION_SPIRAL_AXIS_HEIGHT = 0.92;
-const FUSION_RING_BLADE_COUNT = 3;
-const FUSION_RING_TWIST = Math.PI / 5;
-const FUSION_BODY_LENGTH_FRACTION = 0.74;
-const FUSION_DIRECTION_WEIGHT = 2.15;
-const FUSION_TIP_DIRECTION_BONUS = 0.85;
-const FUSION_TANGENT_WEIGHT = 1.18;
+const FUSION_UMBRELLA_APEX = 4.8;
+const FUSION_UMBRELLA_DEPTH = 2.5;
+const FUSION_UMBRELLA_DEPTH_EXPONENT = 0.75;
+const FUSION_UMBRELLA_RADIUS = 1.55;
+const FUSION_UMBRELLA_BASE_LAYER_SIZE = 6;
+const FUSION_UMBRELLA_CUMULATIVE_LAYER_FACTOR =
+    FUSION_UMBRELLA_BASE_LAYER_SIZE * 0.5;
+const FUSION_UMBRELLA_LAYER_TWIST = Math.PI / 9;
+const FUSION_UMBRELLA_TANGENT_WEIGHT = 0.28;
 const formationSlotSample: FlyingSwordFormationSlotSample = {
     route: 0,
     routeSlot: 0,

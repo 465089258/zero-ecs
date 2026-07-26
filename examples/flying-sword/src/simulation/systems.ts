@@ -91,6 +91,9 @@ import {
     RogueRunQuery,
     SwordBodyUnityControlQuery,
 } from "./rogue/queries";
+import {
+    steerDirection2Towards,
+} from "./rogue/flying-sword/fusion-steering";
 import { DemoSceneState } from "./state";
 
 type Cultivators = QueryOf<typeof SwordBodyUnityControlQuery>;
@@ -447,6 +450,7 @@ const FUSION_DASH_ACCELERATION = 180;
 const FUSION_DASH_ARRIVAL_RADIUS = 0.08;
 const FUSION_RELEASE_ACCELERATION = 48;
 const FUSION_TARGET_LOOKAHEAD = 12;
+const FUSION_TURN_RADIANS_PER_SECOND = 1.35;
 const INITIAL_STAMINA = 100;
 const FUSION_STAMINA_DRAIN_PER_SECOND = 30;
 const STAMINA_RECOVERY_PER_SECOND = 22;
@@ -670,6 +674,23 @@ function driveSwordBodyUnity(
                         groups,
                     );
                     return false;
+                }
+                if (
+                    hasTarget &&
+                    steerDirection2Towards(
+                        directionXs,
+                        directionZs,
+                        row,
+                        targetX - xs[row],
+                        targetZ - zs[row],
+                        FUSION_TURN_RADIANS_PER_SECOND * time.delta,
+                    )
+                ) {
+                    flyingSwords.steerFusionSpiral(
+                        groups[row] as Entity,
+                        directionXs[row],
+                        directionZs[row],
+                    );
                 }
                 motionTargetXs[row] =
                     xs[row] +

@@ -20,6 +20,9 @@ import {
 import {
     shouldLaunchScatterSword,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/scatter-system";
+import {
+    steerDirection2Towards,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/fusion-steering";
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -118,4 +121,25 @@ test("scatter launch cadence is derived from group combat values", () => {
     expect(launched).toEqual([2]);
     expect(shouldLaunchScatterSword(8, 2, 5, 1)).toBe(true);
     expect(shouldLaunchScatterSword(8, 2, 7, 3)).toBe(true);
+});
+
+test("fusion steering clamps turning instead of snapping to the cursor", () => {
+    const xs = new Float32Array([1]);
+    const zs = new Float32Array([0]);
+    expect(
+        steerDirection2Towards(
+            xs,
+            zs,
+            0,
+            0,
+            1,
+            Math.PI / 6,
+        ),
+    ).toBe(true);
+    expect(xs[0]).toBeCloseTo(Math.cos(Math.PI / 6), 5);
+    expect(zs[0]).toBeCloseTo(Math.sin(Math.PI / 6), 5);
+
+    steerDirection2Towards(xs, zs, 0, 0, 1, Math.PI);
+    expect(xs[0]).toBeCloseTo(0, 5);
+    expect(zs[0]).toBeCloseTo(1, 5);
 });

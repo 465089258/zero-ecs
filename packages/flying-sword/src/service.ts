@@ -370,6 +370,24 @@ export class FlyingSwordService extends Service {
         );
     }
 
+    steerFusionSpiral(
+        group: Entity,
+        forwardX: number,
+        forwardZ: number,
+    ): void {
+        const length = Math.sqrt(
+            forwardX * forwardX + forwardZ * forwardZ,
+        );
+        if (length <= DIRECTION_EPSILON) return;
+        const inverse = 1 / length;
+        this.setActiveFormation(
+            group,
+            FlyingSwordActiveFormation.FusionSpiral,
+            forwardX * inverse,
+            forwardZ * inverse,
+        );
+    }
+
     endActiveFormation(group: Entity): void {
         this.setActiveFormation(
             group,
