@@ -14,6 +14,7 @@ export enum RogueUpgrade {
     FusionPower,
     FusionEfficiency,
     FusionEndurance,
+    FormationRange,
 }
 
 export class RogueUpgradeCatalog extends Resource {
@@ -31,6 +32,7 @@ export class RogueUpgradeCatalog extends Resource {
         "合一 · 摧岳",
         "合一 · 流转",
         "合一 · 踏虚",
+        "周天 · 广域",
     ]);
 
     readonly descriptions = Object.freeze([
@@ -43,10 +45,11 @@ export class RogueUpgradeCatalog extends Resource {
         "分散御剑的自动索敌范围提高 20%",
         "集火剑诀伤害提高 35%",
         "周天剑阵接触伤害提高 25%",
-        "周天剑阵对同一目标的触发间隔缩短 15%",
+        "周天剑阵运行速度提高 15%，触发间隔缩短 15%",
         "身剑合一伤害提高 30%",
         "身剑合一每秒体力消耗降低 15%",
         "最大体力增加 20，体力恢复提高 10%",
+        "周天剑阵运行范围提高 18%",
     ]);
 
     readonly count = this.names.length;

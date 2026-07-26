@@ -195,6 +195,20 @@ implements Component<SetFlyingSwordFormationSizeRequest> {
     readonly [SetFlyingSwordFormationSizeRequest.Size] = Types.U16;
 }
 
+export enum SetFlyingSwordFormationTuningRequest {
+    Group,
+    OrbitRadius,
+    AngularSpeed,
+}
+
+/** @internal 原子修改控制组阵图范围与运行速度的一次性请求实体。 */
+export class SetFlyingSwordFormationTuningRequestStorage
+implements Component<SetFlyingSwordFormationTuningRequest> {
+    readonly [SetFlyingSwordFormationTuningRequest.Group] = Types.Entity;
+    readonly [SetFlyingSwordFormationTuningRequest.OrbitRadius] = Types.F32;
+    readonly [SetFlyingSwordFormationTuningRequest.AngularSpeed] = Types.F32;
+}
+
 export enum SetFlyingSwordFormationPlanRequest {
     Group,
     Plan,

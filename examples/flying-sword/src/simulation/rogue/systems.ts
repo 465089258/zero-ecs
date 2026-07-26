@@ -335,7 +335,11 @@ function applyRogueUpgradeRequests(
             }
             if (upgrade >= 0 && activeSelection) {
                 applyUpgradeToPlayer(upgrade, players);
-                applyUpgradeToSwordGroup(upgrade, groups);
+                applyUpgradeToSwordGroup(
+                    upgrade,
+                    flyingSwords,
+                    groups,
+                );
                 if (upgrade === RogueUpgrade.AddSword) {
                     addFlyingSword(
                         commands,
@@ -614,12 +618,17 @@ function applyUpgradeToPlayer(
 
 function applyUpgradeToSwordGroup(
     upgrade: number,
+    flyingSwords: FlyingSwordService,
     groups: AutoGroups,
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
-        const [count, , auto] = iter.current;
+        const [count, entities, auto] = iter.current;
         if (count === 0) continue;
+        const formationRadii =
+            auto[AutoFlyingSwordSkill.FormationRadius];
+        const formationAngularSpeeds =
+            auto[AutoFlyingSwordSkill.FormationAngularSpeed];
         if (upgrade === RogueUpgrade.TemperSword) {
             auto[AutoFlyingSwordSkill.Damage][0] *= 1.25;
         } else if (upgrade === RogueUpgrade.ShortenCooldown) {
@@ -638,6 +647,7 @@ function applyUpgradeToSwordGroup(
             auto[AutoFlyingSwordSkill.FormationDamageMultiplier][0] *=
                 1.25;
         } else if (upgrade === RogueUpgrade.FormationTempo) {
+            formationAngularSpeeds[0] *= 1.15;
             auto[
                 AutoFlyingSwordSkill.FormationContactCooldownTicks
             ][0] = Math.max(
@@ -648,6 +658,18 @@ function applyUpgradeToSwordGroup(
                             .FormationContactCooldownTicks
                     ][0] * 0.85,
                 ),
+            );
+            flyingSwords.setFormationTuning(
+                entities[0],
+                formationRadii[0],
+                formationAngularSpeeds[0],
+            );
+        } else if (upgrade === RogueUpgrade.FormationRange) {
+            formationRadii[0] *= 1.18;
+            flyingSwords.setFormationTuning(
+                entities[0],
+                formationRadii[0],
+                formationAngularSpeeds[0],
             );
         }
         return;

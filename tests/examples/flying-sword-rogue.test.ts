@@ -50,7 +50,7 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.FusionEndurance + 1);
+    expect(catalog.count).toBe(RogueUpgrade.FormationRange + 1);
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -63,6 +63,10 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
     expect(
         catalog.descriptions[RogueUpgrade.FusionEndurance],
     ).toContain("最大体力增加");
+    expect(catalog.names[RogueUpgrade.FormationRange])
+        .toContain("广域");
+    expect(catalog.descriptions[RogueUpgrade.FormationTempo])
+        .toContain("运行速度提高");
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {
@@ -73,6 +77,8 @@ test("fusion starts with a meaningful stamina drain budget", () => {
         tuning.initialStamina /
         tuning.fusionStaminaDrainPerSecond,
     ).toBeCloseTo(2.5);
+    expect(tuning.initialFormationRadius).toBeGreaterThan(3.15);
+    expect(tuning.initialFormationAngularSpeed).toBeGreaterThan(0.72);
 });
 
 test("swept sword contact measures the whole segment", () => {

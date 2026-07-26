@@ -264,9 +264,9 @@ function setupFlyingSwordDemo(
         owner: cultivator,
         center: { x: 0, y: 0, z: 0 },
         formationSize: flyingSwordCount,
-        orbitRadius: 3.15,
+        orbitRadius: tuning.initialFormationRadius,
         orbitHeight: 1.35,
-        angularSpeed: 0.72,
+        angularSpeed: tuning.initialFormationAngularSpeed,
         verticalAmplitude: 0.35,
         verticalSpeed: 2.7,
     });
@@ -360,6 +360,16 @@ function setupFlyingSwordDemo(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.ScatterLaunchSlotStride,
             3,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.FormationRadius,
+            tuning.initialFormationRadius,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.FormationAngularSpeed,
+            tuning.initialFormationAngularSpeed,
         )
         .submit();
 

@@ -19,6 +19,7 @@ import {
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,
     FlyingSwordControl,
+    FlyingSwordFormation,
     FlyingSwordFormationPlan,
     FlyingSwordFormationPlanId,
     FlyingSwordGroupQuery,
@@ -1076,6 +1077,42 @@ test("flying sword request entities use deterministic command precedence", () =>
     expect(target[Float3.Z][0]).toBe(4);
     expect(control[FlyingSwordControl.Mode][0])
         .toBe(FlyingSwordMode.Recall);
+
+    game.dispose();
+});
+
+test("formation tuning request atomically updates radius and angular speed", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const group = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        formationSize: 1,
+        orbitRadius: 2.5,
+        angularSpeed: 0.8,
+    });
+    game.update();
+
+    flyingSwords.setFormationTuning(group, 4.2, 1.3);
+    game.update();
+    game.update();
+
+    const iter = game.world.query(FlyingSwordGroupQuery).iter();
+    expect(iter.next()).toBe(true);
+    const [, , , , , formation] = iter.current;
+    expect(formation[FlyingSwordFormation.OrbitRadius][0])
+        .toBeCloseTo(4.2);
+    expect(formation[FlyingSwordFormation.AngularSpeed][0])
+        .toBeCloseTo(1.3);
+    expect(() => flyingSwords.setFormationTuning(group, 0, 1))
+        .toThrow(/orbitRadius/);
 
     game.dispose();
 });

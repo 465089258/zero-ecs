@@ -23,6 +23,7 @@ import {
     FlyingSwordSystemOptions,
     applyFlyingSwordCenterRequestsSystem,
     applyFlyingSwordFormationSizeRequestsSystem,
+    applyFlyingSwordFormationTuningRequestsSystem,
     applyFlyingSwordFormationPlanRequestsSystem,
     applyFlyingSwordActiveFormationRequestsSystem,
     applyFlyingSwordFocusRequestsSystem,
@@ -83,6 +84,10 @@ export class FlyingSwordModule implements Module {
             applyFlyingSwordFormationSizeRequestsSystem,
             FlyingSwordSystemOptions.formationSizeRequests,
         );
+        const formationTuningRequests = builder.addSystem(
+            applyFlyingSwordFormationTuningRequestsSystem,
+            FlyingSwordSystemOptions.formationTuningRequests,
+        );
         const formationPlanRequests = builder.addSystem(
             applyFlyingSwordFormationPlanRequestsSystem,
             FlyingSwordSystemOptions.formationPlanRequests,
@@ -116,6 +121,7 @@ export class FlyingSwordModule implements Module {
             focusRequests,
             modeRequests,
             formationSizeRequests,
+            formationTuningRequests,
             formationPlanRequests,
             stanceRequests,
             activeFormationRequests,

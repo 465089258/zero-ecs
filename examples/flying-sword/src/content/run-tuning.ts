@@ -13,6 +13,8 @@ export class RogueRunTuning extends Resource {
     readonly fusionStaminaDrainPerSecond = 40;
     readonly staminaRecoveryPerSecond = 22;
     readonly fusionRestartStamina = 25;
+    readonly initialFormationRadius = 3.7;
+    readonly initialFormationAngularSpeed = 0.92;
 
     constructor(search = window.location.search) {
         super();

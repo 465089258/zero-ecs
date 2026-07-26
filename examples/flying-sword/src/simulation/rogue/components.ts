@@ -163,6 +163,8 @@ export enum AutoFlyingSwordSkill {
     FormationContactCooldownTicks,
     ScatterLaunchCadenceTicks,
     ScatterLaunchSlotStride,
+    FormationRadius,
+    FormationAngularSpeed,
 }
 
 export class AutoFlyingSwordSkillType
@@ -175,6 +177,8 @@ implements Component<AutoFlyingSwordSkill> {
     readonly [AutoFlyingSwordSkill.FormationContactCooldownTicks] = Types.U16;
     readonly [AutoFlyingSwordSkill.ScatterLaunchCadenceTicks] = Types.U16;
     readonly [AutoFlyingSwordSkill.ScatterLaunchSlotStride] = Types.U16;
+    readonly [AutoFlyingSwordSkill.FormationRadius] = Types.F32;
+    readonly [AutoFlyingSwordSkill.FormationAngularSpeed] = Types.F32;
 }
 
 export enum EnemyIdentity {

@@ -40,6 +40,7 @@ import {
     FocusFlyingSwordRequestStorageQuery,
     SetFlyingSwordCenterRequestStorageQuery,
     SetFlyingSwordFormationSizeRequestStorageQuery,
+    SetFlyingSwordFormationTuningRequestStorageQuery,
     SetFlyingSwordFormationPlanRequestStorageQuery,
     SetFlyingSwordModeRequestStorageQuery,
     SetFlyingSwordActiveFormationRequestStorageQuery,
@@ -56,6 +57,7 @@ import {
     FocusFlyingSwordRequest,
     SetFlyingSwordCenterRequest,
     SetFlyingSwordFormationSizeRequest,
+    SetFlyingSwordFormationTuningRequest,
     SetFlyingSwordFormationPlanRequest,
     SetFlyingSwordModeRequest,
     SetFlyingSwordActiveFormationRequest,
@@ -72,6 +74,8 @@ type ModeRequests =
     QueryOf<typeof SetFlyingSwordModeRequestStorageQuery>;
 type FormationSizeRequests =
     QueryOf<typeof SetFlyingSwordFormationSizeRequestStorageQuery>;
+type FormationTuningRequests =
+    QueryOf<typeof SetFlyingSwordFormationTuningRequestStorageQuery>;
 type FormationPlanRequests =
     QueryOf<typeof SetFlyingSwordFormationPlanRequestStorageQuery>;
 type StanceRequests =
@@ -126,6 +130,19 @@ export const applyFlyingSwordFormationSizeRequestsSystem = defSystem(
         World,
         Write(FlyingSwordEntityAccessState),
         SetFlyingSwordFormationSizeRequestStorageQuery,
+    ],
+);
+
+export const applyFlyingSwordFormationTuningRequestsSystem = defSystem(
+    Update.fixed,
+    applyFlyingSwordFormationTuningRequests,
+    [
+        Commands,
+        World,
+        TimeState,
+        Write(FlyingSwordEntityAccessState),
+        Write(FlyingSwordGroupIndexState),
+        SetFlyingSwordFormationTuningRequestStorageQuery,
     ],
 );
 
@@ -208,6 +225,9 @@ export const FlyingSwordSystemOptions = Object.freeze({
     focusRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     modeRequests: { inSet: FlyingSwordSystemSet.Request } as const,
     formationSizeRequests: {
+        inSet: FlyingSwordSystemSet.Request,
+    } as const,
+    formationTuningRequests: {
         inSet: FlyingSwordSystemSet.Request,
     } as const,
     formationPlanRequests: {
@@ -403,6 +423,57 @@ function applyFlyingSwordFormationSizeRequests(
                     const groupRow = archetype.rowIdxOf(access.row);
                     formation[FlyingSwordFormation.Size][groupRow] =
                         sizes[row];
+                }
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
+function applyFlyingSwordFormationTuningRequests(
+    commands: Commands,
+    world: World,
+    time: Readonly<TimeState>,
+    scratch: Mut<FlyingSwordEntityAccessState>,
+    runtime: Mut<FlyingSwordGroupIndexState>,
+    requests: FormationTuningRequests,
+): void {
+    const componentId = world.findComponent(
+        FlyingSwordFormationStorage,
+    )?.id;
+    const access = scratch.access;
+    const iter = requests.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const groups =
+            data[SetFlyingSwordFormationTuningRequest.Group];
+        const orbitRadii =
+            data[SetFlyingSwordFormationTuningRequest.OrbitRadius];
+        const angularSpeeds =
+            data[SetFlyingSwordFormationTuningRequest.AngularSpeed];
+        for (let row = 0; row < count; row++) {
+            if (
+                componentId !== undefined &&
+                world.resolve(groups[row], access)
+            ) {
+                const archetype = access.archetype;
+                const formation = archetype?.getComp(
+                    access.row,
+                    componentId,
+                ) as ComponentColumns<FlyingSwordFormationStorage> | null;
+                if (archetype && formation) {
+                    const groupRow = archetype.rowIdxOf(access.row);
+                    const groupOrbitRadii =
+                        formation[FlyingSwordFormation.OrbitRadius];
+                    const groupAngularSpeeds =
+                        formation[FlyingSwordFormation.AngularSpeed];
+                    groupOrbitRadii[groupRow] = orbitRadii[row];
+                    groupAngularSpeeds[groupRow] = angularSpeeds[row];
+                    markFormationTransition(
+                        runtime,
+                        groups[row],
+                        time.tick,
+                    );
                 }
             }
             commands.entity(entities[row]).despawn().submit();

@@ -52,6 +52,8 @@ import {
     SetFlyingSwordModeRequestStorage,
     SetFlyingSwordFormationSizeRequest,
     SetFlyingSwordFormationSizeRequestStorage,
+    SetFlyingSwordFormationTuningRequest,
+    SetFlyingSwordFormationTuningRequestStorage,
     SetFlyingSwordFormationPlanRequest,
     SetFlyingSwordFormationPlanRequestStorage,
     SetFlyingSwordStanceRequest,
@@ -313,6 +315,34 @@ export class FlyingSwordService extends Service {
                 SetFlyingSwordFormationSizeRequestStorage,
                 SetFlyingSwordFormationSizeRequest.Size,
                 formationSize,
+            )
+            .submit();
+    }
+
+    setFormationTuning(
+        group: Entity,
+        orbitRadius: number,
+        angularSpeed: number,
+    ): void {
+        const radius = positive("orbitRadius", orbitRadius);
+        const speed = finite("angularSpeed", angularSpeed);
+        this.commands
+            .spawn()
+            .add(SetFlyingSwordFormationTuningRequestStorage)
+            .set(
+                SetFlyingSwordFormationTuningRequestStorage,
+                SetFlyingSwordFormationTuningRequest.Group,
+                group,
+            )
+            .set(
+                SetFlyingSwordFormationTuningRequestStorage,
+                SetFlyingSwordFormationTuningRequest.OrbitRadius,
+                radius,
+            )
+            .set(
+                SetFlyingSwordFormationTuningRequestStorage,
+                SetFlyingSwordFormationTuningRequest.AngularSpeed,
+                speed,
             )
             .submit();
     }
