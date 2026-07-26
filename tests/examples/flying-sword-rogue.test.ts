@@ -17,6 +17,9 @@ import {
     RogueUpgrade,
     RogueUpgradeCatalog,
 } from "../../examples/flying-sword/src/content/upgrades";
+import {
+    shouldLaunchScatterSword,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/scatter-system";
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -103,4 +106,16 @@ test("enemy spatial grid reuses storage, links cells, and clips outside", () => 
     grid.reset(1, 1);
     expect(grid.count).toBe(0);
     expect(grid.entities).toBe(previousEntities);
+});
+
+test("scatter launch cadence is derived from group combat values", () => {
+    const launched: number[] = [];
+    for (let slot = 0; slot < 7; slot++) {
+        if (shouldLaunchScatterSword(8, slot, 7, 3)) {
+            launched.push(slot);
+        }
+    }
+    expect(launched).toEqual([2]);
+    expect(shouldLaunchScatterSword(8, 2, 5, 1)).toBe(true);
+    expect(shouldLaunchScatterSword(8, 2, 7, 3)).toBe(true);
 });

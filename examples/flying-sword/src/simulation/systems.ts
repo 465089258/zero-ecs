@@ -348,6 +348,16 @@ function setupFlyingSwordDemo(
             AutoFlyingSwordSkill.FormationContactCooldownTicks,
             9,
         )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.ScatterLaunchCadenceTicks,
+            7,
+        )
+        .set(
+            AutoFlyingSwordSkillType,
+            AutoFlyingSwordSkill.ScatterLaunchSlotStride,
+            3,
+        )
         .submit();
 
     commands

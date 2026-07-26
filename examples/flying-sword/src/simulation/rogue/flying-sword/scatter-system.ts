@@ -169,15 +169,26 @@ function driveScatterFlyingSwords(
     }
 
     let targetRadiusSquared = 0;
+    let launchCadenceTicks = 1;
+    let launchSlotStride = 0;
     const groupIter = groups.iter();
     while (groupIter.next()) {
         const [count, entities, auto] = groupIter.current;
         const targetRadii =
             auto[AutoFlyingSwordSkill.TargetRadius];
+        const launchCadences =
+            auto[AutoFlyingSwordSkill.ScatterLaunchCadenceTicks];
+        const launchStrides =
+            auto[AutoFlyingSwordSkill.ScatterLaunchSlotStride];
         for (let row = 0; row < count; row++) {
             if (entities[row] !== swordGroup) continue;
             targetRadiusSquared =
                 targetRadii[row] * targetRadii[row];
+            launchCadenceTicks = Math.max(
+                1,
+                launchCadences[row],
+            );
+            launchSlotStride = launchStrides[row];
             break;
         }
         if (targetRadiusSquared > 0) break;
@@ -258,10 +269,12 @@ function driveScatterFlyingSwords(
                 swordGroups[row] !== swordGroup ||
                 scratch.activeTaskSwords.has(sword) ||
                 tick < nextAttackTicks[row] ||
-                (
-                    tick + swordSlots[row] *
-                        SCATTER_LAUNCH_SLOT_STRIDE
-                ) % SCATTER_LAUNCH_CADENCE_TICKS !== 0
+                !shouldLaunchScatterSword(
+                    tick,
+                    swordSlots[row],
+                    launchCadenceTicks,
+                    launchSlotStride,
+                )
             ) {
                 continue;
             }
@@ -287,6 +300,17 @@ function driveScatterFlyingSwords(
         skillTargetYs[0] = primaryY;
         skillTargetZs[0] = primaryZ;
     }
+}
+
+export function shouldLaunchScatterSword(
+    tick: number,
+    slot: number,
+    cadenceTicks: number,
+    slotStride: number,
+): boolean {
+    return (
+        tick + slot * slotStride
+    ) % cadenceTicks === 0;
 }
 
 function findSwordGroupBehavior(
@@ -352,5 +376,3 @@ const groupBehavior = {
     activeFormation: FlyingSwordActiveFormation.None as number,
 };
 const TASK_REQUEST_GUARD_TICKS = 2;
-const SCATTER_LAUNCH_CADENCE_TICKS = 7;
-const SCATTER_LAUNCH_SLOT_STRIDE = 3;

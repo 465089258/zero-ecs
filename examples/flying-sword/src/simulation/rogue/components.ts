@@ -161,6 +161,8 @@ export enum AutoFlyingSwordSkill {
     FocusDamageMultiplier,
     FormationDamageMultiplier,
     FormationContactCooldownTicks,
+    ScatterLaunchCadenceTicks,
+    ScatterLaunchSlotStride,
 }
 
 export class AutoFlyingSwordSkillType
@@ -171,6 +173,8 @@ implements Component<AutoFlyingSwordSkill> {
     readonly [AutoFlyingSwordSkill.FocusDamageMultiplier] = Types.F32;
     readonly [AutoFlyingSwordSkill.FormationDamageMultiplier] = Types.F32;
     readonly [AutoFlyingSwordSkill.FormationContactCooldownTicks] = Types.U16;
+    readonly [AutoFlyingSwordSkill.ScatterLaunchCadenceTicks] = Types.U16;
+    readonly [AutoFlyingSwordSkill.ScatterLaunchSlotStride] = Types.U16;
 }
 
 export enum EnemyIdentity {
