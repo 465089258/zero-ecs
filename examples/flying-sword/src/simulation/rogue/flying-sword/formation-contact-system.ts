@@ -9,6 +9,7 @@ import { FlyingSwordMember } from "@zero-ecs/flying-sword";
 import { TimeState } from "@zero-ecs/game/time";
 import { Float3 } from "@zero-ecs/math/3d";
 import {
+    DamageKind,
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
 } from "../components";
@@ -182,7 +183,12 @@ function collideFormationSegment(
                             FlyingSwordContactCooldown.FormationNextTick,
                             tick + contactCooldownTicks,
                         );
-                        content.requestDamage(source, enemy, damage);
+                        content.requestDamage(
+                            source,
+                            enemy,
+                            damage,
+                            DamageKind.FormationSword,
+                        );
                     }
                 }
                 candidate = index.next[candidate];

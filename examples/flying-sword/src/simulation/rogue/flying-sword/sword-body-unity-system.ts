@@ -12,6 +12,7 @@ import {
 import { TimeState } from "@zero-ecs/game/time";
 import { Float3 } from "@zero-ecs/math/3d";
 import {
+    DamageKind,
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
     SwordBodyUnity,
@@ -244,7 +245,12 @@ function collideFusionSegment(
                             FlyingSwordContactCooldown.FusionNextTick,
                             tick + FUSION_CONTACT_COOLDOWN_TICKS,
                         );
-                        content.requestDamage(source, enemy, damage);
+                        content.requestDamage(
+                            source,
+                            enemy,
+                            damage,
+                            DamageKind.SwordBodyUnity,
+                        );
                     }
                 }
                 candidate = index.next[candidate];

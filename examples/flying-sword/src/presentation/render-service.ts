@@ -49,6 +49,7 @@ import { DamageDisplayQuery } from "../damage-display/queries";
 import { RogueUpgradeCatalog } from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
 import {
+    DamageKind,
     EnemyBody,
     EnemyFeedback,
     EnemyIdentity,
@@ -790,6 +791,7 @@ export class DemoRenderService extends Service {
                 feedback[EnemyFeedback.TargetedSwordCount];
             const flashEndTicks =
                 feedback[EnemyFeedback.HitFlashEndTick];
+            const hitKinds = feedback[EnemyFeedback.HitKind];
             for (let row = 0; row < count; row++) {
                 if (currentHealth[row] <= 0) continue;
                 const x = lerp(previousXs[row], xs[row], interpolation);
@@ -832,6 +834,7 @@ export class DemoRenderService extends Service {
                 item.flash = tick + interpolation < flashEndTicks[row]
                     ? 1
                     : 0;
+                item.style = hitKinds[row];
                 this.visibleEnemyCount++;
             }
         }
@@ -1146,7 +1149,7 @@ export class DemoRenderService extends Service {
                 );
                 if (item.flash !== 0) {
                     context.globalAlpha = 0.72;
-                    context.filter = "brightness(3) grayscale(1)";
+                    context.filter = hitFlashFilter(item.style);
                     drawActorSprite(
                         context,
                         item,
@@ -1542,17 +1545,32 @@ function drawDamageDisplay(
     context.globalAlpha = item.alpha;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.font = "700 20px monospace";
+    context.font = damageDisplayFont(item.style);
     context.lineWidth = 4;
     context.strokeStyle = "rgba(7, 10, 12, 0.92)";
-    context.fillStyle =
-        item.style === DamageDisplayStyle.Taken
-            ? "#ff6f72"
-            : "#ffe08a";
+    context.fillStyle = damageDisplayColor(item.style);
     const text = String(Math.max(1, Math.round(item.amount)));
     context.strokeText(text, Math.round(item.x1), Math.round(item.y1));
     context.fillText(text, Math.round(item.x1), Math.round(item.y1));
     context.globalAlpha = 1;
+}
+
+function damageDisplayColor(style: number): string {
+    return DAMAGE_DISPLAY_COLORS[style] ?? DAMAGE_DISPLAY_COLORS[
+        DamageDisplayStyle.Dealt
+    ];
+}
+
+function damageDisplayFont(style: number): string {
+    return DAMAGE_DISPLAY_FONTS[style] ?? DAMAGE_DISPLAY_FONTS[
+        DamageDisplayStyle.Dealt
+    ];
+}
+
+function hitFlashFilter(kind: number): string {
+    return HIT_FLASH_FILTERS[kind] ?? HIT_FLASH_FILTERS[
+        DamageKind.Generic
+    ];
 }
 
 function drawEnemyHealth(
@@ -1763,3 +1781,33 @@ const SPRITE_GLOW_BLUR = 9;
 const STATUS_UPDATE_INTERVAL_FRAMES = 6;
 const MAX_SWORD_TRAILS = 160;
 const SWORD_TRAIL_MINIMUM_DISTANCE_SQUARED = 0.012;
+const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
+    Object.freeze({
+        [DamageDisplayStyle.Dealt]: "#ffe08a",
+        [DamageDisplayStyle.Taken]: "#ff6f72",
+        [DamageDisplayStyle.ScatterSword]: "#8fe9ff",
+        [DamageDisplayStyle.FocusSword]: "#fff09b",
+        [DamageDisplayStyle.FormationSword]: "#c7a2ff",
+        [DamageDisplayStyle.SwordBodyUnity]: "#ff9b68",
+    });
+const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
+    Object.freeze({
+        [DamageDisplayStyle.Dealt]: "700 20px monospace",
+        [DamageDisplayStyle.Taken]: "700 20px monospace",
+        [DamageDisplayStyle.ScatterSword]: "700 19px monospace",
+        [DamageDisplayStyle.FocusSword]: "800 22px monospace",
+        [DamageDisplayStyle.FormationSword]: "700 18px monospace",
+        [DamageDisplayStyle.SwordBodyUnity]: "800 24px monospace",
+    });
+const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
+    Object.freeze({
+        [DamageKind.Generic]: "brightness(3) grayscale(1)",
+        [DamageKind.ScatterSword]:
+            "brightness(2.4) saturate(1.8) hue-rotate(125deg)",
+        [DamageKind.FocusSword]:
+            "brightness(2.8) sepia(0.7) saturate(2)",
+        [DamageKind.FormationSword]:
+            "brightness(2.3) saturate(2) hue-rotate(215deg)",
+        [DamageKind.SwordBodyUnity]:
+            "brightness(2.6) sepia(0.8) saturate(3) hue-rotate(330deg)",
+    });

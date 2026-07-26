@@ -20,6 +20,7 @@ import {
     type EnemyKind,
 } from "../../content/enemies";
 import {
+    DamageKind,
     DamageRequest,
     DamageRequestType,
     EnemyBody,
@@ -127,6 +128,11 @@ export class RogueContentService extends Service {
                 0,
             )
             .set(EnemyFeedbackType, EnemyFeedback.HitFlashEndTick, 0)
+            .set(
+                EnemyFeedbackType,
+                EnemyFeedback.HitKind,
+                DamageKind.Generic,
+            )
             .set(HealthType, Health.Current, health)
             .set(HealthType, Health.Maximum, health)
             .set(
@@ -174,6 +180,7 @@ export class RogueContentService extends Service {
         source: Entity,
         target: Entity,
         amount: number,
+        kind: DamageKind = DamageKind.Generic,
     ): Entity {
         const command = this.commands.spawn();
         const entity = command.entity;
@@ -182,6 +189,7 @@ export class RogueContentService extends Service {
             .set(DamageRequestType, DamageRequest.Source, source)
             .set(DamageRequestType, DamageRequest.Target, target)
             .set(DamageRequestType, DamageRequest.Amount, amount)
+            .set(DamageRequestType, DamageRequest.Kind, kind)
             .submit();
         return entity;
     }

@@ -31,6 +31,7 @@ import {
     CultivatorTag,
 } from "../../examples/flying-sword/src/simulation/components";
 import {
+    DamageKind,
     DamageRequest,
     DamageRequestType,
     Health,
@@ -66,6 +67,11 @@ const setupDamageDisplaySystem = defSystem(
             .set(DamageRequestType, DamageRequest.Source, target.entity)
             .set(DamageRequestType, DamageRequest.Target, target.entity)
             .set(DamageRequestType, DamageRequest.Amount, 17.5)
+            .set(
+                DamageRequestType,
+                DamageRequest.Kind,
+                DamageKind.Generic,
+            )
             .submit();
     },
     [Commands],
@@ -104,6 +110,83 @@ test("damage display module captures one number and expires it", () => {
     const expiredIter = game.world.query(DamageDisplayQuery).iter();
     while (expiredIter.next()) remaining += expiredIter.current[0];
     expect(remaining).toBe(0);
+
+    game.dispose();
+});
+
+const setupFlyingSwordDamageStylesSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        const target = commands.spawn();
+        target
+            .add(Position3Type)
+            .add(HealthType)
+            .set(Position3Type, Float3.X, 0)
+            .set(Position3Type, Float3.Y, 0)
+            .set(Position3Type, Float3.Z, 0)
+            .set(HealthType, Health.Current, 1000)
+            .set(HealthType, Health.Maximum, 1000)
+            .submit();
+        const kinds = [
+            DamageKind.ScatterSword,
+            DamageKind.FocusSword,
+            DamageKind.FormationSword,
+            DamageKind.SwordBodyUnity,
+        ] as const;
+        for (let index = 0; index < kinds.length; index++) {
+            commands
+                .spawn()
+                .add(DamageRequestType)
+                .set(
+                    DamageRequestType,
+                    DamageRequest.Source,
+                    target.entity,
+                )
+                .set(
+                    DamageRequestType,
+                    DamageRequest.Target,
+                    target.entity,
+                )
+                .set(DamageRequestType, DamageRequest.Amount, 10)
+                .set(
+                    DamageRequestType,
+                    DamageRequest.Kind,
+                    kinds[index],
+                )
+                .submit();
+        }
+    },
+    [Commands],
+);
+
+test("damage display preserves distinct flying sword impact styles", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addState(RogueEntityAccessState)
+        .addModule(new FlyingSwordDamageDisplayModule());
+    builder.addSystem(setupFlyingSwordDamageStylesSystem);
+    builder.addSystem(resolveRogueDamageSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+
+    for (let tick = 0; tick < 3; tick++) game.update();
+    const styles = new Set<number>();
+    const iter = game.world.query(DamageDisplayQuery).iter();
+    while (iter.next()) {
+        const [count, , , displays] = iter.current;
+        const values = displays[DamageDisplay.Style];
+        for (let row = 0; row < count; row++) {
+            styles.add(values[row]);
+        }
+    }
+    expect(styles).toEqual(new Set([
+        DamageDisplayStyle.ScatterSword,
+        DamageDisplayStyle.FocusSword,
+        DamageDisplayStyle.FormationSword,
+        DamageDisplayStyle.SwordBodyUnity,
+    ]));
 
     game.dispose();
 });

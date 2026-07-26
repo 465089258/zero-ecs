@@ -16,6 +16,7 @@ import {
     Position3Type,
 } from "@zero-ecs/math/3d";
 import {
+    DamageKind,
     EnemyBody,
     EnemyBodyType,
     FlyingSwordCombat,
@@ -117,6 +118,7 @@ function collideScatterSwordContacts(
                 target,
                 scratch.groupDamages.get(groupEntities[row]) ??
                     DEFAULT_SWORD_DAMAGE,
+                DamageKind.ScatterSword,
             );
             finishTaskAttack(
                 flyingSwords,

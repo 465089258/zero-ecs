@@ -15,6 +15,7 @@ import {
 } from "@zero-ecs/math/3d";
 import { CultivatorTag } from "../simulation/components";
 import {
+    DamageKind,
     DamageRequest,
 } from "../simulation/rogue/components";
 import { resolveRogueDamageSystem } from "../simulation/rogue/systems";
@@ -74,6 +75,7 @@ function captureDamageDisplays(
         const [count, entities, requests] = iter.current;
         const targets = requests[DamageRequest.Target];
         const amounts = requests[DamageRequest.Amount];
+        const kinds = requests[DamageRequest.Kind];
         for (let row = 0; row < count; row++) {
             const request = entities[row];
             commands
@@ -98,7 +100,7 @@ function captureDamageDisplays(
             const target = targets[row];
             const style = world.has(target, CultivatorTag)
                 ? DamageDisplayStyle.Taken
-                : DamageDisplayStyle.Dealt;
+                : damageDisplayStyleFor(kinds[row]);
             const hash = damageDisplayHash(
                 request,
                 target,
@@ -133,7 +135,7 @@ function captureDamageDisplays(
                 .set(
                     DamageDisplayType,
                     DamageDisplay.DurationTicks,
-                    DAMAGE_DISPLAY_DURATION_TICKS,
+                    damageDisplayDurationTicks(style),
                 )
                 .set(DamageDisplayType, DamageDisplay.Style, style)
                 .set(
@@ -144,6 +146,18 @@ function captureDamageDisplays(
                 .submit();
         }
     }
+}
+
+export function damageDisplayStyleFor(
+    kind: number,
+): DamageDisplayStyle {
+    return DAMAGE_DISPLAY_STYLE_BY_KIND[kind] ??
+        DamageDisplayStyle.Dealt;
+}
+
+function damageDisplayDurationTicks(style: number): number {
+    return DAMAGE_DISPLAY_DURATION_BY_STYLE[style] ??
+        DAMAGE_DISPLAY_DURATION_TICKS;
 }
 
 function expireDamageDisplays(
@@ -181,3 +195,28 @@ export function damageDisplayHash(
 }
 
 const DAMAGE_DISPLAY_DURATION_TICKS = 42;
+const SCATTER_DAMAGE_DISPLAY_DURATION_TICKS = 34;
+const FORMATION_DAMAGE_DISPLAY_DURATION_TICKS = 30;
+const FUSION_DAMAGE_DISPLAY_DURATION_TICKS = 48;
+const DAMAGE_DISPLAY_STYLE_BY_KIND: Readonly<
+    Record<number, DamageDisplayStyle>
+> = Object.freeze({
+    [DamageKind.Generic]: DamageDisplayStyle.Dealt,
+    [DamageKind.ScatterSword]: DamageDisplayStyle.ScatterSword,
+    [DamageKind.FocusSword]: DamageDisplayStyle.FocusSword,
+    [DamageKind.FormationSword]: DamageDisplayStyle.FormationSword,
+    [DamageKind.SwordBodyUnity]: DamageDisplayStyle.SwordBodyUnity,
+});
+const DAMAGE_DISPLAY_DURATION_BY_STYLE: Readonly<
+    Record<number, number>
+> = Object.freeze({
+    [DamageDisplayStyle.Dealt]: DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.Taken]: DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.ScatterSword]:
+        SCATTER_DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.FocusSword]: DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.FormationSword]:
+        FORMATION_DAMAGE_DISPLAY_DURATION_TICKS,
+    [DamageDisplayStyle.SwordBodyUnity]:
+        FUSION_DAMAGE_DISPLAY_DURATION_TICKS,
+});

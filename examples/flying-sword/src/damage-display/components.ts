@@ -7,6 +7,10 @@ import {
 export enum DamageDisplayStyle {
     Dealt,
     Taken,
+    ScatterSword,
+    FocusSword,
+    FormationSword,
+    SwordBodyUnity,
 }
 
 export enum DamageDisplay {

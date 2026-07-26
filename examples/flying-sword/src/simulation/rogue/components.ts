@@ -254,12 +254,14 @@ implements Component<FlyingSwordContactCooldown> {
 export enum EnemyFeedback {
     TargetedSwordCount,
     HitFlashEndTick,
+    HitKind,
 }
 
 export class EnemyFeedbackType
 implements Component<EnemyFeedback> {
     readonly [EnemyFeedback.TargetedSwordCount] = Types.U16;
     readonly [EnemyFeedback.HitFlashEndTick] = Types.U32;
+    readonly [EnemyFeedback.HitKind] = Types.U8;
 }
 
 /** 玩家身剑合一动作；常驻组件避免动作开始时迁移玩家 Archetype。 */
@@ -286,12 +288,23 @@ export enum DamageRequest {
     Source,
     Target,
     Amount,
+    Kind,
+}
+
+/** 示例战斗 Integration 对一次伤害来源的语义分类。 */
+export enum DamageKind {
+    Generic,
+    ScatterSword,
+    FocusSword,
+    FormationSword,
+    SwordBodyUnity,
 }
 
 export class DamageRequestType implements Component<DamageRequest> {
     readonly [DamageRequest.Source] = Types.Entity;
     readonly [DamageRequest.Target] = Types.Entity;
     readonly [DamageRequest.Amount] = Types.F32;
+    readonly [DamageRequest.Kind] = Types.U8;
 }
 
 export enum ExperiencePickup {

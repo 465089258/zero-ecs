@@ -10,7 +10,10 @@ import {
     FlyingSwordMember,
 } from "@zero-ecs/flying-sword";
 import { Float3 } from "@zero-ecs/math/3d";
-import { FlyingSwordCombat } from "../components";
+import {
+    DamageKind,
+    FlyingSwordCombat,
+} from "../components";
 import { RogueContentService } from "../content-service";
 import { RogueFlyingSwordContactQuery } from "../queries";
 import {
@@ -100,6 +103,7 @@ function collideFocusSwordContacts(
                 entities[row],
                 enemy,
                 scratch.damages[action],
+                DamageKind.FocusSword,
             );
         }
     }

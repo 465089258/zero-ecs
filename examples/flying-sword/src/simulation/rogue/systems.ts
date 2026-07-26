@@ -40,6 +40,7 @@ import { RogueRunControlService } from "../../app/run-control-service";
 import {
     AutoFlyingSwordSkill,
     ChooseUpgradeRequest,
+    DamageKind,
     DamageRequest,
     EnemyBody,
     EnemyBodyType,
@@ -939,6 +940,7 @@ function resolveRogueDamage(
         const [count, entities, data] = iter.current;
         const targets = data[DamageRequest.Target];
         const amounts = data[DamageRequest.Amount];
+        const kinds = data[DamageRequest.Kind];
         for (let row = 0; row < count; row++) {
             const target = targets[row];
             if (world.resolve(target, access) && access.archetype) {
@@ -963,7 +965,10 @@ function resolveRogueDamage(
                         if (feedback) {
                             feedback[EnemyFeedback.HitFlashEndTick][
                                 localRow
-                            ] = time.tick + HIT_FLASH_TICKS;
+                            ] = time.tick +
+                                hitFlashTicks(kinds[row]);
+                            feedback[EnemyFeedback.HitKind][localRow] =
+                                kinds[row];
                         }
                     }
                 }
@@ -1195,6 +1200,24 @@ const PLAYER_MOVEMENT_ACCELERATION = 48;
 const PLAYER_MOVEMENT_ARRIVAL_RADIUS = 0.04;
 const PLAYER_RADIUS = 0.48;
 const MAX_FLYING_SWORD_UPGRADE_COUNT = 49;
-const HIT_FLASH_TICKS = 5;
+
+function hitFlashTicks(kind: number): number {
+    return HIT_FLASH_TICKS_BY_KIND[kind] ??
+        GENERIC_HIT_FLASH_TICKS;
+}
+
+const GENERIC_HIT_FLASH_TICKS = 5;
+const SCATTER_HIT_FLASH_TICKS = 4;
+const FOCUS_HIT_FLASH_TICKS = 6;
+const FORMATION_HIT_FLASH_TICKS = 3;
+const FUSION_HIT_FLASH_TICKS = 8;
+const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
+    Object.freeze({
+        [DamageKind.Generic]: GENERIC_HIT_FLASH_TICKS,
+        [DamageKind.ScatterSword]: SCATTER_HIT_FLASH_TICKS,
+        [DamageKind.FocusSword]: FOCUS_HIT_FLASH_TICKS,
+        [DamageKind.FormationSword]: FORMATION_HIT_FLASH_TICKS,
+        [DamageKind.SwordBodyUnity]: FUSION_HIT_FLASH_TICKS,
+    });
 const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
 const MINIMUM_FUSION_STAMINA_DRAIN = 10;
