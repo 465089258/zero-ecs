@@ -10,6 +10,7 @@ import { RogueContentService } from "./content-service";
 import {
     CombatScratchState,
     EnemySpatialIndexState,
+    FocusSwordContactAccessState,
     FlyingSwordTargetingState,
     RogueEntityAccessState,
 } from "./state";
@@ -55,6 +56,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
             .addResource(RogueUpgradeCatalog, new RogueUpgradeCatalog())
             .addState(EnemySpatialIndexState)
             .addState(CombatScratchState)
+            .addState(FocusSwordContactAccessState)
             .addState(FlyingSwordTargetingState)
             .addState(RogueEntityAccessState)
             .addService(RogueContentService)

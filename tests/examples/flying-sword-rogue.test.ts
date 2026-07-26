@@ -2,6 +2,7 @@ import {
     expect,
     test,
 } from "@rstest/core";
+import type { Entity } from "@zero-ecs/game";
 import {
     nextRogueRandom,
     rogueRequiredExperienceFor,
@@ -26,6 +27,10 @@ import {
 import {
     steerDirection2Towards,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/fusion-steering";
+import {
+    focusPiercingSegmentStartRatio,
+    recordFocusSwordHit,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/focus-contact-system";
 
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
@@ -103,6 +108,76 @@ test("swept sword contact measures the whole segment", () => {
             10, 0, 0,
         ),
     ).toBe(4);
+});
+
+test("focus piercing activates only below its height threshold", () => {
+    expect(focusPiercingSegmentStartRatio(3, 2, 1.65)).toBe(-1);
+    expect(focusPiercingSegmentStartRatio(1.5, 1.2, 1.65)).toBe(0);
+    expect(
+        focusPiercingSegmentStartRatio(2.4, 1.4, 1.65),
+    ).toBeCloseTo(0.75);
+});
+
+test("focus piercing records every sword once per enemy and action", () => {
+    const actions = new Uint32Array(2);
+    const lowMasks = new Uint32Array(2);
+    const highMasks = new Uint32Array(2);
+    const firstAction = 0x1001 as Entity;
+    const nextAction = 0x2001 as Entity;
+
+    expect(
+        recordFocusSwordHit(
+            actions,
+            lowMasks,
+            highMasks,
+            0,
+            firstAction,
+            0,
+        ),
+    ).toBe(true);
+    expect(
+        recordFocusSwordHit(
+            actions,
+            lowMasks,
+            highMasks,
+            0,
+            firstAction,
+            0,
+        ),
+    ).toBe(false);
+    expect(
+        recordFocusSwordHit(
+            actions,
+            lowMasks,
+            highMasks,
+            0,
+            firstAction,
+            48,
+        ),
+    ).toBe(true);
+    expect(highMasks[0]).not.toBe(0);
+    expect(
+        recordFocusSwordHit(
+            actions,
+            lowMasks,
+            highMasks,
+            1,
+            firstAction,
+            0,
+        ),
+    ).toBe(true);
+    expect(
+        recordFocusSwordHit(
+            actions,
+            lowMasks,
+            highMasks,
+            0,
+            nextAction,
+            0,
+        ),
+    ).toBe(true);
+    expect(actions[0]).toBe(nextAction);
+    expect(highMasks[0]).toBe(0);
 });
 
 test("enemy spatial grid reuses storage, links cells, and clips outside", () => {

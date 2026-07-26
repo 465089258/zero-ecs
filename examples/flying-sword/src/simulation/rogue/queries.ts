@@ -32,6 +32,7 @@ import {
     ExperienceRewardType,
     FlyingSwordCombatType,
     FlyingSwordContactCooldownType,
+    FocusSwordHitHistoryType,
     HealthType,
     LevelExperienceType,
     PlayerMovementType,
@@ -96,6 +97,7 @@ export const RogueEnemyQuery = QueryType.from(With(
     HealthType,
     ExperienceRewardType,
     FlyingSwordContactCooldownType,
+    FocusSwordHitHistoryType,
 ));
 
 export const RogueEnemyRenderQuery = QueryType.from(With(

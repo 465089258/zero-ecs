@@ -76,12 +76,18 @@ export class RogueEntityAccessState extends State {
     };
 }
 
+/** 集火贯穿接触复用的敌人实体定位结果。 */
+export class FocusSwordContactAccessState extends State {
+    readonly access: EntityAccess = {
+        archetype: null,
+        row: 0 as EntityAccess["row"],
+    };
+}
+
 /** 飞剑接触系统每 Tick 派生的动作快照，避免逐剑重复遍历动作 Query。 */
 export class CombatScratchState extends State {
     actionEntities = new Uint32Array(4);
     actionGroups = new Uint32Array(4);
-    startTicks = new Uint32Array(4);
-    reservedCounts = new Uint16Array(4);
     damages = new Float32Array(4);
     actionCount = 0;
     readonly activeTaskSwords = new Set<Entity>();
@@ -102,9 +108,6 @@ export class CombatScratchState extends State {
         while (capacity < required) capacity *= 2;
         this.actionEntities = growUint32(this.actionEntities, capacity);
         this.actionGroups = growUint32(this.actionGroups, capacity);
-        this.startTicks = growUint32(this.startTicks, capacity);
-        this.reservedCounts =
-            growUint16(this.reservedCounts, capacity);
         this.damages = growFloat32(this.damages, capacity);
     }
 
@@ -213,15 +216,6 @@ function growFloat32(
     capacity: number,
 ): Float32Array<ArrayBuffer> {
     const result = new Float32Array(capacity);
-    result.set(source);
-    return result;
-}
-
-function growUint16(
-    source: Uint16Array<ArrayBufferLike>,
-    capacity: number,
-): Uint16Array<ArrayBuffer> {
-    const result = new Uint16Array(capacity);
     result.set(source);
     return result;
 }

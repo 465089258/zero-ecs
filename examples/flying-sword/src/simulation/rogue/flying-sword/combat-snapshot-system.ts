@@ -13,8 +13,6 @@ import {
     FlyingSwordGroupQuery,
     FlyingSwordSkillAction,
     FlyingSwordSkillActionQuery,
-    FlyingSwordSkillProgress,
-    FlyingSwordSkillTiming,
     FlyingSwordStance,
     FlyingSwordTaskQuery,
 } from "@zero-ecs/flying-sword";
@@ -149,22 +147,14 @@ function buildActionSnapshots(
             count,
             entities,
             identities,
-            ,
-            timings,
-            progresses,
         ] = iter.current;
         const groupEntities =
             identities[FlyingSwordSkillAction.Group];
-        const startTicks = timings[FlyingSwordSkillTiming.StartTick];
-        const reserved =
-            progresses[FlyingSwordSkillProgress.ReservedCount];
         for (let row = 0; row < count; row++) {
             const index = scratch.actionCount++;
             const group = groupEntities[row];
             scratch.actionEntities[index] = entities[row];
             scratch.actionGroups[index] = group;
-            scratch.startTicks[index] = startTicks[row];
-            scratch.reservedCounts[index] = reserved[row];
             scratch.damages[index] =
                 scratch.groupFocusDamages.get(group) ??
                 DEFAULT_SWORD_DAMAGE;

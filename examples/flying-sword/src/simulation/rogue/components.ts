@@ -224,21 +224,15 @@ implements Component<ExperienceReward> {
     readonly [ExperienceReward.Value] = Types.F32;
 }
 
-/** 示例层为每把飞剑维护的目标与命中消费状态。 */
+/** 示例层为每把飞剑维护的分散攻击目标与再攻击时间。 */
 export enum FlyingSwordCombat {
     Target,
-    FocusAction,
-    FocusActionStartTick,
-    FocusHitConsumed,
     NextAttackTick,
 }
 
 export class FlyingSwordCombatType
 implements Component<FlyingSwordCombat> {
     readonly [FlyingSwordCombat.Target] = Types.Entity;
-    readonly [FlyingSwordCombat.FocusAction] = Types.Entity;
-    readonly [FlyingSwordCombat.FocusActionStartTick] = Types.U32;
-    readonly [FlyingSwordCombat.FocusHitConsumed] = Types.U8;
     readonly [FlyingSwordCombat.NextAttackTick] = Types.U32;
 }
 
@@ -252,6 +246,20 @@ export class FlyingSwordContactCooldownType
 implements Component<FlyingSwordContactCooldown> {
     readonly [FlyingSwordContactCooldown.FormationNextTick] = Types.U32;
     readonly [FlyingSwordContactCooldown.FusionNextTick] = Types.U32;
+}
+
+/** 敌人在同次集火中已经被哪些剑槽贯穿。 */
+export enum FocusSwordHitHistory {
+    Action,
+    SwordMaskLow,
+    SwordMaskHigh,
+}
+
+export class FocusSwordHitHistoryType
+implements Component<FocusSwordHitHistory> {
+    readonly [FocusSwordHitHistory.Action] = Types.Entity;
+    readonly [FocusSwordHitHistory.SwordMaskLow] = Types.U32;
+    readonly [FocusSwordHitHistory.SwordMaskHigh] = Types.U32;
 }
 
 /** 敌人供表现层读取的战斗反馈事实。 */

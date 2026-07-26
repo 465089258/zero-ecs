@@ -1,6 +1,7 @@
 import {
     Commands,
     Inject,
+    INVALID_ENTITY,
     Service,
     type Entity,
 } from "@zero-ecs/game";
@@ -35,6 +36,8 @@ import {
     ExperiencePickupType,
     ExperienceReward,
     ExperienceRewardType,
+    FocusSwordHitHistory,
+    FocusSwordHitHistoryType,
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
     Health,
@@ -72,6 +75,7 @@ export class RogueContentService extends Service {
             .add(HealthType)
             .add(ExperienceRewardType)
             .add(FlyingSwordContactCooldownType)
+            .add(FocusSwordHitHistoryType)
             .set(Position3Type, Float3.X, x)
             .set(Position3Type, Float3.Y, 0)
             .set(Position3Type, Float3.Z, z)
@@ -148,6 +152,21 @@ export class RogueContentService extends Service {
             .set(
                 FlyingSwordContactCooldownType,
                 FlyingSwordContactCooldown.FusionNextTick,
+                0,
+            )
+            .set(
+                FocusSwordHitHistoryType,
+                FocusSwordHitHistory.Action,
+                INVALID_ENTITY,
+            )
+            .set(
+                FocusSwordHitHistoryType,
+                FocusSwordHitHistory.SwordMaskLow,
+                0,
+            )
+            .set(
+                FocusSwordHitHistoryType,
+                FocusSwordHitHistory.SwordMaskHigh,
                 0,
             )
             .submit();

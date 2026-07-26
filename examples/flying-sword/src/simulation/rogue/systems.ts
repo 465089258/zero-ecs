@@ -429,21 +429,6 @@ function addFlyingSword(
         )
         .set(
             FlyingSwordCombatType,
-            FlyingSwordCombat.FocusAction,
-            INVALID_ENTITY,
-        )
-        .set(
-            FlyingSwordCombatType,
-            FlyingSwordCombat.FocusActionStartTick,
-            0,
-        )
-        .set(
-            FlyingSwordCombatType,
-            FlyingSwordCombat.FocusHitConsumed,
-            0,
-        )
-        .set(
-            FlyingSwordCombatType,
             FlyingSwordCombat.NextAttackTick,
             0,
         )

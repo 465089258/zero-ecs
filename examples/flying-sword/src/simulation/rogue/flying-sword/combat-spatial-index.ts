@@ -1,9 +1,7 @@
 import {
-    INVALID_ENTITY,
     Update,
     Write,
     defSystem,
-    type Entity,
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
@@ -22,8 +20,6 @@ import {
     GRID_HEIGHT,
     GRID_WIDTH,
 } from "../state";
-import { SWORD_HIT_RADIUS } from "./combat-constants";
-
 type Players = QueryOf<typeof RoguePlayerQuery>;
 type Enemies = QueryOf<typeof RogueEnemyQuery>;
 
@@ -86,86 +82,6 @@ function rebuildEnemySpatialIndex(
             );
         }
     }
-}
-
-export function findClosestSwordSegmentHit(
-    index: Readonly<EnemySpatialIndexState>,
-    startX: number,
-    startY: number,
-    startZ: number,
-    endX: number,
-    endY: number,
-    endZ: number,
-): Entity {
-    const padding = 1.4;
-    const minimumCellX = clampGridCell(
-        Math.floor(
-            (Math.min(startX, endX) - padding - index.originX) /
-            GRID_CELL_SIZE,
-        ),
-        GRID_WIDTH,
-    );
-    const maximumCellX = clampGridCell(
-        Math.floor(
-            (Math.max(startX, endX) + padding - index.originX) /
-            GRID_CELL_SIZE,
-        ),
-        GRID_WIDTH,
-    );
-    const minimumCellZ = clampGridCell(
-        Math.floor(
-            (Math.min(startZ, endZ) - padding - index.originZ) /
-            GRID_CELL_SIZE,
-        ),
-        GRID_HEIGHT,
-    );
-    const maximumCellZ = clampGridCell(
-        Math.floor(
-            (Math.max(startZ, endZ) + padding - index.originZ) /
-            GRID_CELL_SIZE,
-        ),
-        GRID_HEIGHT,
-    );
-    let best = INVALID_ENTITY;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let cellZ = minimumCellZ; cellZ <= maximumCellZ; cellZ++) {
-        for (
-            let cellX = minimumCellX;
-            cellX <= maximumCellX;
-            cellX++
-        ) {
-            let candidate =
-                index.cellHeads[cellZ * GRID_WIDTH + cellX];
-            while (candidate !== -1) {
-                const radius =
-                    index.radii[candidate] + SWORD_HIT_RADIUS;
-                if (
-                    squaredDistanceToSegment3(
-                        index.xs[candidate],
-                        index.ys[candidate],
-                        index.zs[candidate],
-                        startX,
-                        startY,
-                        startZ,
-                        endX,
-                        endY,
-                        endZ,
-                    ) <= radius * radius
-                ) {
-                    const dx = index.xs[candidate] - startX;
-                    const dy = index.ys[candidate] - startY;
-                    const dz = index.zs[candidate] - startZ;
-                    const distance = dx * dx + dy * dy + dz * dz;
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        best = index.entities[candidate] as Entity;
-                    }
-                }
-                candidate = index.next[candidate];
-            }
-        }
-    }
-    return best;
 }
 
 export function clampGridCell(value: number, size: number): number {
