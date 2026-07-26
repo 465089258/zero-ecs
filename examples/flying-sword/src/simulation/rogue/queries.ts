@@ -33,6 +33,7 @@ import {
     FlyingSwordCombatType,
     FlyingSwordContactCooldownType,
     FlyingSwordDamageSourceType,
+    FlyingSwordPiercingSequenceType,
     FocusSwordHitHistoryType,
     HealthType,
     LevelExperienceType,
@@ -40,6 +41,8 @@ import {
     LightningArcStart3Type,
     LightningArcType,
     LightningSwordIntentType,
+    MetalSwordIntentType,
+    PiercingDamageType,
     PlayerMovementType,
     PlayerPickupType,
     PlayerStaminaType,
@@ -51,6 +54,7 @@ import {
     RogueRunTargetType,
     UpgradeSelectionType,
     SwordBodyUnityType,
+    SwordBodyUnityPiercingSequenceType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -135,9 +139,17 @@ export const RogueFlyingSwordDamageRequestQuery = QueryType.from(With(
     FlyingSwordDamageSourceType,
 ));
 
+export const RoguePiercingFlyingSwordDamageRequestQuery =
+    QueryType.from(With(
+        DamageRequestType,
+        FlyingSwordDamageSourceType,
+        PiercingDamageType,
+    ));
+
 export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(
     AutoFlyingSwordSkillType,
     LightningSwordIntentType,
+    MetalSwordIntentType,
 ));
 
 export const RogueLightningArcQuery = QueryType.from(With(
@@ -159,6 +171,16 @@ export const RogueFlyingSwordContactQuery = QueryType.from(With(
     FlyingSwordPosition3View,
     FlyingSwordDirection3View,
     FlyingSwordCombatType,
+    FlyingSwordPiercingSequenceType,
+));
+
+/** 身剑合一的核心贯穿线，不把附属螺旋剑误算为同一直线。 */
+export const RogueSwordBodyUnityContactQuery = QueryType.from(With(
+    Position3Type,
+    PreviousPosition3Type,
+    CultivatorTag,
+    SwordBodyUnityType,
+    SwordBodyUnityPiercingSequenceType,
 ));
 
 /** 示例玩法所需的全部飞剑及其宿主侧战斗状态。 */

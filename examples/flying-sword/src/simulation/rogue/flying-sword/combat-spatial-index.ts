@@ -120,3 +120,36 @@ export function squaredDistanceToSegment3(
     const dz = pointZ - (startZ + segmentZ * t);
     return dx * dx + dy * dy + dz * dz;
 }
+
+/** 返回点在有向线段上的夹紧投影比例，用于确定贯穿命中顺序。 */
+export function progressAlongSegment3(
+    pointX: number,
+    pointY: number,
+    pointZ: number,
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+): number {
+    const segmentX = endX - startX;
+    const segmentY = endY - startY;
+    const segmentZ = endZ - startZ;
+    const lengthSquared =
+        segmentX * segmentX +
+        segmentY * segmentY +
+        segmentZ * segmentZ;
+    if (lengthSquared <= 1e-8) return 0;
+    return Math.max(
+        0,
+        Math.min(
+            1,
+            (
+                (pointX - startX) * segmentX +
+                (pointY - startY) * segmentY +
+                (pointZ - startZ) * segmentZ
+            ) / lengthSquared,
+        ),
+    );
+}

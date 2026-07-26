@@ -48,6 +48,8 @@ import {
     LightningArcEnd3Type,
     LightningArcStart3Type,
     LightningArcType,
+    PiercingDamage,
+    PiercingDamageType,
 } from "./components";
 
 /** 示例组合根：集中组装“敌人具有生命、移动、伤害与经验”等跨模块规则。 */
@@ -239,6 +241,38 @@ export class RogueContentService extends Service {
                 FlyingSwordDamageSourceType,
                 FlyingSwordDamageSource.Group,
                 sourceGroup,
+            )
+            .submit();
+        return entity;
+    }
+
+    requestPiercingFlyingSwordDamage(
+        source: Entity,
+        sourceGroup: Entity,
+        target: Entity,
+        amount: number,
+        kind: DamageKind,
+        priorHits: number,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .add(PiercingDamageType)
+            .set(DamageRequestType, DamageRequest.Source, source)
+            .set(DamageRequestType, DamageRequest.Target, target)
+            .set(DamageRequestType, DamageRequest.Amount, amount)
+            .set(DamageRequestType, DamageRequest.Kind, kind)
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                sourceGroup,
+            )
+            .set(
+                PiercingDamageType,
+                PiercingDamage.PriorHits,
+                priorHits,
             )
             .submit();
         return entity;

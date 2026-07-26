@@ -53,10 +53,13 @@ import {
     ExperienceReward,
     FlyingSwordCombat,
     FlyingSwordCombatType,
+    FlyingSwordPiercingSequence,
+    FlyingSwordPiercingSequenceType,
     Health,
     HealthType,
     LevelExperience,
     LightningSwordIntent,
+    MetalSwordIntent,
     PlayerPickup,
     PlayerStamina,
     PlayerMovement,
@@ -427,6 +430,7 @@ function addFlyingSword(
         .entity(sword)
         .add(FlyingSwordVisualType)
         .add(FlyingSwordCombatType)
+        .add(FlyingSwordPiercingSequenceType)
         .set(
             FlyingSwordVisualType,
             FlyingSwordVisual.Id,
@@ -440,6 +444,16 @@ function addFlyingSword(
         .set(
             FlyingSwordCombatType,
             FlyingSwordCombat.NextAttackTick,
+            0,
+        )
+        .set(
+            FlyingSwordPiercingSequenceType,
+            FlyingSwordPiercingSequence.Action,
+            INVALID_ENTITY,
+        )
+        .set(
+            FlyingSwordPiercingSequenceType,
+            FlyingSwordPiercingSequence.HitCount,
             0,
         )
         .submit();
@@ -618,7 +632,8 @@ function applyUpgradeToSwordGroup(
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
-        const [count, entities, auto, lightning] = iter.current;
+        const [count, entities, auto, lightning, metal] =
+            iter.current;
         if (count === 0) continue;
         const formationRadii =
             auto[AutoFlyingSwordSkill.FormationRadius];
@@ -675,6 +690,16 @@ function applyUpgradeToSwordGroup(
                 chainCounts[0] = 1;
             } else {
                 damageMultipliers[0] *= 1.2;
+            }
+        } else if (upgrade === RogueUpgrade.MetalIntent) {
+            const maximumMomentum =
+                metal[MetalSwordIntent.MaximumMomentum];
+            const damagePerMomentum =
+                metal[MetalSwordIntent.DamagePerMomentum];
+            if (maximumMomentum[0] === 0) {
+                maximumMomentum[0] = 4;
+            } else {
+                damagePerMomentum[0] *= 1.2;
             }
         }
         return;
@@ -1216,7 +1241,10 @@ export function nextRogueRandom(state: number): number {
     return value === 0 ? 0x6d2b79f5 : value;
 }
 
-export { squaredDistanceToSegment3 } from
+export {
+    progressAlongSegment3,
+    squaredDistanceToSegment3,
+} from
     "./flying-sword/combat-spatial-index";
 
 export function rogueRequiredExperienceFor(level: number): number {
@@ -1239,6 +1267,7 @@ const FOCUS_HIT_FLASH_TICKS = 6;
 const FORMATION_HIT_FLASH_TICKS = 3;
 const FUSION_HIT_FLASH_TICKS = 8;
 const LIGHTNING_HIT_FLASH_TICKS = 7;
+const METAL_BREAK_HIT_FLASH_TICKS = 7;
 const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
     Object.freeze({
         [DamageKind.Generic]: GENERIC_HIT_FLASH_TICKS,
@@ -1247,6 +1276,7 @@ const HIT_FLASH_TICKS_BY_KIND: Readonly<Record<number, number>> =
         [DamageKind.FormationSword]: FORMATION_HIT_FLASH_TICKS,
         [DamageKind.SwordBodyUnity]: FUSION_HIT_FLASH_TICKS,
         [DamageKind.LightningChain]: LIGHTNING_HIT_FLASH_TICKS,
+        [DamageKind.MetalBreak]: METAL_BREAK_HIT_FLASH_TICKS,
     });
 const MINIMUM_FORMATION_CONTACT_COOLDOWN_TICKS = 2;
 const MINIMUM_FUSION_STAMINA_DRAIN = 10;

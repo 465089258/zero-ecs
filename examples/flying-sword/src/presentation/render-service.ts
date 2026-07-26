@@ -58,6 +58,7 @@ import {
     LevelExperience,
     LightningArc,
     LightningSwordIntent,
+    MetalSwordIntent,
     PlayerStamina,
     RogueRunClock,
     RogueRunPhase,
@@ -1326,6 +1327,8 @@ export class DemoRenderService extends Service {
         let restartStamina = 0;
         let lightningChainCount = 0;
         let lightningDamageMultiplier = 0;
+        let metalMaximumMomentum = 0;
+        let metalDamagePerMomentum = 0;
         const cultivatorIter = cultivators.iter();
         while (cultivatorIter.next()) {
             const [
@@ -1362,16 +1365,22 @@ export class DemoRenderService extends Service {
         }
         const buildIter = swordBuilds.iter();
         while (buildIter.next()) {
-            const [count, entities, , lightning] =
+            const [count, entities, , lightning, metal] =
                 buildIter.current;
             const chainCounts =
                 lightning[LightningSwordIntent.ChainCount];
             const damageMultipliers =
                 lightning[LightningSwordIntent.DamageMultiplier];
+            const maximumMomentum =
+                metal[MetalSwordIntent.MaximumMomentum];
+            const damagePerMomentum =
+                metal[MetalSwordIntent.DamagePerMomentum];
             for (let row = 0; row < count; row++) {
                 if (entities[row] !== scene.swordGroup) continue;
                 lightningChainCount = chainCounts[row];
                 lightningDamageMultiplier = damageMultipliers[row];
+                metalMaximumMomentum = maximumMomentum[row];
+                metalDamagePerMomentum = damagePerMomentum[row];
                 break;
             }
         }
@@ -1408,11 +1417,20 @@ export class DemoRenderService extends Service {
                 : scene.mode === FlyingSwordMode.Recall
                     ? "收剑护卫"
                     : "分散御剑";
-        this.view.intent.textContent = lightningChainCount > 0
-            ? `雷意 · 惊蛰 ${Math.round(
+        const lightningIntent = lightningChainCount > 0
+            ? `雷意·惊蛰 ${Math.round(
                 lightningDamageMultiplier * 100,
             )}%`
-            : "剑意未悟";
+            : "";
+        const metalIntent = metalMaximumMomentum > 0
+            ? `金意·破势 ${Math.round(
+                metalDamagePerMomentum * 100,
+            )}%×${metalMaximumMomentum}`
+            : "";
+        const activeIntents = lightningIntent && metalIntent
+            ? `${lightningIntent} · ${metalIntent}`
+            : lightningIntent || metalIntent || "剑意未悟";
+        this.view.intent.textContent = activeIntents;
         this.view.defeatOverlay.hidden =
             runPhase !== RogueRunPhase.Defeat;
         this.updateUpgradePanel(
@@ -1449,9 +1467,7 @@ export class DemoRenderService extends Service {
             `累计斩妖  ${kills}`,
             `当前状态  ${mode}`,
             `当前阵图  ${this.formationName}`,
-            `当前剑意  ${
-                lightningChainCount > 0 ? "雷意 · 惊蛰" : "尚未感悟"
-            }`,
+            `当前剑意  ${activeIntents}`,
             `剑诀阶段  ${skillPhase}`,
             `生命      ${Math.ceil(health)} / ${Math.ceil(maximumHealth)}`,
             `修为      ${experience.toFixed(0)} / ${requiredExperience.toFixed(0)}`,
@@ -1966,6 +1982,7 @@ const DAMAGE_DISPLAY_COLORS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.FormationSword]: "#c7a2ff",
         [DamageDisplayStyle.SwordBodyUnity]: "#ff9b68",
         [DamageDisplayStyle.LightningChain]: "#8de8ff",
+        [DamageDisplayStyle.MetalBreak]: "#ffd56a",
     });
 const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1976,6 +1993,7 @@ const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.FormationSword]: "700 18px monospace",
         [DamageDisplayStyle.SwordBodyUnity]: "800 24px monospace",
         [DamageDisplayStyle.LightningChain]: "800 21px monospace",
+        [DamageDisplayStyle.MetalBreak]: "900 22px monospace",
     });
 const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
     Object.freeze({
@@ -1990,4 +2008,6 @@ const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
             "brightness(2.6) sepia(0.8) saturate(3) hue-rotate(330deg)",
         [DamageKind.LightningChain]:
             "brightness(3) saturate(2.4) hue-rotate(145deg)",
+        [DamageKind.MetalBreak]:
+            "brightness(2.8) sepia(1) saturate(3.2) hue-rotate(355deg)",
     });

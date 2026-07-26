@@ -133,6 +133,7 @@ const setupFlyingSwordDamageStylesSystem = defSystem(
             DamageKind.FormationSword,
             DamageKind.SwordBodyUnity,
             DamageKind.LightningChain,
+            DamageKind.MetalBreak,
         ] as const;
         for (let index = 0; index < kinds.length; index++) {
             commands
@@ -188,6 +189,7 @@ test("damage display preserves distinct flying sword impact styles", () => {
         DamageDisplayStyle.FormationSword,
         DamageDisplayStyle.SwordBodyUnity,
         DamageDisplayStyle.LightningChain,
+        DamageDisplayStyle.MetalBreak,
     ]));
 
     game.dispose();

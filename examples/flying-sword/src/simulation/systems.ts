@@ -63,6 +63,8 @@ import {
     LevelExperienceType,
     LightningSwordIntent,
     LightningSwordIntentType,
+    MetalSwordIntent,
+    MetalSwordIntentType,
     PlayerMovement,
     PlayerMovementType,
     PlayerPickup,
@@ -86,7 +88,11 @@ import {
     UpgradeSelectionType,
     FlyingSwordCombat,
     FlyingSwordCombatType,
+    FlyingSwordPiercingSequence,
+    FlyingSwordPiercingSequenceType,
     SwordBodyUnity,
+    SwordBodyUnityPiercingSequence,
+    SwordBodyUnityPiercingSequenceType,
     SwordBodyUnityType,
 } from "./rogue/components";
 import {
@@ -197,6 +203,7 @@ function setupFlyingSwordDemo(
         .add(PlayerPickupType)
         .add(PlayerStaminaType)
         .add(SwordBodyUnityType)
+        .add(SwordBodyUnityPiercingSequenceType)
         .set(Position3Type, Float3.X, 0)
         .set(Position3Type, Float3.Y, 0)
         .set(Position3Type, Float3.Z, 0)
@@ -260,6 +267,16 @@ function setupFlyingSwordDemo(
             SwordBodyUnity.Group,
             INVALID_ENTITY,
         )
+        .set(
+            SwordBodyUnityPiercingSequenceType,
+            SwordBodyUnityPiercingSequence.StartTick,
+            0,
+        )
+        .set(
+            SwordBodyUnityPiercingSequenceType,
+            SwordBodyUnityPiercingSequence.HitCount,
+            0,
+        )
         .submit();
     const flyingSwordCount = readFlyingSwordCount();
     const group = flyingSwords.createGroup({
@@ -292,6 +309,7 @@ function setupFlyingSwordDemo(
             .entity(sword)
             .add(FlyingSwordVisualType)
             .add(FlyingSwordCombatType)
+            .add(FlyingSwordPiercingSequenceType)
             .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
             .set(
                 FlyingSwordCombatType,
@@ -303,12 +321,23 @@ function setupFlyingSwordDemo(
                 FlyingSwordCombat.NextAttackTick,
                 0,
             )
+            .set(
+                FlyingSwordPiercingSequenceType,
+                FlyingSwordPiercingSequence.Action,
+                INVALID_ENTITY,
+            )
+            .set(
+                FlyingSwordPiercingSequenceType,
+                FlyingSwordPiercingSequence.HitCount,
+                0,
+            )
             .submit();
     }
     commands
         .entity(group)
         .add(AutoFlyingSwordSkillType)
         .add(LightningSwordIntentType)
+        .add(MetalSwordIntentType)
         .set(
             AutoFlyingSwordSkillType,
             AutoFlyingSwordSkill.ReattackDelayTicks,
@@ -373,6 +402,16 @@ function setupFlyingSwordDemo(
             LightningSwordIntentType,
             LightningSwordIntent.DamageMultiplier,
             0.55,
+        )
+        .set(
+            MetalSwordIntentType,
+            MetalSwordIntent.MaximumMomentum,
+            0,
+        )
+        .set(
+            MetalSwordIntentType,
+            MetalSwordIntent.DamagePerMomentum,
+            0.2,
         )
         .submit();
 

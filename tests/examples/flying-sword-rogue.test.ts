@@ -22,6 +22,7 @@ import {
 } from "@zero-ecs/math/3d";
 import {
     nextRogueRandom,
+    progressAlongSegment3,
     rogueRequiredExperienceFor,
     squaredDistanceToSegment3,
 } from "../../examples/flying-sword/src/simulation/rogue/systems";
@@ -31,6 +32,7 @@ import {
     GRID_HALF_EXTENT,
     GRID_WIDTH,
     CombatScratchState,
+    FocusPiercingCandidateState,
     LightningChainAccessState,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
 import {
@@ -57,6 +59,11 @@ import {
     lightningChainDamage,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/lightning-chain-system";
 import {
+    applyMetalBreakSystem,
+    canTriggerMetalBreak,
+    metalBreakDamage,
+} from "../../examples/flying-sword/src/simulation/rogue/flying-sword/metal-break-system";
+import {
     DamageKind,
     DamageRequest,
     DamageRequestType,
@@ -64,6 +71,8 @@ import {
     EnemyBodyType,
     FlyingSwordDamageSource,
     FlyingSwordDamageSourceType,
+    PiercingDamage,
+    PiercingDamageType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
@@ -145,6 +154,44 @@ const setupLightningChainTestSystem = defSystem(
     ],
 );
 
+const setupMetalBreakTestSystem = defSystem(
+    Startup,
+    (
+        commands: Commands,
+        scratch: Mut<CombatScratchState>,
+    ): void => {
+        const group = commands.spawn();
+        group.submit();
+        const source = commands.spawn();
+        source.submit();
+        const target = commands.spawn();
+        target.submit();
+        commands
+            .spawn()
+            .add(DamageRequestType)
+            .add(FlyingSwordDamageSourceType)
+            .add(PiercingDamageType)
+            .set(DamageRequestType, DamageRequest.Source, source.entity)
+            .set(DamageRequestType, DamageRequest.Target, target.entity)
+            .set(DamageRequestType, DamageRequest.Amount, 20)
+            .set(
+                DamageRequestType,
+                DamageRequest.Kind,
+                DamageKind.FocusSword,
+            )
+            .set(
+                FlyingSwordDamageSourceType,
+                FlyingSwordDamageSource.Group,
+                group.entity,
+            )
+            .set(PiercingDamageType, PiercingDamage.PriorHits, 3)
+            .submit();
+        scratch.groupMetalMaximumMomentum.set(group.entity, 4);
+        scratch.groupMetalDamagePerMomentum.set(group.entity, 0.2);
+    },
+    [Commands, Write(CombatScratchState)],
+);
+
 test("rogue random sequence is deterministic and never remains zero", () => {
     let left = 0;
     let right = 0;
@@ -168,7 +215,7 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.LightningIntent + 1);
+    expect(catalog.count).toBe(RogueUpgrade.MetalIntent + 1);
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -187,6 +234,8 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
         .toContain("运行速度提高");
     expect(catalog.names[RogueUpgrade.LightningIntent])
         .toContain("雷意");
+    expect(catalog.names[RogueUpgrade.MetalIntent])
+        .toContain("金意");
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {
@@ -223,6 +272,20 @@ test("swept sword contact measures the whole segment", () => {
             10, 0, 0,
         ),
     ).toBe(4);
+    expect(
+        progressAlongSegment3(
+            2.5, 0, 0,
+            0, 0, 0,
+            10, 0, 0,
+        ),
+    ).toBeCloseTo(0.25);
+    expect(
+        progressAlongSegment3(
+            12, 0, 0,
+            0, 0, 0,
+            10, 0, 0,
+        ),
+    ).toBe(1);
 });
 
 test("focus piercing activates only below its height threshold", () => {
@@ -293,6 +356,23 @@ test("focus piercing records every sword once per enemy and action", () => {
     ).toBe(true);
     expect(actions[0]).toBe(nextAction);
     expect(highMasks[0]).toBe(0);
+});
+
+test("piercing candidates are ordered by progress then entity", () => {
+    const candidates = new FocusPiercingCandidateState();
+    const entities = new Uint32Array([30, 10, 20]);
+    candidates.insert(0, 0.8);
+    candidates.insert(2, 0.2);
+    candidates.insert(1, 0.2);
+    candidates.sort(entities);
+
+    expect(Array.from(
+        candidates.indices.subarray(0, candidates.count),
+    )).toEqual([1, 2, 0]);
+    const storage = candidates.indices;
+    candidates.reset();
+    expect(candidates.count).toBe(0);
+    expect(candidates.indices).toBe(storage);
 });
 
 test("lightning intent chains to the closest different enemy", () => {
@@ -374,6 +454,49 @@ test("lightning intent system emits one chained damage and arc fact", () => {
     const arcIter = game.world.query(RogueLightningArcQuery).iter();
     while (arcIter.next()) arcCount += arcIter.current[0];
     expect(arcCount).toBe(1);
+    game.dispose();
+});
+
+test("metal intent only rewards later hits on one piercing line", () => {
+    expect(canTriggerMetalBreak(DamageKind.FocusSword)).toBe(true);
+    expect(canTriggerMetalBreak(DamageKind.SwordBodyUnity)).toBe(true);
+    expect(canTriggerMetalBreak(DamageKind.ScatterSword)).toBe(false);
+    expect(canTriggerMetalBreak(DamageKind.MetalBreak)).toBe(false);
+    expect(metalBreakDamage(20, 0, 4, 0.2)).toBe(0);
+    expect(metalBreakDamage(20, 2, 4, 0.2)).toBeCloseTo(8);
+    expect(metalBreakDamage(20, 7, 4, 0.2)).toBeCloseTo(16);
+    expect(metalBreakDamage(-20, 2, 4, 0.2)).toBe(0);
+});
+
+test("metal intent emits one capped breakthrough damage fact", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addResource(EnemyCatalog, new EnemyCatalog())
+        .addState(CombatScratchState)
+        .addService(RogueContentService);
+    builder.addSystem(setupMetalBreakTestSystem);
+    builder.addSystem(applyMetalBreakSystem);
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+
+    let metalRequests = 0;
+    const requestIter =
+        game.world.query(RogueDamageRequestQuery).iter();
+    while (requestIter.next()) {
+        const [count, , data] = requestIter.current;
+        const amounts = data[DamageRequest.Amount];
+        const kinds = data[DamageRequest.Kind];
+        for (let row = 0; row < count; row++) {
+            if (kinds[row] !== DamageKind.MetalBreak) continue;
+            metalRequests++;
+            expect(amounts[row]).toBeCloseTo(12);
+        }
+    }
+    expect(metalRequests).toBe(1);
     game.dispose();
 });
 

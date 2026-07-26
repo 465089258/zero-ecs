@@ -196,6 +196,18 @@ implements Component<LightningSwordIntent> {
     readonly [LightningSwordIntent.DamageMultiplier] = Types.F32;
 }
 
+/** 示例构筑中的金意规则参数，归属于飞剑控制组。 */
+export enum MetalSwordIntent {
+    MaximumMomentum,
+    DamagePerMomentum,
+}
+
+export class MetalSwordIntentType
+implements Component<MetalSwordIntent> {
+    readonly [MetalSwordIntent.MaximumMomentum] = Types.U8;
+    readonly [MetalSwordIntent.DamagePerMomentum] = Types.F32;
+}
+
 export enum EnemyIdentity {
     Kind,
     Visual,
@@ -249,6 +261,18 @@ export class FlyingSwordCombatType
 implements Component<FlyingSwordCombat> {
     readonly [FlyingSwordCombat.Target] = Types.Entity;
     readonly [FlyingSwordCombat.NextAttackTick] = Types.U32;
+}
+
+/** 单剑在一次集火动作中的贯穿进度。 */
+export enum FlyingSwordPiercingSequence {
+    Action,
+    HitCount,
+}
+
+export class FlyingSwordPiercingSequenceType
+implements Component<FlyingSwordPiercingSequence> {
+    readonly [FlyingSwordPiercingSequence.Action] = Types.Entity;
+    readonly [FlyingSwordPiercingSequence.HitCount] = Types.U16;
 }
 
 /** 敌人对持续型剑阵与身剑合一的短冷却。 */
@@ -311,6 +335,18 @@ implements Component<SwordBodyUnity> {
     readonly [SwordBodyUnity.Group] = Types.Entity;
 }
 
+/** 身剑合一核心扫掠在一次持续突进中的贯穿进度。 */
+export enum SwordBodyUnityPiercingSequence {
+    StartTick,
+    HitCount,
+}
+
+export class SwordBodyUnityPiercingSequenceType
+implements Component<SwordBodyUnityPiercingSequence> {
+    readonly [SwordBodyUnityPiercingSequence.StartTick] = Types.U32;
+    readonly [SwordBodyUnityPiercingSequence.HitCount] = Types.U16;
+}
+
 export enum DamageRequest {
     Source,
     Target,
@@ -326,6 +362,7 @@ export enum DamageKind {
     FormationSword,
     SwordBodyUnity,
     LightningChain,
+    MetalBreak,
 }
 
 export class DamageRequestType implements Component<DamageRequest> {
@@ -343,6 +380,16 @@ export enum FlyingSwordDamageSource {
 export class FlyingSwordDamageSourceType
 implements Component<FlyingSwordDamageSource> {
     readonly [FlyingSwordDamageSource.Group] = Types.Entity;
+}
+
+/** 贯穿伤害事实携带的前置命中数，供金意规则解释。 */
+export enum PiercingDamage {
+    PriorHits,
+}
+
+export class PiercingDamageType
+implements Component<PiercingDamage> {
+    readonly [PiercingDamage.PriorHits] = Types.U16;
 }
 
 export enum LightningArc {

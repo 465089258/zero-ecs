@@ -111,6 +111,8 @@ export class CombatScratchState extends State {
     readonly groupLightningChainRadii = new Map<Entity, number>();
     readonly groupLightningDamageMultipliers =
         new Map<Entity, number>();
+    readonly groupMetalMaximumMomentum = new Map<Entity, number>();
+    readonly groupMetalDamagePerMomentum = new Map<Entity, number>();
     readonly targetedSwordCounts = new Map<Entity, number>();
 
     reset(required: number): void {
@@ -141,10 +143,74 @@ export class CombatScratchState extends State {
         this.groupLightningChainCounts.clear();
         this.groupLightningChainRadii.clear();
         this.groupLightningDamageMultipliers.clear();
+        this.groupMetalMaximumMomentum.clear();
+        this.groupMetalDamagePerMomentum.clear();
         this.targetedSwordCounts.clear();
         this.actionCount = 0;
     }
 }
+
+abstract class PiercingCandidateState extends State {
+    indices = new Uint32Array(8);
+    progresses = new Float32Array(8);
+    count = 0;
+
+    reset(): void {
+        this.count = 0;
+    }
+
+    insert(index: number, progress: number): void {
+        const row = this.count++;
+        this.ensureCapacity(this.count);
+        this.indices[row] = index;
+        this.progresses[row] = progress;
+    }
+
+    sort(entities: Uint32Array): void {
+        const indices = this.indices;
+        const progresses = this.progresses;
+        for (let row = 1; row < this.count; row++) {
+            const index = indices[row];
+            const progress = progresses[row];
+            const entity = entities[index];
+            let insertAt = row;
+            while (insertAt > 0) {
+                const previousIndex = indices[insertAt - 1];
+                const previousProgress = progresses[insertAt - 1];
+                if (
+                    previousProgress < progress ||
+                    (
+                        previousProgress === progress &&
+                        entities[previousIndex] <= entity
+                    )
+                ) {
+                    break;
+                }
+                indices[insertAt] = previousIndex;
+                progresses[insertAt] = previousProgress;
+                insertAt--;
+            }
+            indices[insertAt] = index;
+            progresses[insertAt] = progress;
+        }
+    }
+
+    private ensureCapacity(required: number): void {
+        if (required <= this.indices.length) return;
+        let capacity = this.indices.length;
+        while (capacity < required) capacity *= 2;
+        this.indices = growUint32(this.indices, capacity);
+        this.progresses = growFloat32(this.progresses, capacity);
+    }
+}
+
+/** 集火贯穿候选复用缓冲；只按高水位扩容。 */
+export class FocusPiercingCandidateState
+extends PiercingCandidateState {}
+
+/** 身剑合一核心贯穿候选复用缓冲；只按高水位扩容。 */
+export class FusionPiercingCandidateState
+extends PiercingCandidateState {}
 
 /** 分散御剑分配空闲飞剑时复用的目标候选 SoA。 */
 export class FlyingSwordTargetingState extends State {

@@ -21,6 +21,7 @@ import {
     EnemyFeedback,
     FlyingSwordCombat,
     LightningSwordIntent,
+    MetalSwordIntent,
 } from "../components";
 import {
     RogueAutoFlyingSwordGroupQuery,
@@ -113,9 +114,11 @@ function buildActionSnapshots(
     scratch.groupLightningChainCounts.clear();
     scratch.groupLightningChainRadii.clear();
     scratch.groupLightningDamageMultipliers.clear();
+    scratch.groupMetalMaximumMomentum.clear();
+    scratch.groupMetalDamagePerMomentum.clear();
     const groupIter = groups.iter();
     while (groupIter.next()) {
-        const [count, entities, data, lightning] =
+        const [count, entities, data, lightning, metal] =
             groupIter.current;
         const damages = data[AutoFlyingSwordSkill.Damage];
         const focusDamageMultipliers =
@@ -132,6 +135,10 @@ function buildActionSnapshots(
             lightning[LightningSwordIntent.ChainRadius];
         const lightningDamageMultipliers =
             lightning[LightningSwordIntent.DamageMultiplier];
+        const metalMaximumMomentum =
+            metal[MetalSwordIntent.MaximumMomentum];
+        const metalDamagePerMomentum =
+            metal[MetalSwordIntent.DamagePerMomentum];
         for (let row = 0; row < count; row++) {
             scratch.groupDamages.set(entities[row], damages[row]);
             scratch.groupFocusDamages.set(
@@ -161,6 +168,14 @@ function buildActionSnapshots(
             scratch.groupLightningDamageMultipliers.set(
                 entities[row],
                 lightningDamageMultipliers[row],
+            );
+            scratch.groupMetalMaximumMomentum.set(
+                entities[row],
+                metalMaximumMomentum[row],
+            );
+            scratch.groupMetalDamagePerMomentum.set(
+                entities[row],
+                metalDamagePerMomentum[row],
             );
         }
     }

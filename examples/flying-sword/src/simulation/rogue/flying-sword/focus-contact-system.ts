@@ -16,6 +16,7 @@ import {
 import { Float3 } from "@zero-ecs/math/3d";
 import {
     DamageKind,
+    FlyingSwordPiercingSequence,
     FocusSwordHitHistory,
     FocusSwordHitHistoryType,
 } from "../components";
@@ -24,6 +25,7 @@ import { RogueFlyingSwordContactQuery } from "../queries";
 import {
     CombatScratchState,
     EnemySpatialIndexState,
+    FocusPiercingCandidateState,
     FocusSwordContactAccessState,
     GRID_CELL_SIZE,
     GRID_HEIGHT,
@@ -35,6 +37,7 @@ import {
 } from "./combat-constants";
 import {
     clampGridCell,
+    progressAlongSegment3,
     squaredDistanceToSegment3,
 } from "./combat-spatial-index";
 
@@ -48,6 +51,7 @@ export const collideFocusSwordContactsSystem = defSystem(
     [
         World,
         Write(FocusSwordContactAccessState),
+        Write(FocusPiercingCandidateState),
         CombatScratchState,
         EnemySpatialIndexState,
         RogueContentService,
@@ -58,6 +62,7 @@ export const collideFocusSwordContactsSystem = defSystem(
 function collideFocusSwordContacts(
     world: World,
     accessState: Mut<FocusSwordContactAccessState>,
+    candidates: Mut<FocusPiercingCandidateState>,
     scratch: Readonly<CombatScratchState>,
     index: Readonly<EnemySpatialIndexState>,
     content: RogueContentService,
@@ -79,6 +84,8 @@ function collideFocusSwordContacts(
             previousPositions,
             positions,
             ,
+            ,
+            piercingSequences,
         ] = iter.current;
         const groupEntities = members[FlyingSwordMember.Group];
         const slots = members[FlyingSwordMember.Slot];
@@ -89,6 +96,10 @@ function collideFocusSwordContacts(
         const xs = positions[Float3.X];
         const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
+        const piercingActions =
+            piercingSequences[FlyingSwordPiercingSequence.Action];
+        const piercingHitCounts =
+            piercingSequences[FlyingSwordPiercingSequence.HitCount];
         for (let row = 0; row < count; row++) {
             const actionEntity = actionEntities[row] as Entity;
             if (actionEntity === INVALID_ENTITY) continue;
@@ -113,14 +124,27 @@ function collideFocusSwordContacts(
             const startZ =
                 previousZs[row] +
                 (zs[row] - previousZs[row]) * startRatio;
-            collideFocusSegment(
+            const sourceGroup = groupEntities[row] as Entity;
+            const metalActive =
+                (scratch.groupMetalMaximumMomentum.get(
+                    sourceGroup,
+                ) ?? 0) > 0;
+            if (
+                metalActive &&
+                piercingActions[row] !== actionEntity
+            ) {
+                piercingActions[row] = actionEntity;
+                piercingHitCounts[row] = 0;
+            }
+            piercingHitCounts[row] = collideFocusSegment(
                 world,
                 accessState,
+                candidates,
                 hitHistoryComponentId,
                 content,
                 index,
                 entities[row],
-                groupEntities[row] as Entity,
+                sourceGroup,
                 actionEntity,
                 slots[row],
                 scratch.damages[action],
@@ -130,6 +154,8 @@ function collideFocusSwordContacts(
                 xs[row],
                 ys[row],
                 zs[row],
+                piercingHitCounts[row],
+                metalActive,
             );
         }
     }
@@ -138,6 +164,7 @@ function collideFocusSwordContacts(
 function collideFocusSegment(
     world: World,
     accessState: Mut<FocusSwordContactAccessState>,
+    candidates: Mut<FocusPiercingCandidateState>,
     hitHistoryComponentId: HitHistoryComponentId,
     content: RogueContentService,
     index: Readonly<EnemySpatialIndexState>,
@@ -152,7 +179,9 @@ function collideFocusSegment(
     endX: number,
     endY: number,
     endZ: number,
-): void {
+    hitCount: number,
+    orderedPiercing: boolean,
+): number {
     const padding = 1.4;
     const minimumCellX = clampGridCell(
         Math.floor(
@@ -182,7 +211,7 @@ function collideFocusSegment(
         ),
         GRID_HEIGHT,
     );
-    const access = accessState.access;
+    if (orderedPiercing) candidates.reset();
     for (let cellZ = minimumCellZ; cellZ <= maximumCellZ; cellZ++) {
         for (let cellX = minimumCellX; cellX <= maximumCellX; cellX++) {
             let candidate =
@@ -203,52 +232,121 @@ function collideFocusSegment(
                         endZ,
                     ) <= radius * radius
                 ) {
-                    const enemy =
-                        index.entities[candidate] as Entity;
-                    if (world.resolve(enemy, access)) {
-                        const archetype = access.archetype;
-                        const hitHistory = archetype?.getComp(
-                            access.row,
+                    if (orderedPiercing) {
+                        candidates.insert(
+                            candidate,
+                            progressAlongSegment3(
+                                index.xs[candidate],
+                                index.ys[candidate],
+                                index.zs[candidate],
+                                startX,
+                                startY,
+                                startZ,
+                                endX,
+                                endY,
+                                endZ,
+                            ),
+                        );
+                    } else {
+                        requestFocusHit(
+                            world,
+                            accessState,
                             hitHistoryComponentId,
-                        ) as ComponentColumns<
-                            FocusSwordHitHistoryType
-                        > | null;
-                        if (archetype && hitHistory) {
-                            const row =
-                                archetype.rowIdxOf(access.row);
-                            if (
-                                recordFocusSwordHit(
-                                    hitHistory[
-                                        FocusSwordHitHistory.Action
-                                    ],
-                                    hitHistory[
-                                        FocusSwordHitHistory
-                                            .SwordMaskLow
-                                    ],
-                                    hitHistory[
-                                        FocusSwordHitHistory
-                                            .SwordMaskHigh
-                                    ],
-                                    row,
-                                    action,
-                                    slot,
-                                )
-                            ) {
-                                content.requestFlyingSwordDamage(
-                                    source,
-                                    sourceGroup,
-                                    enemy,
-                                    damage,
-                                    DamageKind.FocusSword,
-                                );
-                            }
-                        }
+                            content,
+                            source,
+                            sourceGroup,
+                            index.entities[candidate] as Entity,
+                            damage,
+                            action,
+                            slot,
+                            -1,
+                        );
                     }
                 }
                 candidate = index.next[candidate];
             }
         }
     }
+    if (!orderedPiercing) return hitCount;
+    candidates.sort(index.entities);
+    for (let indexRow = 0; indexRow < candidates.count; indexRow++) {
+        const candidate = candidates.indices[indexRow];
+        const enemy = index.entities[candidate] as Entity;
+        if (
+            requestFocusHit(
+                world,
+                accessState,
+                hitHistoryComponentId,
+                content,
+                source,
+                sourceGroup,
+                enemy,
+                damage,
+                action,
+                slot,
+                hitCount,
+            )
+        ) {
+            continue;
+        }
+        hitCount++;
+    }
+    return hitCount;
+}
+
+function requestFocusHit(
+    world: World,
+    accessState: Mut<FocusSwordContactAccessState>,
+    hitHistoryComponentId: HitHistoryComponentId,
+    content: RogueContentService,
+    source: Entity,
+    sourceGroup: Entity,
+    enemy: Entity,
+    damage: number,
+    action: Entity,
+    slot: number,
+    priorHits: number,
+): boolean {
+    const access = accessState.access;
+    if (!world.resolve(enemy, access)) return false;
+    const archetype = access.archetype;
+    const hitHistory = archetype?.getComp(
+        access.row,
+        hitHistoryComponentId,
+    ) as ComponentColumns<FocusSwordHitHistoryType> | null;
+    if (!archetype || !hitHistory) return false;
+    const row = archetype.rowIdxOf(access.row);
+    if (
+        !recordFocusSwordHit(
+            hitHistory[FocusSwordHitHistory.Action],
+            hitHistory[FocusSwordHitHistory.SwordMaskLow],
+            hitHistory[FocusSwordHitHistory.SwordMaskHigh],
+            row,
+            action,
+            slot,
+        )
+    ) {
+        return false;
+    }
+    if (priorHits < 0) {
+        content.requestFlyingSwordDamage(
+            source,
+            sourceGroup,
+            enemy,
+            damage,
+            DamageKind.FocusSword,
+        );
+    } else {
+        content.requestPiercingFlyingSwordDamage(
+            source,
+            sourceGroup,
+            enemy,
+            damage,
+            DamageKind.FocusSword,
+            priorHits,
+        );
+    }
+    return true;
 }
 
 /**
