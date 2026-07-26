@@ -566,6 +566,103 @@ test("independent attack rises, opens a dive contact window, and returns on time
     game.dispose();
 });
 
+test("independent attack tightens its timing and arc for nearby targets", () => {
+    const game = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new Motion3Module())
+        .addModule(new FlyingSwordModule())
+        .build();
+    game.init();
+    game.start();
+
+    const flyingSwords = game.service(FlyingSwordService);
+    const nearGroup = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: -3, y: 0, z: 0 },
+        formationSize: 1,
+        angularSpeed: 0,
+    });
+    const farGroup = flyingSwords.createGroup({
+        owner: INVALID_ENTITY,
+        center: { x: 3, y: 0, z: 0 },
+        formationSize: 1,
+        angularSpeed: 0,
+    });
+    const nearSword = flyingSwords.createSword({
+        group: nearGroup,
+        position: { x: -3, y: 1, z: 0 },
+        maximumSpeed: 14,
+        acceleration: 48,
+    });
+    const farSword = flyingSwords.createSword({
+        group: farGroup,
+        position: { x: 3, y: 1, z: 0 },
+        maximumSpeed: 14,
+        acceleration: 48,
+    });
+    game.update();
+    flyingSwords.attack(nearSword, { x: -3, y: 0.5, z: 2 });
+    flyingSwords.attack(farSword, { x: 3, y: 0.5, z: 16 });
+
+    let nearDiveTick = -1;
+    let farDiveTick = -1;
+    let nearPeakY = 1;
+    let farPeakY = 1;
+    for (let tick = 0; tick < 80; tick++) {
+        game.update();
+        const taskIter = game.world.query(FlyingSwordTaskQuery).iter();
+        while (taskIter.next()) {
+            const [count, entities, , tasks] = taskIter.current;
+            const phases = tasks[FlyingSwordTask.Phase];
+            for (let row = 0; row < count; row++) {
+                if (
+                    phases[row] !== FlyingSwordTaskPhase.Return
+                ) {
+                    if (entities[row] === nearSword) {
+                        nearPeakY = Math.max(
+                            nearPeakY,
+                            game.world.get(
+                                nearSword,
+                                Position3Type,
+                                Float3.Y,
+                            ) ?? nearPeakY,
+                        );
+                    } else if (entities[row] === farSword) {
+                        farPeakY = Math.max(
+                            farPeakY,
+                            game.world.get(
+                                farSword,
+                                Position3Type,
+                                Float3.Y,
+                            ) ?? farPeakY,
+                        );
+                    }
+                }
+                if (
+                    phases[row] !== FlyingSwordTaskPhase.Dive
+                ) {
+                    continue;
+                }
+                if (entities[row] === nearSword && nearDiveTick < 0) {
+                    nearDiveTick = tick;
+                } else if (
+                    entities[row] === farSword &&
+                    farDiveTick < 0
+                ) {
+                    farDiveTick = tick;
+                }
+            }
+        }
+    }
+
+    expect(nearDiveTick).toBeGreaterThan(0);
+    expect(farDiveTick).toBeGreaterThan(nearDiveTick);
+    expect(nearPeakY).toBeLessThan(farPeakY - 0.3);
+
+    game.dispose();
+});
+
 test("group cancellation wins over an attack requested in the same tick", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
