@@ -14,7 +14,7 @@ import {
     MotionSystemSet,
     MoveTowards3,
     MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/motion";
 import {
     DamageKind,
     DamageRequest,

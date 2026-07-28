@@ -10,11 +10,11 @@ import {
     type QueryOf,
 } from "@zero-ecs/game";
 import { TimeState } from "@zero-ecs/game/time";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../../infrastructure/math";
 import {
     MotionSystemSet,
     MoveTowards3,
-} from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/motion";
 import {
     FlyingSwordSkillCatalog,
 } from "../skill-catalog";

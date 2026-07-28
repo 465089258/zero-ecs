@@ -3,7 +3,7 @@ import {
     defSystem,
     type QueryOf,
 } from "@zero-ecs/game";
-import { MotionSystemSet } from "@zero-ecs/motion/3d";
+import { MotionSystemSet } from "../../../infrastructure/motion";
 import { EnemyCombat } from "../components";
 import { RogueEnemyCombatResolveQuery } from "../queries";
 import { RogueSystemSet } from "../systems";

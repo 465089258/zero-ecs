@@ -11,8 +11,8 @@ import {
     Position3Type,
     PreviousPosition3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
-import { MoveTowards3Type } from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/math";
+import { MoveTowards3Type } from "../../../infrastructure/motion";
 import {
     FlyingSwordContactWindowStorage,
     FlyingSwordBehaviorStorage,

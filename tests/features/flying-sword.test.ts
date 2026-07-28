@@ -39,18 +39,18 @@ import {
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
     FlyingSwordSkillTiming,
-} from "@zero-ecs/flying-sword";
+} from "../../examples/flying-sword/src/domain/flying-sword";
 import {
     Direction3Type,
     Float3,
     Position3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
+} from "../../examples/flying-sword/src/infrastructure/math";
 import {
     Motion3Module,
     MoveTowards3,
     MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
+} from "../../examples/flying-sword/src/infrastructure/motion";
 
 test("flying sword runtime commits entities and advances authoritative XYZ motion", () => {
     const game = new GameBuilder()

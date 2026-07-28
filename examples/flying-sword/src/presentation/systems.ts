@@ -1,6 +1,6 @@
 import {
     FlyingSwordGroupQuery,
-} from "@zero-ecs/flying-sword";
+} from "../domain/flying-sword";
 import {
     defSystem,
 } from "@zero-ecs/game";

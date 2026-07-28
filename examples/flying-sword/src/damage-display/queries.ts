@@ -4,7 +4,7 @@ import {
     With,
     Without,
 } from "@zero-ecs/game";
-import { Position3Type } from "@zero-ecs/math/3d";
+import { Position3Type } from "../infrastructure/math";
 import { DamageRequestType } from "../simulation/rogue/components";
 import {
     DamageDisplayCapturedTag,

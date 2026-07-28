@@ -3,11 +3,11 @@ import {
     defSystem,
     type QueryOf,
 } from "@zero-ecs/game";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../../infrastructure/math";
 import {
     MotionSystemSet,
     MoveTowards3,
-} from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/motion";
 import {
     EnemyLocomotion,
     RogueRunClock,

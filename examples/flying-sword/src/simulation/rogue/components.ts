@@ -2,7 +2,7 @@ import {
     Types,
     type Component,
 } from "@zero-ecs/game";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../infrastructure/math";
 
 /** 单局所拥有的核心实体。 */
 export enum RogueRunIdentity {

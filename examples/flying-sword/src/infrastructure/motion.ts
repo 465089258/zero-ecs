@@ -72,6 +72,9 @@ export class DemoMotionModule implements Module {
     }
 }
 
+/** 迁移期内部别名，供既有示例测试复用；不属于框架公共 API。 */
+export { DemoMotionModule as Motion3Module };
+
 function moveTowards3(
     time: Readonly<TimeState>,
     moving: Moving3,

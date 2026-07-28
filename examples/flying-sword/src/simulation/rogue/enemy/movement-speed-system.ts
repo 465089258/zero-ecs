@@ -6,7 +6,7 @@ import {
 import {
     MotionSystemSet,
     MoveTowards3,
-} from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/motion";
 import { EnemyLocomotion } from "../components";
 import { RogueEnemyMovementQuery } from "../queries";
 import { RogueSystemSet } from "../systems";

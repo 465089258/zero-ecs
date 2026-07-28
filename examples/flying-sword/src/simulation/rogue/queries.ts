@@ -10,14 +10,14 @@ import {
     FlyingSwordPreviousPosition3View,
     FlyingSwordView,
     FlyingSwordTaskView,
-} from "@zero-ecs/flying-sword";
+} from "../../domain/flying-sword";
 import {
     Direction3Type,
     Position3Type,
     PreviousPosition3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
-import { MoveTowards3Type } from "@zero-ecs/motion/3d";
+} from "../../infrastructure/math";
+import { MoveTowards3Type } from "../../infrastructure/motion";
 import { CultivatorTag } from "../components";
 import {
     AutoFlyingSwordSkillType,

@@ -21,12 +21,12 @@ import {
     Position3Type,
     PreviousPosition3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
+} from "../../examples/flying-sword/src/infrastructure/math";
 import {
     Motion3Module,
     MoveTowards3,
     MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
+} from "../../examples/flying-sword/src/infrastructure/motion";
 import {
     FlyingSwordActionQuery,
     FlyingSwordAction,
@@ -38,7 +38,7 @@ import {
     FlyingSwordService,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
-} from "@zero-ecs/flying-sword";
+} from "../../examples/flying-sword/src/domain/flying-sword";
 import {
     CultivatorMoveActiveTag,
     CultivatorQuery,

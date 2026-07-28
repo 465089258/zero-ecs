@@ -14,8 +14,8 @@ import { TimeState } from "@zero-ecs/game/time";
 import {
     Direction3Type,
     Float3,
-} from "@zero-ecs/math/3d";
-import { MotionSystemSet } from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/math";
+import { MotionSystemSet } from "../../../infrastructure/motion";
 import { FlyingSwordFormationCatalog } from "../formation-catalog";
 import type {
     FlyingSwordFormationRouteSample,

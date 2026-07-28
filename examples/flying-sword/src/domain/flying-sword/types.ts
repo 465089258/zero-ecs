@@ -4,7 +4,7 @@ import {
     type Component,
     type Entity,
 } from "@zero-ecs/game";
-import type { Float3 } from "@zero-ecs/math/3d";
+import type { Float3 } from "../../infrastructure/math";
 
 /** 只读三维坐标输入。 */
 export interface ReadonlyVector3 {

@@ -12,8 +12,8 @@ import {
 import {
     FlyingSwordAction,
     FlyingSwordMember,
-} from "@zero-ecs/flying-sword";
-import { Float3 } from "@zero-ecs/math/3d";
+} from "../../../domain/flying-sword";
+import { Float3 } from "../../../infrastructure/math";
 import {
     DamageKind,
     FlyingSwordPiercingSequence,

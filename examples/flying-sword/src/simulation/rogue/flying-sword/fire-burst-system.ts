@@ -13,7 +13,7 @@ import { TimeState } from "@zero-ecs/game/time";
 import {
     Float3,
     Position3Type,
-} from "@zero-ecs/math/3d";
+} from "../../../infrastructure/math";
 import {
     DamageKind,
     DamageRequest,

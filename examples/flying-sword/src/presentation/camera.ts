@@ -1,6 +1,6 @@
 import type {
     ReadonlyVector3,
-} from "@zero-ecs/flying-sword";
+} from "../domain/flying-sword";
 import type { Vector3Out } from "./types";
 
 /** 投影后的屏幕坐标和相机空间深度。 */

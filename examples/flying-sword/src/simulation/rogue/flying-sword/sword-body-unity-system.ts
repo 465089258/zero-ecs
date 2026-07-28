@@ -10,9 +10,9 @@ import {
 } from "@zero-ecs/game";
 import {
     FlyingSwordMember,
-} from "@zero-ecs/flying-sword";
+} from "../../../domain/flying-sword";
 import { TimeState } from "@zero-ecs/game/time";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../../infrastructure/math";
 import {
     DamageKind,
     FlyingSwordContactCooldown,

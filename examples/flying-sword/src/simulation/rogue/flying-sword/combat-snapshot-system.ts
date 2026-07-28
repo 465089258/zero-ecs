@@ -15,7 +15,7 @@ import {
     FlyingSwordSkillActionQuery,
     FlyingSwordStance,
     FlyingSwordTaskQuery,
-} from "@zero-ecs/flying-sword";
+} from "../../../domain/flying-sword";
 import {
     AutoFlyingSwordSkill,
     ColdSwordIntent,

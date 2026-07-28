@@ -9,7 +9,7 @@ import {
     FlyingSwordStance,
     type FlyingSwordMode as FlyingSwordModeValue,
     type FlyingSwordStance as FlyingSwordStanceValue,
-} from "@zero-ecs/flying-sword";
+} from "../domain/flying-sword";
 
 export class DemoSceneState extends State {
     cultivator: Entity = INVALID_ENTITY;

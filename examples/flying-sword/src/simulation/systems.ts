@@ -17,12 +17,12 @@ import {
     Position3Type,
     PreviousPosition3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
+} from "../infrastructure/math";
 import {
     MotionSystemSet,
     MoveTowards3,
     MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
+} from "../infrastructure/motion";
 import {
     FlyingSwordFormationPlanId,
     FlyingSwordMode,
@@ -33,7 +33,7 @@ import {
     FlyingSwordSkillService,
     FlyingSwordSkillPhase,
     FlyingSwordSystemSet,
-} from "@zero-ecs/flying-sword";
+} from "../domain/flying-sword";
 import {
     FlyingSwordVisual,
     FlyingSwordVisualType,

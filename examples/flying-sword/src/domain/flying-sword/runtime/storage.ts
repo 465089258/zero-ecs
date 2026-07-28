@@ -4,7 +4,7 @@ import {
     type Component,
     type ComponentTag,
 } from "@zero-ecs/game";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../../infrastructure/math";
 import {
     FlyingSwordAction,
     FlyingSwordBehavior,

@@ -16,8 +16,8 @@ import {
     FlyingSwordSkillService,
     FlyingSwordStance,
     FlyingSwordTaskQuery,
-} from "@zero-ecs/flying-sword";
-import { Float3 } from "@zero-ecs/math/3d";
+} from "../../../domain/flying-sword";
+import { Float3 } from "../../../infrastructure/math";
 import {
     AutoFlyingSwordSkill,
     EnemyBody,

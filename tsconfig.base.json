@@ -22,13 +22,7 @@
       "@zero-ecs/game/timer": ["./packages/game/src/timer.ts"],
       "@zero-ecs/game/random": ["./packages/game/src/random.ts"],
       "@zero-ecs/game/hierarchy": ["./packages/game/src/hierarchy.ts"],
-      "@zero-ecs/game/pool": ["./packages/game/src/pool.ts"],
-      "@zero-ecs/math": ["./packages/math/src/index.ts"],
-      "@zero-ecs/math/2d": ["./packages/math/src/2d.ts"],
-      "@zero-ecs/math/3d": ["./packages/math/src/3d.ts"],
-      "@zero-ecs/math/projection": ["./packages/math/src/projection.ts"],
-      "@zero-ecs/flying-sword": ["./packages/flying-sword/src/index.ts"],
-      "@zero-ecs/flying-sword/integration": ["./packages/flying-sword/src/integration.ts"]
+      "@zero-ecs/game/pool": ["./packages/game/src/pool.ts"]
     }
   }
 }

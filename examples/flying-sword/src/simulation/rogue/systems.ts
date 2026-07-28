@@ -17,12 +17,12 @@ import {
     FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSystemSet,
-} from "@zero-ecs/flying-sword";
-import { Float3 } from "@zero-ecs/math/3d";
+} from "../../domain/flying-sword";
+import { Float3 } from "../../infrastructure/math";
 import {
     MotionSystemSet,
     MoveTowards3,
-} from "@zero-ecs/motion/3d";
+} from "../../infrastructure/motion";
 import {
     FlyingSwordVisual,
     FlyingSwordVisualType,

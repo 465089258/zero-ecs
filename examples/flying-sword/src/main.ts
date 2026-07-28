@@ -9,8 +9,8 @@ import {
 } from "@zero-ecs/game/time";
 import {
     FlyingSwordModule,
-} from "@zero-ecs/flying-sword";
-import { Motion3Module } from "@zero-ecs/motion/3d";
+} from "./domain/flying-sword";
+import { DemoMotionModule } from "./infrastructure/motion";
 import {
     FlyingSwordDamageDisplayModule,
 } from "./damage-display/module";
@@ -67,7 +67,7 @@ const game = new GameBuilder()
     .addResource(DemoPixiResource, pixi)
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
-    .addModule(new Motion3Module())
+    .addModule(new DemoMotionModule())
     .addModule(new FlyingSwordModule())
     .addModule(new FlyingSwordDemoSimulationModule())
     .addModule(new FlyingSwordRogueSimulationModule())

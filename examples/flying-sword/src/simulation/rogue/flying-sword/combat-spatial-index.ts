@@ -5,7 +5,7 @@ import {
     type Mut,
     type QueryOf,
 } from "@zero-ecs/game";
-import { Float3 } from "@zero-ecs/math/3d";
+import { Float3 } from "../../../infrastructure/math";
 import {
     EnemyBody,
     Health,

@@ -7,15 +7,12 @@
   "workspaces": [
     "packages/world",
     "packages/scheduler",
-    "packages/game",
-    "packages/math",
-    "packages/motion",
-    "packages/flying-sword"
+    "packages/game"
   ],
   "scripts": {
-    "build": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && npm run build -w @zero-ecs/game && npm run build -w @zero-ecs/math && npm run build -w @zero-ecs/motion && npm run build -w @zero-ecs/flying-sword",
+    "build": "npm run build -w @zero-ecs/world && npm run build -w @zero-ecs/scheduler && npm run build -w @zero-ecs/game",
     "dev": "npm run dev --workspaces --if-present",
-    "typecheck": "npm run typecheck -w @zero-ecs/world && npm run typecheck -w @zero-ecs/scheduler && npm run typecheck -w @zero-ecs/game && npm run typecheck -w @zero-ecs/math && npm run typecheck -w @zero-ecs/motion && npm run typecheck -w @zero-ecs/flying-sword",
+    "typecheck": "npm run typecheck -w @zero-ecs/world && npm run typecheck -w @zero-ecs/scheduler && npm run typecheck -w @zero-ecs/game",
     "test": "rstest",
     "test:watch": "rstest --watch",
     "test:types": "npm run build && tsc -p tests/types/tsconfig.json",

@@ -16,7 +16,7 @@ import {
 import {
     Float3,
     Position3Type,
-} from "@zero-ecs/math/3d";
+} from "../../examples/flying-sword/src/infrastructure/math";
 import {
     DamageDisplay,
     DamageDisplayStyle,

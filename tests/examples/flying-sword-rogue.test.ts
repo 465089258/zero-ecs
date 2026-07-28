@@ -24,11 +24,11 @@ import {
     Float3,
     Position3Type,
     Velocity3Type,
-} from "@zero-ecs/math/3d";
+} from "../../examples/flying-sword/src/infrastructure/math";
 import {
     MoveTowards3,
     MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
+} from "../../examples/flying-sword/src/infrastructure/motion";
 import {
     nextRogueRandom,
     progressAlongSegment3,

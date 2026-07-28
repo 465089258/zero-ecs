@@ -7,7 +7,7 @@ import {
     FlyingSwordPosition3View,
     FlyingSwordPreviousPosition3View,
     FlyingSwordView,
-} from "@zero-ecs/flying-sword";
+} from "../domain/flying-sword";
 import {
     FlyingSwordVisualType,
 } from "../content/components";

@@ -5,7 +5,7 @@ import {
     FlyingSwordFormationPrimitive,
     type FlyingSwordFormationRouteSample,
     type FlyingSwordFormationSlotSample,
-} from "@zero-ecs/flying-sword";
+} from "../../examples/flying-sword/src/domain/flying-sword";
 
 test("formation catalog compiles built-in plans and samples finite tangents", () => {
     const catalog = new FlyingSwordFormationCatalog();

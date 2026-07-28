@@ -6,8 +6,8 @@ import {
 import {
     Position3Type,
     PreviousPosition3Type,
-} from "@zero-ecs/math/3d";
-import { MoveTowards3Type } from "@zero-ecs/motion/3d";
+} from "../infrastructure/math";
+import { MoveTowards3Type } from "../infrastructure/motion";
 
 export class CultivatorTag implements ComponentTag {}
 

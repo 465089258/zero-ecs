@@ -9,7 +9,7 @@ import {
     Direction3Type,
     Position3Type,
     PreviousPosition3Type,
-} from "@zero-ecs/math/3d";
+} from "../../infrastructure/math";
 import {
     FlyingSwordContactWindowStorage,
     FlyingSwordBehaviorStorage,

@@ -13,11 +13,11 @@ import { TimeState } from "@zero-ecs/game/time";
 import {
     Float3,
     Position3Type,
-} from "@zero-ecs/math/3d";
+} from "../../../infrastructure/math";
 import {
     MotionSystemSet,
     MoveTowards3,
-} from "@zero-ecs/motion/3d";
+} from "../../../infrastructure/motion";
 import { FlyingSwordSystemSet } from "../system-set";
 import {
     FlyingSwordFlight,
