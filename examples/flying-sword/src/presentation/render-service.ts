@@ -29,15 +29,11 @@ import {
     type ProjectedPoint,
 } from "./camera";
 import { DemoViewResource } from "../app/resources";
-import swordFlameUrl from "../assets/swords/sword-flame-render.png";
-import swordFrostUrl from "../assets/swords/sword-frost-render.png";
-import swordJadeUrl from "../assets/swords/sword-jade-render.png";
-import swordThunderUrl from "../assets/swords/sword-thunder-render.png";
-import cultivatorUrl from "../assets/characters/cultivator-render.png";
-import bonePuppetUrl from "../assets/monsters/bone-puppet-render.png";
-import corruptedBatUrl from "../assets/monsters/corrupted-bat-render.png";
-import stoneGolemUrl from "../assets/monsters/stone-golem-render.png";
-import swordWraithUrl from "../assets/monsters/sword-wraith-render.png";
+import type { Texture } from "pixi.js";
+import {
+    DemoPixiResource,
+    type PixiPainter,
+} from "./pixi-renderer";
 import {
     FlyingSwordVisual,
 } from "../content/components";
@@ -147,9 +143,11 @@ interface DemoRenderItem extends DepthRenderItem {
     trailStrength: number;
 }
 
-/** 示例专属 Canvas 表现后端。 */
+/** 示例专属 PixiJS/WebGL 表现后端。 */
 export class DemoRenderService extends Service {
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
+    @Inject.resource(DemoPixiResource)
+    private readonly pixi!: DemoPixiResource;
     @Inject.service(FlyingSwordSkillService)
     private readonly skills!: FlyingSwordSkillService;
     @Inject.resource(RogueUpgradeCatalog)
@@ -193,22 +191,8 @@ export class DemoRenderService extends Service {
         trailY: 0,
         trailStrength: 0,
     }));
-    private readonly swordSprites: SwordSprite[] = SWORD_SPRITES.map(definition => ({
-        ...definition,
-        image: new Image(),
-        bodyWidth: 0,
-        bodyHeight: 0,
-        glowPadding: 0,
-        shadow: null,
-        glowVariants: [],
-    }));
-    private readonly actorSprites: ActorSprite[] = ACTOR_SPRITES.map(
-        definition => ({
-            ...definition,
-            image: new Image(),
-        }),
-    );
-    private readonly groundLayer = document.createElement("canvas");
+    private readonly swordSprites: SwordSprite[] = [];
+    private readonly actorSprites: ActorSprite[] = [];
     private readonly projected: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly projectedSecond: ProjectedPoint = { x: 0, y: 0, depth: 0 };
     private readonly clientPoint = { x: 0, y: 0 };
@@ -268,30 +252,18 @@ export class DemoRenderService extends Service {
     private followedZ = 0;
 
     init(): void {
-        // 像素素材在 DPR=1 已保持硬边；更高 DPR 只会扩大填充面积。
-        const ratio = 1;
-        this.view.canvas.width = this.logicalWidth * ratio;
-        this.view.canvas.height = this.logicalHeight * ratio;
-        this.view.context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        this.view.context.lineCap = "round";
-        this.view.context.lineJoin = "round";
-        this.view.context.imageSmoothingEnabled = false;
-        this.view.context.shadowBlur = 0;
-        this.buildGroundLayer();
-        for (let index = 0; index < this.swordSprites.length; index++) {
-            const sprite = this.swordSprites[index];
-            sprite.image.decoding = "async";
-            sprite.image.addEventListener(
-                "load",
-                () => prepareSwordSprite(sprite),
-                { once: true },
-            );
-            sprite.image.src = sprite.url;
+        const swordTextures = this.pixi.swordTextures;
+        for (let index = 0; index < swordTextures.length; index++) {
+            this.swordSprites.push({ texture: swordTextures[index] });
         }
-        for (let index = 0; index < this.actorSprites.length; index++) {
-            const sprite = this.actorSprites[index];
-            sprite.image.decoding = "async";
-            sprite.image.src = sprite.url;
+        const actorTextures = this.pixi.actorTextures;
+        for (let index = 0; index < actorTextures.length; index++) {
+            const definition = ACTOR_SPRITES[index];
+            this.actorSprites.push({
+                texture: actorTextures[index],
+                width: definition.width,
+                height: definition.height,
+            });
         }
         for (let index = 0; index < this.view.upgradeButtons.length; index++) {
             const button = this.view.upgradeButtons[index];
@@ -378,12 +350,11 @@ export class DemoRenderService extends Service {
         } else {
             this.statusCountdown--;
         }
+        this.pixi.render();
     }
 
     private beginFrame(): void {
-        const context = this.view.context;
-        context.drawImage(this.groundLayer, 0, 0);
-        context.globalAlpha = 1;
+        this.pixi.painter.beginFrame();
         this.totalSwordCount = 0;
         this.visibleSwordCount = 0;
         this.visibleEnemyCount = 0;
@@ -398,17 +369,8 @@ export class DemoRenderService extends Service {
         this.maximumHeight = Number.NEGATIVE_INFINITY;
     }
 
-    private buildGroundLayer(): void {
-        this.groundLayer.width = this.logicalWidth;
-        this.groundLayer.height = this.logicalHeight;
-        const context = this.groundLayer.getContext("2d", { alpha: false });
-        if (!context) throw new Error("Cannot create flying sword ground layer");
-        context.fillStyle = "#071012";
-        context.fillRect(0, 0, this.logicalWidth, this.logicalHeight);
-    }
-
     private drawGroundGrid(): void {
-        const context = this.view.context;
+        const context = this.pixi.painter;
         context.lineWidth = 1;
         context.strokeStyle = "rgba(88, 160, 144, 0.13)";
         context.beginPath();
@@ -501,7 +463,7 @@ export class DemoRenderService extends Service {
         tick: number,
         fusionActive: boolean,
     ): void {
-        const context = this.view.context;
+        const context = this.pixi.painter;
         if (
             !fusionActive &&
             scene.stance === FlyingSwordStance.Formation
@@ -544,7 +506,7 @@ export class DemoRenderService extends Service {
     }
 
     private drawFormationGroundAura(
-        context: CanvasRenderingContext2D,
+        context: PixiPainter,
         tick: number,
     ): void {
         const plan = this.formations.get(this.formationPlan);
@@ -612,7 +574,7 @@ export class DemoRenderService extends Service {
         stoneGolems: StoneGolemCharges,
         tick: number,
     ): void {
-        const context = this.view.context;
+        const context = this.pixi.painter;
         let drawn = 0;
         const iter = stoneGolems.iter();
         while (
@@ -764,7 +726,7 @@ export class DemoRenderService extends Service {
         swordWraiths: SwordWraithEmpowerments,
         tick: number,
     ): void {
-        const context = this.view.context;
+        const context = this.pixi.painter;
         let drawn = 0;
         const iter = swordWraiths.iter();
         while (
@@ -833,7 +795,7 @@ export class DemoRenderService extends Service {
     }
 
     private drawFormationDebug(
-        context: CanvasRenderingContext2D,
+        context: PixiPainter,
         tick: number,
     ): void {
         const slotCount = Math.min(
@@ -1554,14 +1516,14 @@ export class DemoRenderService extends Service {
     }
 
     private drawSortedItems(): void {
-        const context = this.view.context;
+        const context = this.pixi.painter;
         const items = this.queue.items;
         const length = this.queue.length;
         for (let index = 0; index < length; index++) {
             const item = items[index];
             if (item.kind === RenderKind.SwordShadow) {
                 const sprite = this.swordSprites[item.sprite];
-                if (sprite.shadow) {
+                if (sprite) {
                     drawSwordSprite(context, item, sprite, true);
                 } else {
                     drawSwordFallback(context, item, true);
@@ -1602,13 +1564,13 @@ export class DemoRenderService extends Service {
                 );
                 if (item.flash !== 0) {
                     context.globalAlpha = 0.72;
-                    context.filter = hitFlashFilter(item.style);
+                    context.effectTint = hitFlashTint(item.style);
                     drawActorSprite(
                         context,
                         item,
                         this.actorSprites[item.sprite],
                     );
-                    context.filter = "none";
+                    context.effectTint = null;
                     context.globalAlpha = 1;
                 }
                 if (item.health < 0.999) drawEnemyHealth(context, item);
@@ -1619,7 +1581,7 @@ export class DemoRenderService extends Service {
                     drawSwordTrail(context, item);
                 }
                 const sprite = this.swordSprites[item.sprite];
-                if (sprite.glowVariants[item.colorIndex]) {
+                if (sprite) {
                     drawSwordSprite(context, item, sprite);
                 } else {
                     drawSwordFallback(context, item);
@@ -1951,39 +1913,25 @@ const SWORD_COLORS = [
 ] as const;
 
 interface SwordSprite {
-    readonly url: string;
-    readonly image: HTMLImageElement;
-    bodyWidth: number;
-    bodyHeight: number;
-    glowPadding: number;
-    shadow: HTMLCanvasElement | null;
-    glowVariants: HTMLCanvasElement[];
+    readonly texture: Texture;
 }
 
 interface ActorSprite {
-    readonly url: string;
     readonly width: number;
     readonly height: number;
-    readonly image: HTMLImageElement;
+    readonly texture: Texture;
 }
 
-const SWORD_SPRITES = [
-    { url: swordJadeUrl },
-    { url: swordFlameUrl },
-    { url: swordFrostUrl },
-    { url: swordThunderUrl },
-] as const;
-
 const ACTOR_SPRITES = [
-    { url: cultivatorUrl, width: 44, height: 96 },
-    { url: corruptedBatUrl, width: 91, height: 80 },
-    { url: bonePuppetUrl, width: 66, height: 88 },
-    { url: stoneGolemUrl, width: 105, height: 112 },
-    { url: swordWraithUrl, width: 89, height: 104 },
+    { width: 44, height: 96 },
+    { width: 91, height: 80 },
+    { width: 66, height: 88 },
+    { width: 105, height: 112 },
+    { width: 89, height: 104 },
 ] as const;
 
 function drawEnemyTargetIndicator(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const radiusX = Math.min(42, item.width * 0.42);
@@ -2004,7 +1952,7 @@ function drawEnemyTargetIndicator(
 }
 
 function drawEnemyColdAura(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const radiusX = Math.min(44, item.width * 0.44);
@@ -2042,7 +1990,7 @@ function drawEnemyColdAura(
 }
 
 function drawEnemyEmpowermentAura(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const radiusX = Math.min(48, item.width * 0.48);
@@ -2077,7 +2025,7 @@ function drawEnemyEmpowermentAura(
 }
 
 function drawSwordTrail(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const centerX = (item.x1 + item.x2) * 0.5;
@@ -2099,7 +2047,7 @@ function drawSwordTrail(
 }
 
 function drawFusionAura(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const centerY = item.y1 - 36;
@@ -2135,7 +2083,7 @@ function drawFusionAura(
 }
 
 function drawLightningArc(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const dx = item.x2 - item.x1;
@@ -2156,7 +2104,7 @@ function drawLightningArc(
 }
 
 function drawFireBurst(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const halfWidth = item.width * 0.5;
@@ -2207,7 +2155,7 @@ function drawFireBurst(
 }
 
 function traceLightningArc(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
     normalX: number,
     normalY: number,
@@ -2240,30 +2188,21 @@ function traceLightningArc(
 }
 
 function drawActorSprite(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
     sprite: Readonly<ActorSprite>,
 ): void {
-    if (sprite.image.complete && sprite.image.naturalWidth > 0) {
-        context.drawImage(
-            sprite.image,
-            Math.round(item.x1 - item.width * 0.5),
-            Math.round(item.y1 - item.height + ACTOR_FOOT_OFFSET),
-            item.width,
-            item.height,
-        );
-        return;
-    }
-    context.fillStyle = item.kind === RenderKind.Cultivator
-        ? "#d9fff3"
-        : "#8d4c57";
-    context.beginPath();
-    context.arc(item.x1, item.y1 - 18, 12, 0, Math.PI * 2);
-    context.fill();
+    context.drawTexture(
+        sprite.texture,
+        Math.round(item.x1 - item.width * 0.5),
+        Math.round(item.y1 - item.height + ACTOR_FOOT_OFFSET),
+        item.width,
+        item.height,
+    );
 }
 
 function drawDamageDisplay(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     context.globalAlpha = item.alpha;
@@ -2291,14 +2230,14 @@ function damageDisplayFont(style: number): string {
     ];
 }
 
-function hitFlashFilter(kind: number): string {
-    return HIT_FLASH_FILTERS[kind] ?? HIT_FLASH_FILTERS[
+function hitFlashTint(kind: number): string {
+    return HIT_FLASH_TINTS[kind] ?? HIT_FLASH_TINTS[
         DamageKind.Generic
     ];
 }
 
 function drawEnemyHealth(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const width = Math.min(54, Math.max(28, item.width * 0.55));
@@ -2311,7 +2250,7 @@ function drawEnemyHealth(
 }
 
 function drawExperience(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
 ): void {
     const radius = item.width * 0.5;
@@ -2339,7 +2278,7 @@ function formatRunTime(tick: number): string {
 }
 
 function drawGroundMarker(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     point: Readonly<ProjectedPoint>,
     color: string,
     radiusX: number,
@@ -2372,7 +2311,7 @@ function lerp(previous: number, current: number, alpha: number): number {
 }
 
 function drawSwordSprite(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
     sprite: Readonly<SwordSprite>,
     shadow = false,
@@ -2384,7 +2323,9 @@ function drawSwordSprite(
     // 只让本地剑身轴承受投影缩短；像素厚度不随转向一起缩放。
     const width = Math.max(38, Math.min(96, projectedLength * 1.35));
     const height =
-        NOMINAL_SWORD_SPRITE_WIDTH * sprite.bodyHeight / sprite.bodyWidth;
+        NOMINAL_SWORD_SPRITE_WIDTH *
+        sprite.texture.height /
+        sprite.texture.width;
     const centerX = (item.x1 + item.x2) * 0.5;
     const centerY = (item.y1 + item.y2) * 0.5;
     const inverseLength = 1 / projectedLength;
@@ -2394,83 +2335,39 @@ function drawSwordSprite(
     context.setTransform(cosine, sine, -sine, cosine, centerX, centerY);
     if (shadow) {
         context.globalAlpha = 0.3;
-        context.drawImage(
-            sprite.shadow as HTMLCanvasElement,
+        context.drawTexture(
+            sprite.texture,
             -width * 0.5,
             -height * 0.5,
             width,
             height,
+            0x000000,
         );
     } else {
-        const variant = sprite.glowVariants[item.colorIndex];
-        const horizontalPadding = sprite.glowPadding * width / sprite.bodyWidth;
-        const verticalPadding = sprite.glowPadding * height / sprite.bodyHeight;
-        context.drawImage(
-            variant,
-            -width * 0.5 - horizontalPadding,
-            -height * 0.5 - verticalPadding,
-            width + horizontalPadding * 2,
-            height + verticalPadding * 2,
+        context.globalAlpha = 0.32;
+        context.drawTexture(
+            sprite.texture,
+            -width * 0.56,
+            -height * 0.62,
+            width * 1.12,
+            height * 1.24,
+            SWORD_COLORS[item.colorIndex] ?? SWORD_COLORS[0],
+        );
+        context.globalAlpha = 1;
+        context.drawTexture(
+            sprite.texture,
+            -width * 0.5,
+            -height * 0.5,
+            width,
+            height,
         );
     }
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.globalAlpha = 1;
 }
 
-function prepareSwordSprite(sprite: SwordSprite): void {
-    const width = sprite.image.naturalWidth;
-    const height = sprite.image.naturalHeight;
-    if (width <= 0 || height <= 0) return;
-    sprite.bodyWidth = width;
-    sprite.bodyHeight = height;
-    sprite.glowPadding = SPRITE_GLOW_PADDING;
-
-    const shadow = createSpriteCanvas(width, height);
-    const shadowContext = context2d(shadow);
-    shadowContext.imageSmoothingEnabled = false;
-    shadowContext.drawImage(sprite.image, 0, 0);
-    shadowContext.globalCompositeOperation = "source-in";
-    shadowContext.fillStyle = "#000000";
-    shadowContext.fillRect(0, 0, width, height);
-    shadowContext.globalCompositeOperation = "source-over";
-    sprite.shadow = shadow;
-
-    const variants = sprite.glowVariants;
-    variants.length = SWORD_COLORS.length;
-    for (let index = 0; index < SWORD_COLORS.length; index++) {
-        const variant = createSpriteCanvas(
-            width + SPRITE_GLOW_PADDING * 2,
-            height + SPRITE_GLOW_PADDING * 2,
-        );
-        const variantContext = context2d(variant);
-        variantContext.imageSmoothingEnabled = false;
-        // shadowBlur 只在素材加载冷路径执行一次，稳定帧只绘制预烘焙位图。
-        variantContext.shadowColor = SWORD_COLORS[index];
-        variantContext.shadowBlur = SPRITE_GLOW_BLUR;
-        variantContext.drawImage(
-            sprite.image,
-            SPRITE_GLOW_PADDING,
-            SPRITE_GLOW_PADDING,
-        );
-        variants[index] = variant;
-    }
-}
-
-function createSpriteCanvas(width: number, height: number): HTMLCanvasElement {
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    return canvas;
-}
-
-function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Cannot create flying sword sprite layer");
-    return context;
-}
-
 function drawSwordFallback(
-    context: CanvasRenderingContext2D,
+    context: PixiPainter,
     item: Readonly<DemoRenderItem>,
     shadow = false,
 ): void {
@@ -2500,8 +2397,6 @@ const FORMATION_DEBUG_MAXIMUM_SLOTS = 64;
 const FORMATION_DEBUG_TANGENT_LENGTH = 0.42;
 const CAMERA_TARGET_HEIGHT = 0.9;
 const CAMERA_TARGET_FORWARD_OFFSET = 2.2;
-const SPRITE_GLOW_PADDING = 12;
-const SPRITE_GLOW_BLUR = 9;
 const STATUS_UPDATE_INTERVAL_FRAMES = 6;
 const MAX_SWORD_TRAILS = 160;
 const MAX_LIGHTNING_ARCS = 96;
@@ -2540,21 +2435,14 @@ const DAMAGE_DISPLAY_FONTS: Readonly<Record<number, string>> =
         [DamageDisplayStyle.MetalBreak]: "900 22px monospace",
         [DamageDisplayStyle.FireBurst]: "900 23px monospace",
     });
-const HIT_FLASH_FILTERS: Readonly<Record<number, string>> =
+const HIT_FLASH_TINTS: Readonly<Record<number, string>> =
     Object.freeze({
-        [DamageKind.Generic]: "brightness(3) grayscale(1)",
-        [DamageKind.ScatterSword]:
-            "brightness(2.4) saturate(1.8) hue-rotate(125deg)",
-        [DamageKind.FocusSword]:
-            "brightness(2.8) sepia(0.7) saturate(2)",
-        [DamageKind.FormationSword]:
-            "brightness(2.3) saturate(2) hue-rotate(215deg)",
-        [DamageKind.SwordBodyUnity]:
-            "brightness(2.6) sepia(0.8) saturate(3) hue-rotate(330deg)",
-        [DamageKind.LightningChain]:
-            "brightness(3) saturate(2.4) hue-rotate(145deg)",
-        [DamageKind.MetalBreak]:
-            "brightness(2.8) sepia(1) saturate(3.2) hue-rotate(355deg)",
-        [DamageKind.FireBurst]:
-            "brightness(3.1) sepia(1) saturate(4) hue-rotate(330deg)",
+        [DamageKind.Generic]: "#ffffff",
+        [DamageKind.ScatterSword]: "#70dfff",
+        [DamageKind.FocusSword]: "#ffd978",
+        [DamageKind.FormationSword]: "#d6a3ff",
+        [DamageKind.SwordBodyUnity]: "#ff9c64",
+        [DamageKind.LightningChain]: "#8fe9ff",
+        [DamageKind.MetalBreak]: "#ffe07a",
+        [DamageKind.FireBurst]: "#ff6f4a",
     });

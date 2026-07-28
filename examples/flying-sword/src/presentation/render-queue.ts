@@ -1,4 +1,4 @@
-/** 参与 Canvas 画家算法的最小排序字段。 */
+/** 参与 Pixi 场景提交顺序计算的最小排序字段。 */
 export interface DepthRenderItem {
     layer: number;
     depth: number;

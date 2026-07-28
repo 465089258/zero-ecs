@@ -19,6 +19,7 @@ import { RogueRunControlService } from "./app/run-control-service";
 import {
     FlyingSwordDemoPresentationModule,
 } from "./presentation/module";
+import { DemoPixiResource } from "./presentation/pixi-renderer";
 import {
     DemoRenderFrameService,
 } from "./presentation/render-frame";
@@ -35,8 +36,9 @@ const FIXED_STEP = 1 / 60;
 const MAX_FRAME_DELTA = 0.1;
 const MAX_CATCH_UP_STEPS = 8;
 
+const canvas = element("scene", HTMLCanvasElement);
 const view = new DemoViewResource(
-    element("scene", HTMLCanvasElement),
+    canvas,
     element("status", HTMLElement),
     element("health-fill", HTMLElement),
     element("stamina-fill", HTMLElement),
@@ -58,9 +60,11 @@ const view = new DemoViewResource(
     ],
 );
 view.restartButton.addEventListener("click", () => window.location.reload());
+const pixi = await DemoPixiResource.create(canvas);
 
 const game = new GameBuilder()
     .addResource(DemoViewResource, view)
+    .addResource(DemoPixiResource, pixi)
     .addModule(new CommandModule())
     .addModule(new TimeModule(new FixedTimeResource(FIXED_STEP)))
     .addModule(new Motion3Module())
@@ -123,6 +127,7 @@ window.addEventListener("beforeunload", () => {
     disposed = true;
     cancelAnimationFrame(animationFrame);
     game.dispose();
+    pixi.destroy();
 }, { once: true });
 
 animationFrame = requestAnimationFrame(frame);
