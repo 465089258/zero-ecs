@@ -48,7 +48,7 @@ import {
     Velocity3Type,
 } from "../../examples/flying-sword/src/infrastructure/math";
 import {
-    Motion3Module,
+    DemoMotionModule as Motion3Module,
     MoveTowards3,
     MoveTowards3Type,
 } from "../../examples/flying-sword/src/infrastructure/motion";

@@ -44,7 +44,7 @@ import { FlyingSwordTaskCancellationState } from "./runtime/task-state";
 /**
  * 安装飞剑领域基础运行时。
  *
- * 宿主需要同时安装 CommandModule、TimeModule 和 Motion3Module。
+ * 宿主需要同时安装 CommandModule、TimeModule 和示例运动模块。
  * 控制组中心由宿主 Integration 写入 FlyingSwordService.setCenter。
  */
 export class FlyingSwordModule implements Module {

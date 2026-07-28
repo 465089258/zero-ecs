@@ -172,6 +172,11 @@ assert.deepEqual(rootManifest.workspaces, [
     "packages/scheduler",
     "packages/game",
 ]);
+const packageDirectories = (await readdir("packages", { withFileTypes: true }))
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort();
+assert.deepEqual(packageDirectories, ["game", "scheduler", "world"]);
 const gameManifest = JSON.parse(await readFile("packages/game/package.json", "utf8"));
 assert.equal(gameManifest.peerDependencies["@zero-ecs/world"], "^0.1.0");
 assert.equal(gameManifest.peerDependencies["@zero-ecs/scheduler"], "^0.1.0");
