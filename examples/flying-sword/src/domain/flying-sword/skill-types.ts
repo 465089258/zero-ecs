@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域实现。 */
 import type { Entity } from "@zero-ecs/game";
 import type { ReadonlyVector3 } from "./types";
 

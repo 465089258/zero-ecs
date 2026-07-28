@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域运行时。 */
 import {
     State,
     type EntityAccess,

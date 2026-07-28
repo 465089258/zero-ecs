@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域实现。 */
 import type { GameBuilder, Module } from "@zero-ecs/game";
 import { FlyingSwordFormationCatalog } from "./formation-catalog";
 import { FlyingSwordService } from "./service";

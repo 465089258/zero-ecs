@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域实现。 */
 import { SystemSet, Update } from "@zero-ecs/game";
 
 /** 宿主可用于插入集成逻辑的稳定飞剑系统锚点。 */

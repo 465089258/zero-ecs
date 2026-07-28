@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域实现。 */
 /** 内置阵图计划的稳定数字标识。 */
 export const FlyingSwordFormationPlanId = Object.freeze({
     EightGates: 1,

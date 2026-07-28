@@ -1,3 +1,4 @@
+/** 飞剑示例本地领域实现。 */
 import {
     Types,
     type Component,
