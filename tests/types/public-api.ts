@@ -44,49 +44,6 @@ import {
     HierarchyService,
 } from "@zero-ecs/game/hierarchy";
 import { TimerConfigResource, TimerService } from "@zero-ecs/game/timer";
-import {
-    FlyingSwordModule,
-    FlyingSwordControl,
-    FlyingSwordGroupQuery,
-    FlyingSwordQuery,
-    FlyingSwordService,
-    FlyingSwordSkillActionQuery,
-    FlyingSwordSkillCatalog,
-    FlyingSwordSkillPhase,
-    FlyingSwordSkillPlanId,
-    FlyingSwordSkillService,
-    FlyingSwordSkillTiming,
-    FlyingSwordView,
-    PiercingCloudSkillPlan,
-    type CompiledFlyingSwordSkillPlan,
-    type FlyingSwordMemberViewData,
-} from "@zero-ecs/flying-sword";
-import {
-    Motion3Module,
-    MoveTowards3,
-    MoveTowards3Type,
-} from "@zero-ecs/motion/3d";
-import {
-    Float2,
-    Position2Type as MathPosition2Type,
-    type Float2Columns,
-} from "@zero-ecs/math/2d";
-import {
-    Float3,
-    Position3Type as MathPosition3Type,
-    type Float3Columns,
-} from "@zero-ecs/math/3d";
-import {
-    ActiveCameraTag,
-    CameraBasis3Type,
-    CameraWorldAabb3Type,
-    OrthographicCameraType,
-    Projected2Type,
-    ProjectionBounds3Type,
-    TopDownCamera3Type,
-    defineOrthographicProjectionSystem,
-    orthographicProjectionSystem,
-} from "@zero-ecs/math/projection";
 // @ts-expect-error Scheduler is available only from the advanced entry.
 import { Scheduler as RootScheduler } from "@zero-ecs/game";
 // @ts-expect-error Optional Timer APIs are available only from the timer subpath.
@@ -152,75 +109,6 @@ type WorldParamIsWorld = Assert<Equal<SystemParamValue<typeof World>, World>>;
 const childProjection: QueryProjection = ChildOf;
 componentWorld.query(QueryType.from(With(ChildOf)));
 new GameBuilder().addModule(new HierarchyModule());
-const flyingSwordProjection:
-    QueryProjection<FlyingSwordMemberViewData> = FlyingSwordView;
-componentWorld.query(FlyingSwordQuery);
-componentWorld.query(FlyingSwordGroupQuery);
-componentWorld.query(FlyingSwordSkillActionQuery);
-function verifyFlyingSwordQueryIsReadonly(): void {
-    const iter = componentWorld.query(FlyingSwordQuery).iter();
-    if (!iter.next()) return;
-    const positions = iter.current[4];
-    positions[Float3.X][0];
-    // @ts-expect-error FlyingSwordQuery exposes Math storage through a readonly projection.
-    positions[Float3.X][0] = 1;
-}
-function verifyFlyingSwordDomainQueriesAreReadonly(): void {
-    const groups = componentWorld.query(FlyingSwordGroupQuery).iter();
-    if (groups.next()) {
-        const controls = groups.current[6];
-        controls[FlyingSwordControl.Mode][0];
-        // @ts-expect-error FlyingSwordGroupQuery exposes readonly projections.
-        controls[FlyingSwordControl.Mode][0] = 1;
-    }
-    const actions =
-        componentWorld.query(FlyingSwordSkillActionQuery).iter();
-    if (actions.next()) {
-        const timings = actions.current[4];
-        timings[FlyingSwordSkillTiming.DisplayPhase][0];
-        // @ts-expect-error Skill action entities are exposed through readonly projections.
-        timings[FlyingSwordSkillTiming.DisplayPhase][0] = 1;
-    }
-}
-new GameBuilder()
-    .addModule(new Motion3Module())
-    .addModule(new FlyingSwordModule());
-const customFlyingSwordSkillPlan: CompiledFlyingSwordSkillPlan = {
-    ...PiercingCloudSkillPlan,
-    id: 2,
-};
-new GameBuilder().addModule(new FlyingSwordModule(
-    new FlyingSwordSkillCatalog([customFlyingSwordSkillPlan]),
-));
-declare const flyingSwordSkillService: FlyingSwordSkillService;
-flyingSwordSkillService.cast({
-    group: INVALID_ENTITY,
-    target: { x: 0, y: 0, z: 1 },
-    planId: FlyingSwordSkillPlanId.PiercingCloud,
-});
-flyingSwordSkillService.cancel(INVALID_ENTITY);
-const flyingSwordSkillPhase =
-    flyingSwordSkillService.phase(INVALID_ENTITY);
-if (flyingSwordSkillPhase === FlyingSwordSkillPhase.Gather) {
-    flyingSwordSkillService.sequence(INVALID_ENTITY);
-}
-componentWorld.component(MathPosition2Type);
-componentWorld.component(MathPosition3Type);
-componentWorld.component(MoveTowards3Type);
-MoveTowards3.TargetZ;
-componentWorld.component(TopDownCamera3Type);
-componentWorld.component(OrthographicCameraType);
-componentWorld.component(CameraBasis3Type);
-componentWorld.component(CameraWorldAabb3Type);
-componentWorld.component(ActiveCameraTag);
-componentWorld.component(ProjectionBounds3Type);
-componentWorld.component(Projected2Type);
-declare const mathPosition2Columns: ComponentColumns<MathPosition2Type>;
-declare const mathPosition3Columns: ComponentColumns<MathPosition3Type>;
-const float2Columns: Float2Columns = mathPosition2Columns;
-const float3Columns: Float3Columns = mathPosition3Columns;
-float2Columns[Float2.X];
-float3Columns[Float3.Z];
 
 class LifecycleService extends Service {
     init(context: ServiceInitContext): void {
@@ -328,8 +216,6 @@ builder.addSystem(optionalPostSystem, { afterIfPresent: optionalDependencySystem
 builder.addSystem(optionalDependencySystem);
 const ManualRender = new ManualStage("render", 10);
 builder.addSystem(defSystem(ManualRender, () => {}, []));
-builder.addSystem(defineOrthographicProjectionSystem(ManualRender));
-new GameBuilder().addSystem(orthographicProjectionSystem);
 builder.addSystem(defSystem(Update.fixed, (_world: World) => {}, [World]));
 // @ts-expect-error Only functions returned by defSystem can be registered.
 builder.addSystem(plainSystem);
@@ -389,8 +275,6 @@ const entityCommand: EntityCommand = game.service(Commands).spawn();
 entityCommand.set(LinkType, Link.target, entity);
 // @ts-expect-error Hierarchy relations are readonly Query projections, not mutable ComponentType values.
 entityCommand.add(ChildOf);
-// @ts-expect-error Flying sword views are readonly projections, not mutable storage components.
-entityCommand.add(FlyingSwordView);
 // @ts-expect-error Game EntityCommand also rejects unbranded entity reference values.
 entityCommand.set(LinkType, Link.target, rawNumber);
 game.service(TimerService).once(1, entityCommand);
@@ -412,7 +296,3 @@ void optionalPostSystem;
 void entityCommand;
 void childProjection;
 void HierarchyService;
-void flyingSwordProjection;
-void FlyingSwordService;
-void float2Columns;
-void float3Columns;

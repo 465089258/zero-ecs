@@ -13,13 +13,6 @@ const timer = await import("@zero-ecs/game/timer");
 const random = await import("@zero-ecs/game/random");
 const hierarchy = await import("@zero-ecs/game/hierarchy");
 const pool = await import("@zero-ecs/game/pool");
-const math = await import("@zero-ecs/math");
-const math2d = await import("@zero-ecs/math/2d");
-const math3d = await import("@zero-ecs/math/3d");
-const mathProjection = await import("@zero-ecs/math/projection");
-const motion = await import("@zero-ecs/motion");
-const motion3d = await import("@zero-ecs/motion/3d");
-const flyingSword = await import("@zero-ecs/flying-sword");
 
 assert.equal(typeof world.World, "function");
 assert.equal("EntityRef" in world, false);
@@ -94,28 +87,6 @@ assert.equal(typeof hierarchy.ParentOf, "object");
 assert.equal("ChildOfStorage" in hierarchy, false);
 assert.equal("ParentOfStorage" in hierarchy, false);
 assert.equal(typeof pool.ObjectPoolService, "function");
-assert.equal(typeof math.Position2Type, "function");
-assert.equal(typeof math.Position3Type, "function");
-assert.equal(typeof math2d.Matrix3Type, "function");
-assert.equal(typeof math3d.Matrix4Type, "function");
-assert.equal(typeof mathProjection.OrthographicCameraType, "function");
-assert.equal(typeof mathProjection.Projected2Type, "function");
-assert.equal(typeof mathProjection.orthographicProjectionSystem, "function");
-assert.equal(math2d.Float2.X, 0);
-assert.equal(math3d.Float3.Z, 2);
-assert.equal(typeof motion.Motion3Module, "function");
-assert.equal(typeof motion.MoveTowards3Type, "function");
-assert.equal(typeof motion3d.moveTowards3System, "function");
-assert.equal(typeof motion3d.MotionSystemSet.Integrate3, "object");
-assert.equal(typeof flyingSword.FlyingSwordModule, "function");
-assert.equal(typeof flyingSword.FlyingSwordService, "function");
-assert.equal(typeof flyingSword.FlyingSwordQuery, "object");
-assert.equal(typeof flyingSword.FlyingSwordActionQuery, "object");
-assert.equal(typeof flyingSword.FlyingSwordContactQuery, "object");
-assert.equal("FlyingSwordStorage" in flyingSword, false);
-assert.equal("FlyingSwordFlight" in flyingSword, false);
-assert.equal("FlyingSwordSpatialService" in flyingSword, false);
-assert.equal("Vector3Out" in flyingSword, false);
 
 assert.equal("Ecs" in game, false);
 assert.equal("EcsBuilder" in game, false);
@@ -151,34 +122,12 @@ await assert.rejects(
     import("@zero-ecs/game/dist/command/control.js"),
     error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
 );
-await assert.rejects(
-    import("@zero-ecs/flying-sword/dist/runtime/storage.js"),
-    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
-);
-await assert.rejects(
-    import("@zero-ecs/flying-sword/presentation"),
-    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
-);
-await assert.rejects(
-    import("@zero-ecs/flying-sword/integration"),
-    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
-);
-await assert.rejects(
-    import("@zero-ecs/math/dist/3d/components.js"),
-    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
-);
-await assert.rejects(
-    import("@zero-ecs/motion/dist/3d/systems.js"),
-    error => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
-);
 
 const worldSources = await sourceFiles("packages/world/src");
 const schedulerSources = await sourceFiles("packages/scheduler/src");
 const timerSources = await sourceFiles("packages/game/src/features/timer");
 const gameSources = await sourceFiles("packages/game/src");
-const mathSources = await sourceFiles("packages/math/src");
-const motionSources = await sourceFiles("packages/motion/src");
-const flyingSwordSources = await sourceFiles("packages/flying-sword/src");
+const flyingSwordExampleSources = await sourceFiles("examples/flying-sword/src");
 for (const file of worldSources) {
     const imports = importLines(await readFile(file, "utf8"));
     assert.doesNotMatch(
@@ -204,71 +153,28 @@ for (const file of gameSources) {
     const imports = importLines(await readFile(file, "utf8"));
     assert.doesNotMatch(
         imports,
+        /examples\/|@zero-ecs\/(?:math|motion|flying-sword)/,
+        file,
+    );
+}
+for (const file of flyingSwordExampleSources) {
+    const imports = importLines(await readFile(file, "utf8"));
+    assert.doesNotMatch(
+        imports,
         /@zero-ecs\/(?:math|motion|flying-sword)/,
         file,
     );
 }
-for (const file of mathSources) {
-    const imports = importLines(await readFile(file, "utf8"));
-    assert.doesNotMatch(
-        imports,
-        /@zero-ecs\/(?:world|scheduler|motion|flying-sword)/,
-        file,
-    );
-}
-for (const file of motionSources) {
-    const source = await readFile(file, "utf8");
-    const imports = importLines(source);
-    assert.doesNotMatch(
-        imports,
-        /@zero-ecs\/(?:world|scheduler|flying-sword)/,
-        file,
-    );
-    assert.doesNotMatch(
-        imports,
-        /@zero-ecs\/math\/(?:2d|projection)(?:\n|$)/,
-        file,
-    );
-    assert.doesNotMatch(
-        source,
-        /FlyingSword|CanvasRenderingContext2D|HTMLCanvasElement/,
-        file,
-    );
-}
-for (const file of flyingSwordSources) {
-    const source = await readFile(file, "utf8");
-    const imports = importLines(source);
-    assert.doesNotMatch(imports, /@zero-ecs\/(?:world|scheduler)/, file);
-    assert.doesNotMatch(
-        imports,
-        /@zero-ecs\/math(?:\/(?:2d|projection))?(?:\n|$)/,
-        file,
-    );
-    assert.doesNotMatch(
-        source,
-        /CanvasRenderingContext2D|HTMLCanvasElement|TopDownOrthographicCamera|ProjectedPoint|DepthRenderQueue|FlyingSwordVisual|VisualId/,
-        file,
-    );
-}
 
+const rootManifest = JSON.parse(await readFile("package.json", "utf8"));
+assert.deepEqual(rootManifest.workspaces, [
+    "packages/world",
+    "packages/scheduler",
+    "packages/game",
+]);
 const gameManifest = JSON.parse(await readFile("packages/game/package.json", "utf8"));
 assert.equal(gameManifest.peerDependencies["@zero-ecs/world"], "^0.1.0");
 assert.equal(gameManifest.peerDependencies["@zero-ecs/scheduler"], "^0.1.0");
-const flyingSwordManifest = JSON.parse(
-    await readFile("packages/flying-sword/package.json", "utf8"),
-);
-const mathManifest = JSON.parse(await readFile("packages/math/package.json", "utf8"));
-const motionManifest = JSON.parse(
-    await readFile("packages/motion/package.json", "utf8"),
-);
-assert.equal(mathManifest.peerDependencies["@zero-ecs/game"], "^0.1.0");
-assert.equal(motionManifest.peerDependencies["@zero-ecs/game"], "^0.1.0");
-assert.equal(motionManifest.peerDependencies["@zero-ecs/math"], "^0.1.0");
-assert.equal(flyingSwordManifest.peerDependencies["@zero-ecs/game"], "^0.1.0");
-assert.equal(flyingSwordManifest.peerDependencies["@zero-ecs/math"], "^0.1.0");
-assert.equal(flyingSwordManifest.peerDependencies["@zero-ecs/motion"], "^0.1.0");
-assert.equal("./presentation" in flyingSwordManifest.exports, false);
-assert.equal("./integration" in flyingSwordManifest.exports, false);
 
 async function sourceFiles(directory) {
     const result = [];

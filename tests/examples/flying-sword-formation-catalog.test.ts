@@ -1,4 +1,5 @@
 import { expect, test } from "@rstest/core";
+// 阵图目录是飞剑示例的内容，不属于 Zero ECS 公共 API。
 import {
     FlyingSwordFormationCatalog,
     FlyingSwordFormationPlanId,

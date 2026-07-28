@@ -2,6 +2,7 @@ import {
     expect,
     test,
 } from "@rstest/core";
+// 飞剑领域已经归属示例，本文件只验证示例内的领域实现。
 import {
     CommandModule,
     Commands,

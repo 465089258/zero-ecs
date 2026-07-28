@@ -8,9 +8,8 @@ Zero ECS 是一个面向游戏数据层的 TypeScript ECS workspace，核心由�
 
 依赖方向固定为 `game -> world + scheduler`，World 与 Scheduler 之间互不依赖。
 
-仓库还包含 ECS 原生数学扩展 `@zero-ecs/math` 和可选领域扩展
-`@zero-ecs/flying-sword`。它们只依赖 Game 公共能力，不构成新的核心层；核心三包不会
-反向导入或重导出它们。
+仓库只发布并维护上述三个核心包。飞剑肉鸽等示例所需的数学、运动和领域代码保留在
+示例目录中，用来验证 ECS 组合方式，不构成公共库或兼容性承诺。
 
 ## 快速开始
 
