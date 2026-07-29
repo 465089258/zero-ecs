@@ -36,6 +36,9 @@ import {
 } from "../../content/enemies";
 import { RogueRunTuning } from "../../content/run-tuning";
 import {
+    SwordBlueprintCatalog,
+} from "../../content/swords";
+import {
     RogueUpgrade,
     RogueUpgradeCatalog,
 } from "../../content/upgrades";
@@ -80,6 +83,8 @@ import {
     SwordAttackType,
     SwordSpiritPower,
     SwordSpiritPowerType,
+    SwordSpiritCost,
+    SwordSpiritCostType,
     SwordUpgradeOffer,
     SwordUpgradeOfferType,
     PlayerMovement,
@@ -244,6 +249,7 @@ export const openRogueUpgradeSelectionSystem = defSystem(
     [
         Commands,
         World,
+        SwordBlueprintCatalog,
         RogueUpgradeCatalog,
         RogueRunControlService,
         RogueRunQuery,
@@ -487,6 +493,21 @@ function addFlyingSword(
         SwordUpgradeOfferType,
         SwordUpgradeOffer.SpiritRecoveryPerSecond,
     ) ?? 14;
+    const offeredScatterSpiritCost = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.ScatterSpiritCost,
+    ) ?? 18;
+    const offeredFocusSpiritCost = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.FocusSpiritCost,
+    ) ?? 24;
+    const offeredFormationSpiritDrain = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.FormationSpiritDrainPerSecond,
+    ) ?? 6;
 
     let swordCount = 0;
     let controlledSwordCount = 0;
@@ -561,6 +582,7 @@ function addFlyingSword(
         .add(SwordIdentityType)
         .add(SwordAttackType)
         .add(SwordSpiritPowerType)
+        .add(SwordSpiritCostType)
         .set(
             FlyingSwordVisualType,
             FlyingSwordVisual.Id,
@@ -626,6 +648,21 @@ function addFlyingSword(
             0,
         )
         .set(
+            SwordSpiritCostType,
+            SwordSpiritCost.Scatter,
+            offeredScatterSpiritCost,
+        )
+        .set(
+            SwordSpiritCostType,
+            SwordSpiritCost.Focus,
+            offeredFocusSpiritCost,
+        )
+        .set(
+            SwordSpiritCostType,
+            SwordSpiritCost.FormationPerSecond,
+            offeredFormationSpiritDrain,
+        )
+        .set(
             FlyingSwordPiercingSequenceType,
             FlyingSwordPiercingSequence.Action,
             INVALID_ENTITY,
@@ -685,6 +722,7 @@ function findAvailableControlSlot(
 function openRogueUpgradeSelection(
     commands: Commands,
     world: World,
+    swordCatalog: Readonly<SwordBlueprintCatalog>,
     catalog: Readonly<RogueUpgradeCatalog>,
     control: RogueRunControlService,
     runs: Runs,
@@ -787,6 +825,7 @@ function openRogueUpgradeSelection(
             const swordOffer = offerCommand.entity;
             randomState = rollSwordUpgradeOffer(
                 randomState,
+                swordCatalog,
                 offerCommand,
             );
             offerCommand.submit();
@@ -802,67 +841,206 @@ function openRogueUpgradeSelection(
 
 function rollSwordUpgradeOffer(
     initialState: number,
+    catalog: Readonly<SwordBlueprintCatalog>,
     offer: ReturnType<Commands["spawn"]>,
 ): number {
-    let state = nextRogueRandom(initialState);
-    const blueprint = state % 6;
-    state = nextRogueRandom(state);
-    const quality = 1 + state % 3;
-    state = nextRogueRandom(state);
-    const minimumDamage = 13 + quality * 2 + state % 7;
-    state = nextRogueRandom(state);
-    const maximumDamage =
-        minimumDamage + 7 + quality * 2 + state % 8;
-    state = nextRogueRandom(state);
-    const attackInterval = Math.max(16, 31 - quality * 2 - state % 5);
-    state = nextRogueRandom(state);
-    const maximumSpeed = 12 + quality * 0.7 + (state % 5) * 0.25;
-    state = nextRogueRandom(state);
-    const acceleration = 38 + quality * 3 + state % 7;
-    state = nextRogueRandom(state);
-    const maximumSpirit = 80 + quality * 12 + state % 16;
-    state = nextRogueRandom(state);
-    const spiritRecovery = 11 + quality * 2 + state % 5;
+    const state = rollSwordOfferValues(
+        initialState,
+        catalog,
+        swordOfferRoll,
+    );
+    const values = swordOfferRoll;
     offer
-        .set(SwordUpgradeOfferType, SwordUpgradeOffer.Blueprint, blueprint)
-        .set(SwordUpgradeOfferType, SwordUpgradeOffer.Quality, quality)
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Blueprint,
+            values.blueprint,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Quality,
+            values.quality,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Recommendation,
+            values.recommendation,
+        )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.MinimumDamage,
-            minimumDamage,
+            values.minimumDamage,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.MaximumDamage,
-            maximumDamage,
+            values.maximumDamage,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.AttackIntervalTicks,
-            attackInterval,
+            values.attackIntervalTicks,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.MaximumSpeed,
-            maximumSpeed,
+            values.maximumSpeed,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.Acceleration,
-            acceleration,
+            values.acceleration,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.MaximumSpiritPower,
-            maximumSpirit,
+            values.maximumSpiritPower,
         )
         .set(
             SwordUpgradeOfferType,
             SwordUpgradeOffer.SpiritRecoveryPerSecond,
-            spiritRecovery,
+            values.spiritRecoveryPerSecond,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.ScatterSpiritCost,
+            values.scatterSpiritCost,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.FocusSpiritCost,
+            values.focusSpiritCost,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.FormationSpiritDrainPerSecond,
+            values.formationSpiritDrainPerSecond,
         );
     return state;
 }
+
+export interface SwordOfferRollOut {
+    blueprint: number;
+    quality: number;
+    recommendation: number;
+    minimumDamage: number;
+    maximumDamage: number;
+    attackIntervalTicks: number;
+    maximumSpeed: number;
+    acceleration: number;
+    maximumSpiritPower: number;
+    spiritRecoveryPerSecond: number;
+    scatterSpiritCost: number;
+    focusSpiritCost: number;
+    formationSpiritDrainPerSecond: number;
+}
+
+export function rollSwordOfferValues(
+    initialState: number,
+    catalog: Readonly<SwordBlueprintCatalog>,
+    out: SwordOfferRollOut,
+): number {
+    let state = nextRogueRandom(initialState);
+    const blueprint = state % catalog.count;
+    state = nextRogueRandom(state);
+    const quality = 1 + state % 3;
+    const qualityDamageMultiplier = 1 + (quality - 1) * 0.14;
+    const qualityResourceMultiplier = 1 + (quality - 1) * 0.1;
+    const qualityCostMultiplier = 1 - (quality - 1) * 0.04;
+
+    state = nextRogueRandom(state);
+    const minimumDamage = Math.round(
+        (
+            catalog.minimumDamage[blueprint] +
+            state % (catalog.minimumDamageVariance[blueprint] + 1)
+        ) * qualityDamageMultiplier,
+    );
+    state = nextRogueRandom(state);
+    const maximumDamage = minimumDamage + Math.round(
+        (
+            catalog.damageSpread[blueprint] +
+            state % (catalog.damageSpreadVariance[blueprint] + 1)
+        ) * qualityDamageMultiplier,
+    );
+    state = nextRogueRandom(state);
+    const attackIntervalTicks = Math.max(
+        12,
+        catalog.attackIntervalTicks[blueprint] -
+            (quality - 1) * 2 -
+            state % (catalog.attackIntervalVariance[blueprint] + 1),
+    );
+    state = nextRogueRandom(state);
+    const maximumSpeed =
+        catalog.maximumSpeed[blueprint] +
+        (quality - 1) * 0.35 +
+        normalizedSwordRoll(state) *
+            catalog.maximumSpeedVariance[blueprint];
+    state = nextRogueRandom(state);
+    const acceleration =
+        catalog.acceleration[blueprint] +
+        (quality - 1) * 2 +
+        state % (catalog.accelerationVariance[blueprint] + 1);
+    state = nextRogueRandom(state);
+    const maximumSpiritPower = Math.round(
+        (
+            catalog.maximumSpiritPower[blueprint] +
+            state % (catalog.maximumSpiritVariance[blueprint] + 1)
+        ) * qualityResourceMultiplier,
+    );
+    state = nextRogueRandom(state);
+    const spiritRecoveryPerSecond =
+        (
+            catalog.spiritRecoveryPerSecond[blueprint] +
+            state % (catalog.spiritRecoveryVariance[blueprint] + 1)
+        ) * qualityResourceMultiplier;
+
+    out.blueprint = blueprint;
+    out.quality = quality;
+    out.recommendation = catalog.recommendations[blueprint];
+    out.minimumDamage = minimumDamage;
+    out.maximumDamage = maximumDamage;
+    out.attackIntervalTicks = attackIntervalTicks;
+    out.maximumSpeed = roundSwordStat(maximumSpeed);
+    out.acceleration = roundSwordStat(acceleration);
+    out.maximumSpiritPower = maximumSpiritPower;
+    out.spiritRecoveryPerSecond =
+        roundSwordStat(spiritRecoveryPerSecond);
+    out.scatterSpiritCost = roundSwordStat(
+        catalog.scatterSpiritCost[blueprint] * qualityCostMultiplier,
+    );
+    out.focusSpiritCost = roundSwordStat(
+        catalog.focusSpiritCost[blueprint] * qualityCostMultiplier,
+    );
+    out.formationSpiritDrainPerSecond = roundSwordStat(
+        catalog.formationSpiritDrainPerSecond[blueprint] *
+            qualityCostMultiplier,
+    );
+    return state;
+}
+
+function normalizedSwordRoll(state: number): number {
+    return (state % 1001) / 1000;
+}
+
+function roundSwordStat(value: number): number {
+    return Math.round(value * 10) / 10;
+}
+
+const swordOfferRoll: SwordOfferRollOut = {
+    blueprint: 0,
+    quality: 1,
+    recommendation: 0,
+    minimumDamage: 0,
+    maximumDamage: 0,
+    attackIntervalTicks: 0,
+    maximumSpeed: 0,
+    acceleration: 0,
+    maximumSpiritPower: 0,
+    spiritRecoveryPerSecond: 0,
+    scatterSpiritCost: 0,
+    focusSpiritCost: 0,
+    formationSpiritDrainPerSecond: 0,
+};
 
 function countFlyingSwords(
     swords: FlyingSwords,

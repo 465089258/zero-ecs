@@ -5,6 +5,7 @@ import type {
 import { RogueRunControlService } from "../../app/run-control-service";
 import { EnemyCatalog } from "../../content/enemies";
 import { RogueRunTuning } from "../../content/run-tuning";
+import { SwordBlueprintCatalog } from "../../content/swords";
 import { RogueUpgradeCatalog } from "../../content/upgrades";
 import { RogueContentService } from "./content-service";
 import {
@@ -100,6 +101,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder
             .addResource(EnemyCatalog, new EnemyCatalog())
             .addResource(RogueRunTuning, new RogueRunTuning())
+            .addResource(SwordBlueprintCatalog, new SwordBlueprintCatalog())
             .addResource(RogueUpgradeCatalog, new RogueUpgradeCatalog())
             .addState(EnemySpatialIndexState)
             .addState(CombatScratchState)

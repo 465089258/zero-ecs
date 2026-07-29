@@ -33,7 +33,9 @@ import {
     nextRogueRandom,
     progressAlongSegment3,
     rogueRequiredExperienceFor,
+    rollSwordOfferValues,
     squaredDistanceToSegment3,
+    type SwordOfferRollOut,
 } from "../../examples/flying-sword/src/simulation/rogue/systems";
 import {
     clampFocusTargetDistance,
@@ -54,9 +56,31 @@ import {
     RogueUpgrade,
     RogueUpgradeCatalog,
 } from "../../examples/flying-sword/src/content/upgrades";
+
+function createSwordOfferRollOut(): SwordOfferRollOut {
+    return {
+        blueprint: 0,
+        quality: 0,
+        recommendation: 0,
+        minimumDamage: 0,
+        maximumDamage: 0,
+        attackIntervalTicks: 0,
+        maximumSpeed: 0,
+        acceleration: 0,
+        maximumSpiritPower: 0,
+        spiritRecoveryPerSecond: 0,
+        scatterSpiritCost: 0,
+        focusSpiritCost: 0,
+        formationSpiritDrainPerSecond: 0,
+    };
+}
 import {
     RogueRunTuning,
 } from "../../examples/flying-sword/src/content/run-tuning";
+import {
+    SwordBlueprint,
+    SwordBlueprintCatalog,
+} from "../../examples/flying-sword/src/content/swords";
 import {
     shouldLaunchScatterSword,
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/scatter-system";
@@ -790,6 +814,60 @@ test("upgrade catalog covers every combat route without missing metadata", () =>
         .toContain("火意");
     expect(catalog.names[RogueUpgrade.ColdIntent])
         .toContain("寒意");
+});
+
+test("sword blueprint catalog gives every template a distinct role", () => {
+    const catalog = new SwordBlueprintCatalog();
+    expect(catalog.count).toBe(SwordBlueprint.Burst + 1);
+    expect(catalog.names).toHaveLength(catalog.count);
+    expect(catalog.isValid(-1)).toBe(false);
+    expect(catalog.isValid(catalog.count)).toBe(false);
+    expect(catalog.isValid(1.5)).toBe(false);
+    expect(
+        catalog.minimumDamage[SwordBlueprint.Heavy],
+    ).toBeGreaterThan(catalog.minimumDamage[SwordBlueprint.Light]);
+    expect(
+        catalog.attackIntervalTicks[SwordBlueprint.Light],
+    ).toBeLessThan(
+        catalog.attackIntervalTicks[SwordBlueprint.Heavy],
+    );
+    expect(
+        catalog.maximumSpiritPower[SwordBlueprint.Spirit],
+    ).toBeGreaterThan(
+        catalog.maximumSpiritPower[SwordBlueprint.Burst],
+    );
+    expect(
+        catalog.formationSpiritDrainPerSecond[SwordBlueprint.Spirit],
+    ).toBeLessThan(
+        catalog.formationSpiritDrainPerSecond[SwordBlueprint.Burst],
+    );
+});
+
+test("sword offers are deterministic and stay inside the catalog", () => {
+    const catalog = new SwordBlueprintCatalog();
+    const left = createSwordOfferRollOut();
+    const right = createSwordOfferRollOut();
+    const leftState = rollSwordOfferValues(12345, catalog, left);
+    const rightState = rollSwordOfferValues(12345, catalog, right);
+    expect(leftState).toBe(rightState);
+    expect(left).toEqual(right);
+    expect(catalog.isValid(left.blueprint)).toBe(true);
+    expect(left.recommendation).toBe(
+        catalog.recommendations[left.blueprint],
+    );
+    expect(left.maximumDamage).toBeGreaterThan(left.minimumDamage);
+    expect(left.attackIntervalTicks).toBeGreaterThanOrEqual(12);
+    expect(left.scatterSpiritCost).toBeGreaterThan(0);
+    expect(left.focusSpiritCost).toBeGreaterThan(
+        left.scatterSpiritCost,
+    );
+
+    const seen = new Set<number>();
+    for (let seed = 1; seed <= 64; seed++) {
+        rollSwordOfferValues(seed, catalog, left);
+        seen.add(left.blueprint);
+    }
+    expect(seen.size).toBe(catalog.count);
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {

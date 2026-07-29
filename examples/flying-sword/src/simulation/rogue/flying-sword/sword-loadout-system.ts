@@ -53,6 +53,8 @@ import {
     SpiritualSenseType,
     SwordSpiritPower,
     SwordSpiritPowerType,
+    SwordSpiritCost,
+    SwordSpiritCostType,
 } from "../components";
 
 const ControlledSwordResourceQuery = QueryType.from(With(
@@ -61,6 +63,7 @@ const ControlledSwordResourceQuery = QueryType.from(With(
     FlyingSwordControlAssignmentType,
     ContainedSwordType,
     SwordSpiritPowerType,
+    SwordSpiritCostType,
 ));
 
 const ReserveSwordResourceQuery = QueryType.from(With(
@@ -182,12 +185,14 @@ function updateSwordResources(
     let controlLimit = 0;
     const controlledIter = controlled.iter();
     while (controlledIter.next()) {
-        const [count, entities, members, , , , spirits] =
+        const [count, entities, members, , , , spirits, costs] =
             controlledIter.current;
         const swordGroups = members[FlyingSwordMember.Group];
         const currents = spirits[SwordSpiritPower.Current];
         const recoveryStarts =
             spirits[SwordSpiritPower.RecoveryStartTick];
+        const formationDrains =
+            costs[SwordSpiritCost.FormationPerSecond];
         for (let row = 0; row < count; row++) {
             controlledCount++;
             const sword = entities[row];
@@ -198,8 +203,7 @@ function updateSwordResources(
                 currents[row] = Math.max(
                     0,
                     currents[row] -
-                        FORMATION_SWORD_SPIRIT_DRAIN_PER_SECOND *
-                        delta,
+                        formationDrains[row] * delta,
                 );
                 if (!world.has(sword, FormationFlyingSwordTag)) {
                     commands
@@ -652,7 +656,6 @@ export function rollSwordDamage(
     return minimum + (maximum - minimum) * ratio;
 }
 
-const FORMATION_SWORD_SPIRIT_DRAIN_PER_SECOND = 6;
 const SPIRIT_RECOVERY_DELAY_TICKS = 30;
 const RESERVE_ACTIVATION_RATIO = 0.5;
 const RECALL_FAN_HALF_ANGLE = Math.PI * 2 / 9;

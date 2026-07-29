@@ -249,6 +249,20 @@ implements Component<SwordSpiritPower> {
     readonly [SwordSpiritPower.RecoveryStartTick] = Types.U32;
 }
 
+/** 单把剑在不同战斗方式中的灵力消耗。 */
+export enum SwordSpiritCost {
+    Scatter,
+    Focus,
+    FormationPerSecond,
+}
+
+export class SwordSpiritCostType
+implements Component<SwordSpiritCost> {
+    readonly [SwordSpiritCost.Scatter] = Types.F32;
+    readonly [SwordSpiritCost.Focus] = Types.F32;
+    readonly [SwordSpiritCost.FormationPerSecond] = Types.F32;
+}
+
 /** 受控剑进入当前阵图后才具有的结构身份。 */
 export class FormationFlyingSwordTag implements ComponentTag {}
 
@@ -729,6 +743,7 @@ implements Component<UpgradeSelection> {
 export enum SwordUpgradeOffer {
     Blueprint,
     Quality,
+    Recommendation,
     MinimumDamage,
     MaximumDamage,
     AttackIntervalTicks,
@@ -736,12 +751,16 @@ export enum SwordUpgradeOffer {
     Acceleration,
     MaximumSpiritPower,
     SpiritRecoveryPerSecond,
+    ScatterSpiritCost,
+    FocusSpiritCost,
+    FormationSpiritDrainPerSecond,
 }
 
 export class SwordUpgradeOfferType
 implements Component<SwordUpgradeOffer> {
     readonly [SwordUpgradeOffer.Blueprint] = Types.U16;
     readonly [SwordUpgradeOffer.Quality] = Types.U8;
+    readonly [SwordUpgradeOffer.Recommendation] = Types.U8;
     readonly [SwordUpgradeOffer.MinimumDamage] = Types.F32;
     readonly [SwordUpgradeOffer.MaximumDamage] = Types.F32;
     readonly [SwordUpgradeOffer.AttackIntervalTicks] = Types.U16;
@@ -749,6 +768,9 @@ implements Component<SwordUpgradeOffer> {
     readonly [SwordUpgradeOffer.Acceleration] = Types.F32;
     readonly [SwordUpgradeOffer.MaximumSpiritPower] = Types.F32;
     readonly [SwordUpgradeOffer.SpiritRecoveryPerSecond] = Types.F32;
+    readonly [SwordUpgradeOffer.ScatterSpiritCost] = Types.F32;
+    readonly [SwordUpgradeOffer.FocusSpiritCost] = Types.F32;
+    readonly [SwordUpgradeOffer.FormationSpiritDrainPerSecond] = Types.F32;
 }
 
 export enum ChooseUpgradeRequest {

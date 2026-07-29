@@ -47,6 +47,7 @@ import {
     RogueUpgrade,
     RogueUpgradeCatalog,
 } from "../content/upgrades";
+import { SwordBlueprintCatalog } from "../content/swords";
 import { DemoSceneState } from "../simulation/state";
 import {
     ColdSwordIntent,
@@ -164,6 +165,8 @@ export class DemoRenderService extends Service {
     private readonly skills!: FlyingSwordSkillService;
     @Inject.resource(RogueUpgradeCatalog)
     private readonly upgrades!: RogueUpgradeCatalog;
+    @Inject.resource(SwordBlueprintCatalog)
+    private readonly swordBlueprints!: SwordBlueprintCatalog;
     @Inject.resource(FlyingSwordFormationCatalog)
     private readonly formations!: FlyingSwordFormationCatalog;
 
@@ -1626,13 +1629,19 @@ export class DemoRenderService extends Service {
         let upgradeA = 0;
         let upgradeB = 1;
         let upgradeC = 2;
+        let offeredBlueprint = 0;
         let offeredQuality = 1;
+        let offeredRecommendation = 0;
         let offeredMinimumDamage = 0;
         let offeredMaximumDamage = 0;
         let offeredAttackInterval = 0;
         let offeredMaximumSpeed = 0;
+        let offeredAcceleration = 0;
         let offeredMaximumSpirit = 0;
         let offeredSpiritRecovery = 0;
+        let offeredScatterSpiritCost = 0;
+        let offeredFocusSpiritCost = 0;
+        let offeredFormationSpiritDrain = 0;
         const runIter = runs.iter();
         while (runIter.next()) {
             const [
@@ -1667,11 +1676,21 @@ export class DemoRenderService extends Service {
             upgradeC = selection[UpgradeSelection.OptionC][0];
             const swordOffer =
                 selection[UpgradeSelection.SwordOffer][0];
+            offeredBlueprint = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.Blueprint,
+            ) ?? 0;
             offeredQuality = this.world.get(
                 swordOffer,
                 SwordUpgradeOfferType,
                 SwordUpgradeOffer.Quality,
             ) ?? 1;
+            offeredRecommendation = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.Recommendation,
+            ) ?? 0;
             offeredMinimumDamage = this.world.get(
                 swordOffer,
                 SwordUpgradeOfferType,
@@ -1692,6 +1711,11 @@ export class DemoRenderService extends Service {
                 SwordUpgradeOfferType,
                 SwordUpgradeOffer.MaximumSpeed,
             ) ?? 0;
+            offeredAcceleration = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.Acceleration,
+            ) ?? 0;
             offeredMaximumSpirit = this.world.get(
                 swordOffer,
                 SwordUpgradeOfferType,
@@ -1701,6 +1725,21 @@ export class DemoRenderService extends Service {
                 swordOffer,
                 SwordUpgradeOfferType,
                 SwordUpgradeOffer.SpiritRecoveryPerSecond,
+            ) ?? 0;
+            offeredScatterSpiritCost = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.ScatterSpiritCost,
+            ) ?? 0;
+            offeredFocusSpiritCost = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.FocusSpiritCost,
+            ) ?? 0;
+            offeredFormationSpiritDrain = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.FormationSpiritDrainPerSecond,
             ) ?? 0;
             break;
         }
@@ -1884,13 +1923,19 @@ export class DemoRenderService extends Service {
             upgradeA,
             upgradeB,
             upgradeC,
+            offeredBlueprint,
             offeredQuality,
+            offeredRecommendation,
             offeredMinimumDamage,
             offeredMaximumDamage,
             offeredAttackInterval,
             offeredMaximumSpeed,
+            offeredAcceleration,
             offeredMaximumSpirit,
             offeredSpiritRecovery,
+            offeredScatterSpiritCost,
+            offeredFocusSpiritCost,
+            offeredFormationSpiritDrain,
         );
 
         const mode = skillPhaseName(
@@ -1949,13 +1994,19 @@ export class DemoRenderService extends Service {
         first: number,
         second: number,
         third: number,
+        offeredBlueprint: number,
         offeredQuality: number,
+        offeredRecommendation: number,
         offeredMinimumDamage: number,
         offeredMaximumDamage: number,
         offeredAttackInterval: number,
         offeredMaximumSpeed: number,
+        offeredAcceleration: number,
         offeredMaximumSpirit: number,
         offeredSpiritRecovery: number,
+        offeredScatterSpiritCost: number,
+        offeredFocusSpiritCost: number,
+        offeredFormationSpiritDrain: number,
     ): void {
         this.view.upgradePanel.hidden = !active;
         if (!active) return;
@@ -1969,13 +2020,24 @@ export class DemoRenderService extends Service {
                 const base =
                     this.upgrades.descriptions[id] ?? "此道尚未明悟";
                 description.textContent = id === RogueUpgrade.AddSword
-                    ? `${base}\n剑品 ${offeredQuality} · 攻击 ` +
+                    ? `${base}\n${
+                        this.swordBlueprints.names[offeredBlueprint] ??
+                            "未知剑器"
+                    } · 剑品 ${offeredQuality} · 推荐 ${
+                        this.swordBlueprints.recommendationNames[
+                            offeredRecommendation
+                        ] ?? "未定"
+                    }\n攻击 ` +
                         `${offeredMinimumDamage.toFixed(0)}–` +
                         `${offeredMaximumDamage.toFixed(0)} · 间隔 ` +
                         `${offeredAttackInterval} 帧 · 飞速 ` +
-                        `${offeredMaximumSpeed.toFixed(1)} · 灵力 ` +
+                        `${offeredMaximumSpeed.toFixed(1)} · 加速 ` +
+                        `${offeredAcceleration.toFixed(1)}\n灵力 ` +
                         `${offeredMaximumSpirit.toFixed(0)} · 回灵 ` +
-                        `${offeredSpiritRecovery.toFixed(1)}/秒`
+                        `${offeredSpiritRecovery.toFixed(1)}/秒 · 消耗 ` +
+                        `分散 ${offeredScatterSpiritCost.toFixed(1)} / ` +
+                        `集火 ${offeredFocusSpiritCost.toFixed(1)} / ` +
+                        `剑阵 ${offeredFormationSpiritDrain.toFixed(1)}/秒`
                     : base;
             }
         }

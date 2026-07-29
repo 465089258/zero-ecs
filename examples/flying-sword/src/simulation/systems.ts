@@ -42,6 +42,7 @@ import {
     FlyingSwordVisualType,
 } from "../content/components";
 import { RogueRunTuning } from "../content/run-tuning";
+import { SwordBlueprintCatalog } from "../content/swords";
 import { DemoRenderService } from "../presentation/render-service";
 import type { Vector3Out } from "../presentation/types";
 import {
@@ -95,6 +96,8 @@ import {
     SwordAttackType,
     SwordSpiritPower,
     SwordSpiritPowerType,
+    SwordSpiritCost,
+    SwordSpiritCostType,
     RogueRunClock,
     RogueRunClockType,
     RogueRunIdentity,
@@ -137,6 +140,7 @@ const FocusReadySwordQuery = QueryType.from(With(
     FlyingSwordView,
     ControlledFlyingSwordTag,
     SwordSpiritPowerType,
+    SwordSpiritCostType,
 ));
 type FlyingSwords = QueryOf<typeof FocusReadySwordQuery>;
 
@@ -147,6 +151,7 @@ export const setupFlyingSwordDemoSystem = defSystem(
         Commands,
         FlyingSwordService,
         RogueRunTuning,
+        SwordBlueprintCatalog,
         Write(DemoSceneState),
     ],
 );
@@ -217,6 +222,7 @@ function setupFlyingSwordDemo(
     commands: Commands,
     flyingSwords: FlyingSwordService,
     tuning: Readonly<RogueRunTuning>,
+    swordCatalog: Readonly<SwordBlueprintCatalog>,
     scene: Mut<DemoSceneState>,
 ): void {
     const cultivatorCommand = commands.spawn();
@@ -378,6 +384,12 @@ function setupFlyingSwordDemo(
         .set(SwordBodyUnityType, SwordBodyUnity.Group, group)
         .submit();
     for (let slot = 0; slot < flyingSwordCount; slot++) {
+        const blueprint = slot % swordCatalog.count;
+        const minimumDamage = swordCatalog.minimumDamage[blueprint];
+        const maximumDamage =
+            minimumDamage + swordCatalog.damageSpread[blueprint];
+        const maximumSpirit =
+            swordCatalog.maximumSpiritPower[blueprint];
         const sword = flyingSwords.createSword({
             group,
             position: {
@@ -386,8 +398,8 @@ function setupFlyingSwordDemo(
                 z: -0.9,
             },
             slot,
-            maximumSpeed: 12 + (slot % 3) * 1.5,
-            acceleration: 38 + (slot % 4) * 4,
+            maximumSpeed: swordCatalog.maximumSpeed[blueprint],
+            acceleration: swordCatalog.acceleration[blueprint],
             controlled: slot < controlledSwordCount,
             controlSlot: slot,
         });
@@ -400,6 +412,7 @@ function setupFlyingSwordDemo(
             .add(SwordIdentityType)
             .add(SwordAttackType)
             .add(SwordSpiritPowerType)
+            .add(SwordSpiritCostType)
             .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
             .set(
                 FlyingSwordCombatType,
@@ -431,42 +444,57 @@ function setupFlyingSwordDemo(
                 ContainedSword.InventorySlot,
                 slot,
             )
-            .set(SwordIdentityType, SwordIdentity.Blueprint, slot % 4)
+            .set(SwordIdentityType, SwordIdentity.Blueprint, blueprint)
             .set(SwordIdentityType, SwordIdentity.Quality, 1)
             .set(
                 SwordAttackType,
                 SwordAttack.MinimumDamage,
-                12 + (slot % 4) * 2,
+                minimumDamage,
             )
             .set(
                 SwordAttackType,
                 SwordAttack.MaximumDamage,
-                18 + (slot % 4) * 3,
+                maximumDamage,
             )
             .set(
                 SwordAttackType,
                 SwordAttack.AttackIntervalTicks,
-                24 + (slot % 3) * 6,
+                swordCatalog.attackIntervalTicks[blueprint],
             )
             .set(
                 SwordSpiritPowerType,
                 SwordSpiritPower.Current,
-                80 + (slot % 3) * 10,
+                maximumSpirit,
             )
             .set(
                 SwordSpiritPowerType,
                 SwordSpiritPower.Maximum,
-                80 + (slot % 3) * 10,
+                maximumSpirit,
             )
             .set(
                 SwordSpiritPowerType,
                 SwordSpiritPower.RecoveryPerSecond,
-                12 + (slot % 3) * 2,
+                swordCatalog.spiritRecoveryPerSecond[blueprint],
             )
             .set(
                 SwordSpiritPowerType,
                 SwordSpiritPower.RecoveryStartTick,
                 0,
+            )
+            .set(
+                SwordSpiritCostType,
+                SwordSpiritCost.Scatter,
+                swordCatalog.scatterSpiritCost[blueprint],
+            )
+            .set(
+                SwordSpiritCostType,
+                SwordSpiritCost.Focus,
+                swordCatalog.focusSpiritCost[blueprint],
+            )
+            .set(
+                SwordSpiritCostType,
+                SwordSpiritCost.FormationPerSecond,
+                swordCatalog.formationSpiritDrainPerSecond[blueprint],
             )
             .set(
                 FlyingSwordPiercingSequenceType,
@@ -1211,22 +1239,23 @@ function assignFlyingSwordSkillTarget(
     target.z = z;
     const iter = swords.iter();
     while (iter.next()) {
-        const [count, entities, members, , spirits] = iter.current;
+        const [count, entities, members, , spirits, costs] =
+            iter.current;
         const groups = members[FlyingSwordMember.Group];
         const currentSpirits = spirits[SwordSpiritPower.Current];
+        const focusCosts = costs[SwordSpiritCost.Focus];
         for (let row = 0; row < count; row++) {
             if (groups[row] !== group) continue;
-            if (currentSpirits[row] <= 0) continue;
+            const spiritCost = focusCosts[row];
+            if (currentSpirits[row] < spiritCost) continue;
             currentSpirits[row] = Math.max(
                 0,
-                currentSpirits[row] - FOCUS_SPIRIT_COST,
+                currentSpirits[row] - spiritCost,
             );
             skills.setSkillTarget(entities[row], target);
         }
     }
 }
-
-const FOCUS_SPIRIT_COST = 24;
 
 function clampFocusTargetForCultivator(
     cultivators: Cultivators,

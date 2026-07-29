@@ -68,6 +68,7 @@ import {
     SwordBodyUnityPiercingSequenceType,
     SwordAttackType,
     SwordSpiritPowerType,
+    SwordSpiritCostType,
     StoneGolemChargeType,
     SwordWraithEmpowermentType,
     PendingFocusCastType,
@@ -308,6 +309,7 @@ export const RogueFlyingSwordCombatQuery = QueryType.from(With(
     FlyingSwordCombatType,
     SwordAttackType,
     SwordSpiritPowerType,
+    SwordSpiritCostType,
     ControlledFlyingSwordTag,
 ));
 
