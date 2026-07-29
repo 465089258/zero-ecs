@@ -272,6 +272,75 @@ canvas {
     line-height: 1.6;
 }
 
+.sword-replacement-panel {
+    overflow: auto;
+    place-content: safe center;
+}
+
+.replacement-hint {
+    max-width: 620px;
+    margin: -8px auto 16px;
+    color: #9bbcb4;
+    font-size: 13px;
+    text-align: center;
+}
+
+.sword-replacement-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 190px));
+    gap: 10px;
+    max-height: min(52vh, 430px);
+    overflow: auto;
+    padding: 3px;
+}
+
+.sword-replacement-options button {
+    border: 1px solid rgba(101, 221, 191, 0.28);
+    border-radius: 10px;
+    padding: 12px;
+    color: #e9fff8;
+    background: rgba(8, 24, 24, 0.94);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sword-replacement-options button:hover,
+.sword-replacement-options button:focus-visible {
+    outline: none;
+    border-color: #77e9cb;
+    box-shadow: 0 0 0 2px rgba(101, 221, 191, 0.13);
+}
+
+.sword-replacement-options strong,
+.sword-replacement-options small {
+    display: block;
+}
+
+.sword-replacement-options strong {
+    margin-bottom: 5px;
+    font-family: "STKaiti", "KaiTi", serif;
+    font-size: 17px;
+}
+
+.sword-replacement-options small {
+    color: #9bbcb4;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.replacement-cancel {
+    justify-self: center;
+    margin-top: 16px;
+    border: 1px solid rgba(213, 170, 116, 0.5);
+    border-radius: 999px;
+    padding: 8px 22px;
+    color: #ead8bf;
+    background: rgba(67, 43, 27, 0.75);
+    font: inherit;
+    cursor: pointer;
+}
+
 .result-overlay h2 {
     margin: 8px 0;
     font: 500 42px/1.1 "STKaiti", "KaiTi", serif;

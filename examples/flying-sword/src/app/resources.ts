@@ -23,5 +23,8 @@ export class DemoViewResource extends Resource {
             HTMLButtonElement,
             HTMLButtonElement,
         ],
+        readonly swordReplacementPanel: HTMLElement,
+        readonly swordReplacementOptions: HTMLElement,
+        readonly swordReplacementCancel: HTMLButtonElement,
     ) { super(); }
 }

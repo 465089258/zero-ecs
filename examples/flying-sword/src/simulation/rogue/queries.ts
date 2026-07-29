@@ -72,6 +72,11 @@ import {
     StoneGolemChargeType,
     SwordWraithEmpowermentType,
     PendingFocusCastType,
+    PendingSwordReplacementType,
+    ReplaceSwordRequestType,
+    ContainedSwordType,
+    SwordIdentityType,
+    SwordReplacementSelectionType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -275,6 +280,28 @@ export const RogueSwordWraithEmpowermentRenderQuery = QueryType.from(With(
 
 export const RogueChooseUpgradeRequestQuery = QueryType.from(With(
     ChooseUpgradeRequestType,
+));
+
+export const RogueSwordReplacementSelectionQuery = QueryType.from(With(
+    SwordReplacementSelectionType,
+));
+
+export const RoguePendingSwordReplacementQuery = QueryType.from(With(
+    PendingSwordReplacementType,
+));
+
+export const RogueReplaceSwordRequestQuery = QueryType.from(With(
+    ReplaceSwordRequestType,
+));
+
+/** 满剑夹替换面板所需的只读单剑属性。 */
+export const RogueSwordInventoryQuery = QueryType.from(With(
+    FlyingSwordView,
+    ContainedSwordType,
+    SwordIdentityType,
+    SwordAttackType,
+    SwordSpiritPowerType,
+    SwordSpiritCostType,
 ));
 
 /** Integration 专用：公共飞剑投影 + 动作身份，不依赖飞剑内部 Storage。 */

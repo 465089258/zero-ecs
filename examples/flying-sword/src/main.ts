@@ -58,6 +58,9 @@ const view = new DemoViewResource(
         element("upgrade-2", HTMLButtonElement),
         element("upgrade-3", HTMLButtonElement),
     ],
+    element("sword-replacement-panel", HTMLElement),
+    element("sword-replacement-options", HTMLElement),
+    element("sword-replacement-cancel", HTMLButtonElement),
 );
 view.restartButton.addEventListener("click", () => window.location.reload());
 const pixi = await DemoPixiResource.create(canvas);

@@ -34,6 +34,7 @@ import {
     progressAlongSegment3,
     rogueRequiredExperienceFor,
     rollSwordOfferValues,
+    swordContainerNeedsReplacement,
     squaredDistanceToSegment3,
     type SwordOfferRollOut,
 } from "../../examples/flying-sword/src/simulation/rogue/systems";
@@ -145,6 +146,12 @@ import {
     StoneGolemChargeType,
     SwordWraithEmpowerment,
     SwordWraithEmpowermentType,
+    PendingSwordReplacement,
+    PendingSwordReplacementType,
+    ReplaceSwordRequest,
+    ReplaceSwordRequestType,
+    SwordReplacementSelection,
+    SwordReplacementSelectionType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
 import {
     RogueDamageRequestQuery,
@@ -868,6 +875,32 @@ test("sword offers are deterministic and stay inside the catalog", () => {
         seen.add(left.blueprint);
     }
     expect(seen.size).toBe(catalog.count);
+});
+
+test("full sword containers enter a persistent replacement transaction", () => {
+    expect(swordContainerNeedsReplacement(11, 12)).toBe(false);
+    expect(swordContainerNeedsReplacement(12, 12)).toBe(true);
+    expect(swordContainerNeedsReplacement(49, 64)).toBe(true);
+
+    const selection = new SwordReplacementSelectionType();
+    expect(
+        selection[SwordReplacementSelection.Offer],
+    ).toBeDefined();
+    expect(
+        selection[SwordReplacementSelection.Container],
+    ).toBeDefined();
+
+    const request = new ReplaceSwordRequestType();
+    expect(request[ReplaceSwordRequest.Offer]).toBeDefined();
+    expect(request[ReplaceSwordRequest.Outgoing]).toBeDefined();
+
+    const pending = new PendingSwordReplacementType();
+    expect(pending[PendingSwordReplacement.Offer]).toBeDefined();
+    expect(pending[PendingSwordReplacement.Outgoing]).toBeDefined();
+    expect(pending[PendingSwordReplacement.Container]).toBeDefined();
+    expect(
+        pending[PendingSwordReplacement.InventorySlot],
+    ).toBeDefined();
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {

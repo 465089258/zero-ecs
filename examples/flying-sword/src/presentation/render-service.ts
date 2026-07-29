@@ -1,7 +1,9 @@
 import {
     Inject,
+    INVALID_ENTITY,
     Service,
     World,
+    type Entity,
     type QueryOf,
 } from "@zero-ecs/game";
 import {
@@ -11,6 +13,8 @@ import {
     FlyingSwordFormationPlanId,
     FlyingSwordGroupQuery,
     FlyingSwordMode,
+    ControlledFlyingSwordTag,
+    PendingFlyingSwordRetireTag,
     FlyingSwordStance,
     FlyingSwordSkillPhase,
     FlyingSwordSkillService,
@@ -83,6 +87,12 @@ import {
     SwordUpgradeOfferType,
     SwordContainer,
     SwordContainerType,
+    ContainedSword,
+    SwordAttack,
+    SwordIdentity,
+    SwordSpiritCost,
+    SwordSpiritPower,
+    SwordReplacementSelection,
 } from "../simulation/rogue/components";
 import {
     RogueEnemyRenderQuery,
@@ -92,6 +102,8 @@ import {
     RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
+    RogueSwordInventoryQuery,
+    RogueSwordReplacementSelectionQuery,
     RogueStoneGolemChargeRenderQuery,
     RogueSwordWraithEmpowermentRenderQuery,
 } from "../simulation/rogue/queries";
@@ -118,6 +130,9 @@ type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
 type FireBursts = QueryOf<typeof RogueFireBurstQuery>;
 type SwordBuilds = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
+type ReplacementSelections =
+    QueryOf<typeof RogueSwordReplacementSelectionQuery>;
+type SwordInventory = QueryOf<typeof RogueSwordInventoryQuery>;
 
 enum RenderKind {
     SwordShadow,
@@ -265,6 +280,7 @@ export class DemoRenderService extends Service {
     private followedX = 0;
     private followedY = 0;
     private followedZ = 0;
+    private replacementOffer = INVALID_ENTITY;
 
     init(): void {
         const swordTextures = this.pixi.swordTextures;
@@ -315,6 +331,8 @@ export class DemoRenderService extends Service {
         swordBuilds: SwordBuilds,
         groups: SwordGroups,
         swords: Swords,
+        replacementSelections: ReplacementSelections,
+        swordInventory: SwordInventory,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
         const tick = this.readRunTick(runs);
@@ -354,13 +372,17 @@ export class DemoRenderService extends Service {
         this.queue.sort();
         this.drawSortedItems();
         if (this.statusCountdown === 0) {
-            this.drawStatus(
-                scene,
-                runs,
-                cultivators,
-                swordBuilds,
-                skillPhase,
-            );
+        this.drawStatus(
+            scene,
+            runs,
+            cultivators,
+            swordBuilds,
+            skillPhase,
+        );
+        this.updateSwordReplacementPanel(
+            replacementSelections,
+            swordInventory,
+        );
             this.statusCountdown = STATUS_UPDATE_INTERVAL_FRAMES - 1;
         } else {
             this.statusCountdown--;
@@ -2042,6 +2064,168 @@ export class DemoRenderService extends Service {
             }
         }
     }
+
+    private updateSwordReplacementPanel(
+        selections: ReplacementSelections,
+        inventory: SwordInventory,
+    ): void {
+        let offer = INVALID_ENTITY;
+        let container = INVALID_ENTITY;
+        const selectionIter = selections.iter();
+        while (selectionIter.next()) {
+            const [count, , data] = selectionIter.current;
+            if (count === 0) continue;
+            offer = data[SwordReplacementSelection.Offer][0];
+            container = data[SwordReplacementSelection.Container][0];
+            break;
+        }
+        const panel = this.view.swordReplacementPanel;
+        panel.hidden = offer === INVALID_ENTITY;
+        if (offer === INVALID_ENTITY) {
+            this.replacementOffer = INVALID_ENTITY;
+            delete panel.dataset.offer;
+            return;
+        }
+        panel.dataset.offer = String(offer);
+        if (this.replacementOffer === offer) return;
+        this.replacementOffer = offer;
+
+        const offeredBlueprint = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Blueprint,
+        ) ?? 0;
+        const offeredQuality = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Quality,
+        ) ?? 1;
+        const offeredMinimumDamage = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MinimumDamage,
+        ) ?? 0;
+        const offeredMaximumDamage = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MaximumDamage,
+        ) ?? 0;
+        const offeredInterval = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.AttackIntervalTicks,
+        ) ?? 0;
+        const offeredMaximumSpirit = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MaximumSpiritPower,
+        ) ?? 0;
+        const offeredFocusCost = this.world.get(
+            offer,
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.FocusSpiritCost,
+        ) ?? 0;
+        const proposed = `${
+            this.swordBlueprints.names[offeredBlueprint] ?? "未知剑器"
+        }·品${offeredQuality} 攻${offeredMinimumDamage.toFixed(0)}–${
+            offeredMaximumDamage.toFixed(0)
+        } 间隔${offeredInterval} 灵力${offeredMaximumSpirit.toFixed(0)} ` +
+            `集火耗${offeredFocusCost.toFixed(1)}`;
+
+        const candidates: SwordReplacementCandidate[] = [];
+        const inventoryIter = inventory.iter();
+        while (inventoryIter.next()) {
+            const [
+                count,
+                entities,
+                ,
+                contained,
+                identities,
+                attacks,
+                spirits,
+                costs,
+            ] = inventoryIter.current;
+            const containers = contained[ContainedSword.Container];
+            const inventorySlots =
+                contained[ContainedSword.InventorySlot];
+            const blueprints = identities[SwordIdentity.Blueprint];
+            const qualities = identities[SwordIdentity.Quality];
+            const minimumDamages = attacks[SwordAttack.MinimumDamage];
+            const maximumDamages = attacks[SwordAttack.MaximumDamage];
+            const intervals =
+                attacks[SwordAttack.AttackIntervalTicks];
+            const currentSpirits = spirits[SwordSpiritPower.Current];
+            const maximumSpirits = spirits[SwordSpiritPower.Maximum];
+            const focusCosts = costs[SwordSpiritCost.Focus];
+            for (let row = 0; row < count; row++) {
+                if (containers[row] !== container) continue;
+                candidates.push({
+                    entity: entities[row],
+                    slot: inventorySlots[row],
+                    blueprint: blueprints[row],
+                    quality: qualities[row],
+                    minimumDamage: minimumDamages[row],
+                    maximumDamage: maximumDamages[row],
+                    interval: intervals[row],
+                    currentSpirit: currentSpirits[row],
+                    maximumSpirit: maximumSpirits[row],
+                    focusCost: focusCosts[row],
+                    controlled: this.world.has(
+                        entities[row],
+                        ControlledFlyingSwordTag,
+                    ),
+                    pending: this.world.has(
+                        entities[row],
+                        PendingFlyingSwordRetireTag,
+                    ),
+                });
+            }
+        }
+        candidates.sort((left, right) => left.slot - right.slot);
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < candidates.length; index++) {
+            const sword = candidates[index];
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.outgoing = String(sword.entity);
+            const name = document.createElement("strong");
+            name.textContent = `${index + 1}. ${
+                this.swordBlueprints.names[sword.blueprint] ?? "旧剑"
+            } · 剑位 ${sword.slot}`;
+            const description = document.createElement("small");
+            const state = sword.pending
+                ? "等待归阵"
+                : sword.controlled
+                    ? "神识受控"
+                    : "背后待命";
+            description.textContent =
+                `${state} · 品${sword.quality} ` +
+                `攻${sword.minimumDamage.toFixed(0)}–` +
+                `${sword.maximumDamage.toFixed(0)} ` +
+                `间隔${sword.interval} 灵力` +
+                `${sword.currentSpirit.toFixed(0)}/` +
+                `${sword.maximumSpirit.toFixed(0)} ` +
+                `集火耗${sword.focusCost.toFixed(1)}\n→ ${proposed}`;
+            button.append(name, description);
+            fragment.append(button);
+        }
+        this.view.swordReplacementOptions.replaceChildren(fragment);
+    }
+}
+
+interface SwordReplacementCandidate {
+    readonly entity: Entity;
+    readonly slot: number;
+    readonly blueprint: number;
+    readonly quality: number;
+    readonly minimumDamage: number;
+    readonly maximumDamage: number;
+    readonly interval: number;
+    readonly currentSpirit: number;
+    readonly maximumSpirit: number;
+    readonly focusCost: number;
+    readonly controlled: boolean;
+    readonly pending: boolean;
 }
 
 function skillPhaseName(

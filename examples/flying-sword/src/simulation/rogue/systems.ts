@@ -20,7 +20,12 @@ import {
     FlyingSwordQuery,
     FlyingSwordService,
     FlyingSwordSystemSet,
+    PendingFlyingSwordRetireTag,
 } from "../../domain/flying-sword";
+import {
+    FlyingSwordSkillActionStorage,
+    FlyingSwordTaskStorage,
+} from "../../domain/flying-sword/runtime/storage";
 import { Float3 } from "../../infrastructure/math";
 import {
     MotionSystemSet,
@@ -88,6 +93,9 @@ import {
     SwordUpgradeOffer,
     SwordUpgradeOfferType,
     PlayerMovement,
+    PendingSwordReplacement,
+    PendingSwordReplacementType,
+    ReplaceSwordRequest,
     RogueRunClock,
     RogueRunIdentity,
     RogueRunPhase,
@@ -97,6 +105,8 @@ import {
     RogueRunTarget,
     SwordBodyUnity,
     SwordBodyUnityType,
+    SwordReplacementSelection,
+    SwordReplacementSelectionType,
     UpgradeSelection,
 } from "./components";
 import { RogueContentService } from "./content-service";
@@ -109,6 +119,9 @@ import {
     RogueExperiencePickupQuery,
     RoguePlayerQuery,
     RogueRunQuery,
+    RoguePendingSwordReplacementQuery,
+    RogueReplaceSwordRequestQuery,
+    RogueSwordReplacementSelectionQuery,
 } from "./queries";
 import {
     RogueEntityAccessState,
@@ -122,6 +135,12 @@ type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
 type DamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 type AutoGroups = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type UpgradeRequests = QueryOf<typeof RogueChooseUpgradeRequestQuery>;
+type ReplacementSelections =
+    QueryOf<typeof RogueSwordReplacementSelectionQuery>;
+type PendingReplacements =
+    QueryOf<typeof RoguePendingSwordReplacementQuery>;
+type ReplacementRequests =
+    QueryOf<typeof RogueReplaceSwordRequestQuery>;
 type FlyingSwords = QueryOf<typeof FlyingSwordQuery>;
 
 export const RogueSystemSet = Object.freeze({
@@ -163,11 +182,15 @@ export const applyRogueUpgradeRequestsSystem = defSystem(
         Commands,
         World,
         FlyingSwordService,
+        RogueRunControlService,
         RogueRunQuery,
         RoguePlayerQuery,
         RogueAutoFlyingSwordGroupQuery,
         FlyingSwordQuery,
         RogueChooseUpgradeRequestQuery,
+        RogueSwordReplacementSelectionQuery,
+        RoguePendingSwordReplacementQuery,
+        RogueReplaceSwordRequestQuery,
     ],
 );
 
@@ -348,12 +371,35 @@ function applyRogueUpgradeRequests(
     commands: Commands,
     world: World,
     flyingSwords: FlyingSwordService,
+    control: RogueRunControlService,
     runs: Runs,
     players: Players,
     groups: AutoGroups,
     swords: FlyingSwords,
     requests: UpgradeRequests,
+    replacementSelections: ReplacementSelections,
+    pendingReplacements: PendingReplacements,
+    replacementRequests: ReplacementRequests,
 ): void {
+    applySwordReplacementRequests(
+        commands,
+        world,
+        flyingSwords,
+        runs,
+        players,
+        swords,
+        replacementSelections,
+        replacementRequests,
+    );
+    completePendingSwordReplacements(
+        commands,
+        world,
+        flyingSwords,
+        runs,
+        players,
+        swords,
+        pendingReplacements,
+    );
     const requestIter = requests.iter();
     while (requestIter.next()) {
         const [count, entities, data] = requestIter.current;
@@ -397,6 +443,7 @@ function applyRogueUpgradeRequests(
                 break;
             }
             if (upgrade >= 0 && activeSelection) {
+                let keepSwordOffer = false;
                 applyUpgradeToPlayer(upgrade, players);
                 applyUpgradeToSwordGroup(
                     upgrade,
@@ -407,17 +454,35 @@ function applyRogueUpgradeRequests(
                 );
                 applyUpgradeToSwordContainer(upgrade, world, runs);
                 if (upgrade === RogueUpgrade.AddSword) {
-                    addFlyingSword(
-                        commands,
-                        world,
-                        flyingSwords,
-                        runs,
-                        players,
-                        swords,
-                        swordOffer,
-                    );
+                    if (
+                        isSwordContainerFull(
+                            world,
+                            runs,
+                            swords,
+                        )
+                    ) {
+                        keepSwordOffer = openSwordReplacementSelection(
+                            commands,
+                            runs,
+                            swordOffer,
+                        );
+                        if (keepSwordOffer) control.pauseForUpgrade();
+                    } else {
+                        addFlyingSword(
+                            commands,
+                            world,
+                            flyingSwords,
+                            runs,
+                            players,
+                            swords,
+                            swordOffer,
+                        );
+                    }
                 }
-                if (swordOffer !== INVALID_ENTITY) {
+                if (
+                    swordOffer !== INVALID_ENTITY &&
+                    !keepSwordOffer
+                ) {
                     commands.entity(swordOffer).despawn().submit();
                 }
                 activeSelection[0] = 0;
@@ -428,6 +493,293 @@ function applyRogueUpgradeRequests(
     }
 }
 
+function isSwordContainerFull(
+    world: World,
+    runs: Runs,
+    swords: FlyingSwords,
+): boolean {
+    let group = INVALID_ENTITY;
+    let container = INVALID_ENTITY;
+    const runIter = runs.iter();
+    while (runIter.next()) {
+        const [count, , identities] = runIter.current;
+        if (count === 0) continue;
+        group = identities[RogueRunIdentity.SwordGroup][0] as Entity;
+        container =
+            identities[RogueRunIdentity.SwordContainer][0] as Entity;
+        break;
+    }
+    if (group === INVALID_ENTITY || container === INVALID_ENTITY) {
+        return true;
+    }
+    const capacity = world.get(
+        container,
+        SwordContainerType,
+        SwordContainer.Capacity,
+    ) ?? 0;
+    let count = 0;
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [chunkCount, , members] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < chunkCount; row++) {
+            if (groups[row] === group) count++;
+        }
+    }
+    return swordContainerNeedsReplacement(count, capacity);
+}
+
+export function swordContainerNeedsReplacement(
+    swordCount: number,
+    capacity: number,
+): boolean {
+    return swordCount >= capacity ||
+        swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT;
+}
+
+function openSwordReplacementSelection(
+    commands: Commands,
+    runs: Runs,
+    offer: Entity,
+): boolean {
+    if (offer === INVALID_ENTITY) return false;
+    let container = INVALID_ENTITY;
+    const iter = runs.iter();
+    while (iter.next()) {
+        const [count, , identities] = iter.current;
+        if (count === 0) continue;
+        container =
+            identities[RogueRunIdentity.SwordContainer][0] as Entity;
+        break;
+    }
+    if (container === INVALID_ENTITY) return false;
+    commands
+        .spawn()
+        .add(SwordReplacementSelectionType)
+        .set(
+            SwordReplacementSelectionType,
+            SwordReplacementSelection.Offer,
+            offer,
+        )
+        .set(
+            SwordReplacementSelectionType,
+            SwordReplacementSelection.Container,
+            container,
+        )
+        .submit();
+    return true;
+}
+
+function applySwordReplacementRequests(
+    commands: Commands,
+    world: World,
+    flyingSwords: FlyingSwordService,
+    runs: Runs,
+    players: Players,
+    swords: FlyingSwords,
+    selections: ReplacementSelections,
+    requests: ReplacementRequests,
+): void {
+    const requestIter = requests.iter();
+    while (requestIter.next()) {
+        const [count, entities, data] = requestIter.current;
+        const offers = data[ReplaceSwordRequest.Offer];
+        const outgoings = data[ReplaceSwordRequest.Outgoing];
+        for (let row = 0; row < count; row++) {
+            const offer = offers[row] as Entity;
+            const outgoing = outgoings[row] as Entity;
+            let selection = INVALID_ENTITY;
+            let container = INVALID_ENTITY;
+            const selectionIter = selections.iter();
+            while (selectionIter.next()) {
+                const [
+                    selectionCount,
+                    selectionEntities,
+                    selectionData,
+                ] = selectionIter.current;
+                const selectionOffers =
+                    selectionData[SwordReplacementSelection.Offer];
+                const selectionContainers =
+                    selectionData[SwordReplacementSelection.Container];
+                for (
+                    let selectionRow = 0;
+                    selectionRow < selectionCount;
+                    selectionRow++
+                ) {
+                    if (selectionOffers[selectionRow] !== offer) continue;
+                    selection = selectionEntities[selectionRow];
+                    container =
+                        selectionContainers[selectionRow] as Entity;
+                    break;
+                }
+                if (selection !== INVALID_ENTITY) break;
+            }
+            if (selection === INVALID_ENTITY) {
+                commands.entity(entities[row]).despawn().submit();
+                continue;
+            }
+            if (outgoing === INVALID_ENTITY) {
+                commands.entity(offer).despawn().submit();
+                commands.entity(selection).despawn().submit();
+                commands.entity(entities[row]).despawn().submit();
+                continue;
+            }
+            const outgoingContainer = world.get(
+                outgoing,
+                ContainedSwordType,
+                ContainedSword.Container,
+            );
+            const inventorySlot = world.get(
+                outgoing,
+                ContainedSwordType,
+                ContainedSword.InventorySlot,
+            );
+            if (
+                outgoingContainer !== container ||
+                inventorySlot === null
+            ) {
+                commands.entity(entities[row]).despawn().submit();
+                continue;
+            }
+            if (isFlyingSwordActionActive(world, outgoing)) {
+                const command = commands
+                    .entity(selection)
+                    .remove(SwordReplacementSelectionType)
+                    .add(PendingSwordReplacementType)
+                    .set(
+                        PendingSwordReplacementType,
+                        PendingSwordReplacement.Offer,
+                        offer,
+                    )
+                    .set(
+                        PendingSwordReplacementType,
+                        PendingSwordReplacement.Outgoing,
+                        outgoing,
+                    )
+                    .set(
+                        PendingSwordReplacementType,
+                        PendingSwordReplacement.Container,
+                        container,
+                    )
+                    .set(
+                        PendingSwordReplacementType,
+                        PendingSwordReplacement.InventorySlot,
+                        inventorySlot,
+                    );
+                command.submit();
+                if (!world.has(outgoing, PendingFlyingSwordRetireTag)) {
+                    commands
+                        .entity(outgoing)
+                        .add(PendingFlyingSwordRetireTag)
+                        .submit();
+                }
+            } else {
+                replaceFlyingSword(
+                    commands,
+                    world,
+                    flyingSwords,
+                    runs,
+                    players,
+                    swords,
+                    selection,
+                    offer,
+                    outgoing,
+                    inventorySlot,
+                );
+            }
+            commands.entity(entities[row]).despawn().submit();
+        }
+    }
+}
+
+function completePendingSwordReplacements(
+    commands: Commands,
+    world: World,
+    flyingSwords: FlyingSwordService,
+    runs: Runs,
+    players: Players,
+    swords: FlyingSwords,
+    pending: PendingReplacements,
+): void {
+    const iter = pending.iter();
+    while (iter.next()) {
+        const [count, entities, data] = iter.current;
+        const offers = data[PendingSwordReplacement.Offer];
+        const outgoings = data[PendingSwordReplacement.Outgoing];
+        const inventorySlots =
+            data[PendingSwordReplacement.InventorySlot];
+        for (let row = 0; row < count; row++) {
+            const outgoing = outgoings[row] as Entity;
+            if (isFlyingSwordActionActive(world, outgoing)) continue;
+            replaceFlyingSword(
+                commands,
+                world,
+                flyingSwords,
+                runs,
+                players,
+                swords,
+                entities[row],
+                offers[row] as Entity,
+                outgoing,
+                inventorySlots[row],
+            );
+        }
+    }
+}
+
+function isFlyingSwordActionActive(
+    world: World,
+    sword: Entity,
+): boolean {
+    return world.has(sword, FlyingSwordTaskStorage) ||
+        world.has(sword, FlyingSwordSkillActionStorage);
+}
+
+interface FlyingSwordReplacement {
+    readonly inventorySlot: number;
+    readonly controlled: boolean;
+    readonly controlSlot: number;
+}
+
+function replaceFlyingSword(
+    commands: Commands,
+    world: World,
+    flyingSwords: FlyingSwordService,
+    runs: Runs,
+    players: Players,
+    swords: FlyingSwords,
+    transaction: Entity,
+    offer: Entity,
+    outgoing: Entity,
+    inventorySlot: number,
+): void {
+    const controlled = world.has(outgoing, ControlledFlyingSwordTag);
+    const controlSlot = controlled
+        ? world.get(
+            outgoing,
+            FlyingSwordControlAssignmentType,
+            FlyingSwordControlAssignment.Slot,
+        ) ?? 0
+        : 0;
+    commands.entity(outgoing).despawn().submit();
+    const added = addFlyingSword(
+        commands,
+        world,
+        flyingSwords,
+        runs,
+        players,
+        swords,
+        offer,
+        {
+            inventorySlot,
+            controlled,
+            controlSlot,
+        },
+    );
+    if (added) commands.entity(offer).despawn().submit();
+    commands.entity(transaction).despawn().submit();
+}
+
 function addFlyingSword(
     commands: Commands,
     world: World,
@@ -436,7 +788,8 @@ function addFlyingSword(
     players: Players,
     swords: FlyingSwords,
     swordOffer: Entity,
-): void {
+    replacement?: FlyingSwordReplacement,
+): boolean {
     let group = 0 as Entity;
     let container = 0 as Entity;
     const runIter = runs.iter();
@@ -447,7 +800,7 @@ function addFlyingSword(
         container = identities[RogueRunIdentity.SwordContainer][0];
         break;
     }
-    if (group === 0 || container === 0) return;
+    if (group === 0 || container === 0) return false;
     const offeredBlueprint = world.get(
         swordOffer,
         SwordUpgradeOfferType,
@@ -532,9 +885,12 @@ function addFlyingSword(
         SwordContainer.Capacity,
     ) ?? 0;
     if (
-        swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT ||
-        swordCount >= capacity
-    ) return;
+        !replacement &&
+        (
+            swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT ||
+            swordCount >= capacity
+        )
+    ) return false;
 
     let x = 0;
     let y = 0.9;
@@ -555,11 +911,14 @@ function addFlyingSword(
             spiritual[SpiritualSense.Bonus][0];
         break;
     }
-    const slot = maximumSlot + 1;
-    const deployImmediately = controlledSwordCount < controlLimit;
-    const controlSlot = deployImmediately
-        ? findAvailableControlSlot(world, swords, group)
-        : 0;
+    const slot = replacement?.inventorySlot ?? maximumSlot + 1;
+    const deployImmediately = replacement?.controlled ??
+        controlledSwordCount < controlLimit;
+    const controlSlot = replacement
+        ? replacement.controlSlot
+        : deployImmediately
+            ? findAvailableControlSlot(world, swords, group)
+            : 0;
     const sword = flyingSwords.createSword({
         group,
         position: {
@@ -675,8 +1034,11 @@ function addFlyingSword(
         .submit();
     flyingSwords.setFormationSize(
         group,
-        controlledSwordCount + (deployImmediately ? 1 : 0),
+        controlledSwordCount +
+            (deployImmediately ? 1 : 0) -
+            (replacement?.controlled ? 1 : 0),
     );
+    return true;
 }
 
 function findAvailableControlSlot(

@@ -773,6 +773,46 @@ implements Component<SwordUpgradeOffer> {
     readonly [SwordUpgradeOffer.FormationSpiritDrainPerSecond] = Types.F32;
 }
 
+/** 剑夹已满时保持存活的替换选择事务。 */
+export enum SwordReplacementSelection {
+    Offer,
+    Container,
+}
+
+export class SwordReplacementSelectionType
+implements Component<SwordReplacementSelection> {
+    readonly [SwordReplacementSelection.Offer] = Types.Entity;
+    readonly [SwordReplacementSelection.Container] = Types.Entity;
+}
+
+/** 表现层提交的替换决定；Outgoing 无效表示放弃新剑。 */
+export enum ReplaceSwordRequest {
+    Offer,
+    Outgoing,
+}
+
+export class ReplaceSwordRequestType
+implements Component<ReplaceSwordRequest> {
+    readonly [ReplaceSwordRequest.Offer] = Types.Entity;
+    readonly [ReplaceSwordRequest.Outgoing] = Types.Entity;
+}
+
+/** 动作中的旧剑等待安全退役时，事务持有的稳定替换上下文。 */
+export enum PendingSwordReplacement {
+    Offer,
+    Outgoing,
+    Container,
+    InventorySlot,
+}
+
+export class PendingSwordReplacementType
+implements Component<PendingSwordReplacement> {
+    readonly [PendingSwordReplacement.Offer] = Types.Entity;
+    readonly [PendingSwordReplacement.Outgoing] = Types.Entity;
+    readonly [PendingSwordReplacement.Container] = Types.Entity;
+    readonly [PendingSwordReplacement.InventorySlot] = Types.U16;
+}
+
 export enum ChooseUpgradeRequest {
     Slot,
 }

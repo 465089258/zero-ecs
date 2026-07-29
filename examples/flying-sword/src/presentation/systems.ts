@@ -14,6 +14,8 @@ import {
     RogueLightningArcQuery,
     RoguePlayerQuery,
     RogueRunQuery,
+    RogueSwordInventoryQuery,
+    RogueSwordReplacementSelectionQuery,
     RogueStoneGolemChargeRenderQuery,
     RogueSwordWraithEmpowermentRenderQuery,
 } from "../simulation/rogue/queries";
@@ -46,6 +48,8 @@ export const renderFlyingSwordDemoSystem = defSystem(
         RogueAutoFlyingSwordGroupQuery,
         FlyingSwordGroupQuery,
         DemoFlyingSwordRenderQuery,
+        RogueSwordReplacementSelectionQuery,
+        RogueSwordInventoryQuery,
     ],
 );
 
@@ -70,6 +74,9 @@ function renderFlyingSwordDemo(
     swordBuilds: Parameters<DemoRenderService["render"]>[11],
     groups: Parameters<DemoRenderService["render"]>[12],
     swords: Parameters<DemoRenderService["render"]>[13],
+    replacementSelections:
+        Parameters<DemoRenderService["render"]>[14],
+    swordInventory: Parameters<DemoRenderService["render"]>[15],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -86,5 +93,7 @@ function renderFlyingSwordDemo(
         swordBuilds,
         groups,
         swords,
+        replacementSelections,
+        swordInventory,
     );
 }
