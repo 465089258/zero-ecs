@@ -105,6 +105,52 @@ export class HealthType implements Component<Health> {
     readonly [Health.Maximum] = Types.F32;
 }
 
+export enum HealingKind {
+    Regeneration,
+    Leech,
+    OnKill,
+    Pickup,
+    Skill,
+}
+
+/** 所有生命恢复来源共用的短生命周期请求事实。 */
+export enum HealingRequest {
+    Source,
+    Target,
+    Amount,
+    Kind,
+}
+
+export class HealingRequestType implements Component<HealingRequest> {
+    readonly [HealingRequest.Source] = Types.Entity;
+    readonly [HealingRequest.Target] = Types.Entity;
+    readonly [HealingRequest.Amount] = Types.F32;
+    readonly [HealingRequest.Kind] = Types.U8;
+}
+
+/** 恢复请求结算后的实际收益和溢出事实。 */
+export enum ResolvedHealing {
+    Applied,
+    Overflow,
+}
+
+export class ResolvedHealingType implements Component<ResolvedHealing> {
+    readonly [ResolvedHealing.Applied] = Types.F32;
+    readonly [ResolvedHealing.Overflow] = Types.F32;
+}
+
+/** 实体每秒产生的自然生命恢复能力。 */
+export enum LifeRegeneration {
+    FlatPerSecond,
+    MaximumLifePerSecondRatio,
+}
+
+export class LifeRegenerationType
+implements Component<LifeRegeneration> {
+    readonly [LifeRegeneration.FlatPerSecond] = Types.F32;
+    readonly [LifeRegeneration.MaximumLifePerSecondRatio] = Types.F32;
+}
+
 export enum PlayerMovement {
     Speed,
 }

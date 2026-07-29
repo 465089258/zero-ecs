@@ -45,11 +45,13 @@ import {
     FocusSwordHitHistoryType,
     FocusCastPowerType,
     HealthType,
+    HealingRequestType,
     LevelExperienceType,
     LightningArcEnd3Type,
     LightningArcStart3Type,
     LightningArcType,
     LightningSwordIntentType,
+    LifeRegenerationType,
     MetalSwordIntentType,
     PiercingDamageType,
     PlayerMovementType,
@@ -74,6 +76,7 @@ import {
     PendingFocusCastType,
     PendingSwordReplacementType,
     ReplaceSwordRequestType,
+    ResolvedHealingType,
     ContainedSwordType,
     SwordIdentityType,
     SwordReplacementSelectionType,
@@ -105,6 +108,20 @@ export const RoguePlayerQuery = QueryType.from(With(
     PlayerStaminaType,
     PlayerManaType,
     SpiritualSenseType,
+));
+
+export const RogueLifeRegenerationQuery = QueryType.from(With(
+    HealthType,
+    LifeRegenerationType,
+));
+
+export const RogueHealingRequestQuery = QueryType.from(With(
+    HealingRequestType,
+));
+
+export const RogueResolvedHealingQuery = QueryType.from(With(
+    HealingRequestType,
+    ResolvedHealingType,
 ));
 
 /** 敌人行为只读取玩家空间位置，不耦合玩家战斗与成长组件。 */

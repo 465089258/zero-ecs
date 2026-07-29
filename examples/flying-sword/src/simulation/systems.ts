@@ -68,6 +68,8 @@ import {
     FireSwordIntentType,
     Health,
     HealthType,
+    LifeRegeneration,
+    LifeRegenerationType,
     LevelExperience,
     LevelExperienceType,
     LightningSwordIntent,
@@ -235,6 +237,7 @@ function setupFlyingSwordDemo(
         .add(MoveTowards3Type)
         .add(CultivatorTag)
         .add(HealthType)
+        .add(LifeRegenerationType)
         .add(PlayerMovementType)
         .add(LevelExperienceType)
         .add(PlayerPickupType)
@@ -263,6 +266,16 @@ function setupFlyingSwordDemo(
         .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.04)
         .set(HealthType, Health.Current, 100)
         .set(HealthType, Health.Maximum, 100)
+        .set(
+            LifeRegenerationType,
+            LifeRegeneration.FlatPerSecond,
+            tuning.initialLifeRegenerationPerSecond,
+        )
+        .set(
+            LifeRegenerationType,
+            LifeRegeneration.MaximumLifePerSecondRatio,
+            0,
+        )
         .set(PlayerMovementType, PlayerMovement.Speed, 5.4)
         .set(LevelExperienceType, LevelExperience.Level, 1)
         .set(LevelExperienceType, LevelExperience.Current, 0)

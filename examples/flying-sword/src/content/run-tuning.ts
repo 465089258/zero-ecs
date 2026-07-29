@@ -9,6 +9,7 @@ export class RogueRunTuning extends Resource {
     readonly budgetGrowthPerTick = 0.0000025;
     readonly maximumSpawnsPerTick = 6;
     readonly contactCooldownTicks = 45;
+    readonly initialLifeRegenerationPerSecond = 0.75;
     readonly initialStamina = 100;
     readonly fusionStaminaDrainPerSecond = 40;
     readonly staminaRecoveryPerSecond = 22;

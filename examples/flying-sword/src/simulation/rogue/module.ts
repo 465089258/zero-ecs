@@ -95,6 +95,12 @@ import {
     applyEnemyEmpowermentModifiersSystem,
     pulseSwordWraithEmpowermentSystem,
 } from "./enemy/sword-wraith-empowerment-system";
+import {
+    RecoverySystemOptions,
+    cleanupHealingFactsSystem,
+    generateLifeRegenerationSystem,
+    resolveHealingRequestsSystem,
+} from "./recovery-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -122,6 +128,18 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             advanceRogueRunClockSystem,
             RogueSystemOptions.clock,
+        );
+        builder.addSystem(
+            generateLifeRegenerationSystem,
+            RecoverySystemOptions.generate,
+        );
+        builder.addSystem(
+            resolveHealingRequestsSystem,
+            RecoverySystemOptions.resolve,
+        );
+        builder.addSystem(
+            cleanupHealingFactsSystem,
+            RecoverySystemOptions.cleanup,
         );
         builder.addSystem(
             directEnemySpawnsSystem,

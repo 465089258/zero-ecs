@@ -52,6 +52,7 @@ import {
     FireSwordIntentAccessState,
     FocusPiercingCandidateState,
     LightningChainAccessState,
+    RogueEntityAccessState,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
 import {
     RogueUpgrade,
@@ -132,6 +133,9 @@ import {
     EnemyFireAccumulationType,
     FlyingSwordDamageSource,
     FlyingSwordDamageSourceType,
+    HealingKind,
+    HealingRequest,
+    HealingRequestType,
     PiercingDamage,
     PiercingDamageType,
     Health,
@@ -191,6 +195,12 @@ import {
     isWithinSwordWraithEmpowerment,
     pulseSwordWraithEmpowermentSystem,
 } from "../../examples/flying-sword/src/simulation/rogue/enemy/sword-wraith-empowerment-system";
+import {
+    cleanupHealingFactsSystem,
+    calculateResolvedHealing,
+    resolveHealingRequestsSystem,
+    type ResolvedHealingOut,
+} from "../../examples/flying-sword/src/simulation/rogue/recovery-system";
 
 type TestDamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 type TestRunPhases = QueryOf<typeof RogueRunPhaseQuery>;
@@ -201,6 +211,49 @@ const TestEmpoweredEnemyQuery = QueryType.from(With(
     EnemyCombatType,
     EnemyEmpowermentType,
 ));
+
+const HealingTargetQuery = QueryType.from(With(HealthType));
+const HealingRequestTestQuery = QueryType.from(With(HealingRequestType));
+
+const setupHealingPipelineTestSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        const targetCommand = commands.spawn();
+        const target = targetCommand.entity;
+        targetCommand
+            .add(HealthType)
+            .set(HealthType, Health.Current, 50)
+            .set(HealthType, Health.Maximum, 100)
+            .submit();
+        for (const amount of [30, 40]) {
+            commands
+                .spawn()
+                .add(HealingRequestType)
+                .set(
+                    HealingRequestType,
+                    HealingRequest.Source,
+                    target,
+                )
+                .set(
+                    HealingRequestType,
+                    HealingRequest.Target,
+                    target,
+                )
+                .set(
+                    HealingRequestType,
+                    HealingRequest.Amount,
+                    amount,
+                )
+                .set(
+                    HealingRequestType,
+                    HealingRequest.Kind,
+                    HealingKind.Skill,
+                )
+                .submit();
+        }
+    },
+    [Commands],
+);
 
 const setupLightningChainTestSystem = defSystem(
     Startup,
@@ -901,6 +954,48 @@ test("full sword containers enter a persistent replacement transaction", () => {
     expect(
         pending[PendingSwordReplacement.InventorySlot],
     ).toBeDefined();
+});
+
+test("healing resolution clamps actual recovery and records overflow", () => {
+    const out: ResolvedHealingOut = { applied: 0, overflow: 0 };
+    calculateResolvedHealing(40, 100, 25, out);
+    expect(out).toEqual({ applied: 25, overflow: 0 });
+    calculateResolvedHealing(90, 100, 25, out);
+    expect(out).toEqual({ applied: 10, overflow: 15 });
+    calculateResolvedHealing(100, 100, 25, out);
+    expect(out).toEqual({ applied: 0, overflow: 25 });
+    calculateResolvedHealing(0, 100, 25, out);
+    expect(out).toEqual({ applied: 0, overflow: 25 });
+    calculateResolvedHealing(40, 100, -10, out);
+    expect(out).toEqual({ applied: 0, overflow: 0 });
+    calculateResolvedHealing(40, 100, Number.NaN, out);
+    expect(out).toEqual({ applied: 0, overflow: 0 });
+});
+
+test("healing pipeline deterministically combines same-tick requests", () => {
+    const builder = new GameBuilder().addModule(new CommandModule());
+    builder.addState(RogueEntityAccessState);
+    builder.addSystem(setupHealingPipelineTestSystem);
+    builder.addSystem(resolveHealingRequestsSystem);
+    builder.addSystem(cleanupHealingFactsSystem, {
+        after: resolveHealingRequestsSystem,
+    });
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+    game.update();
+
+    const targetIter = game.world.query(HealingTargetQuery).iter();
+    expect(targetIter.next()).toBe(true);
+    const [, , health] = targetIter.current;
+    expect(health[Health.Current][0]).toBe(100);
+
+    const requestIter =
+        game.world.query(HealingRequestTestQuery).iter();
+    expect(requestIter.next()).toBe(false);
+    game.dispose();
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {

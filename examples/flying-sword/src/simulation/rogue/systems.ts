@@ -149,6 +149,18 @@ export const RogueSystemSet = Object.freeze({
         "flying-sword-rogue:apply-upgrade",
     ),
     Clock: new SystemSet(Update.fixed, "flying-sword-rogue:clock"),
+    RecoveryGenerate: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:recovery-generate",
+    ),
+    RecoveryResolve: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:recovery-resolve",
+    ),
+    RecoveryCleanup: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:recovery-cleanup",
+    ),
     Spawn: new SystemSet(Update.fixed, "flying-sword-rogue:spawn"),
     Intent: new SystemSet(Update.fixed, "flying-sword-rogue:intent"),
     EnemyResolve: new SystemSet(
@@ -289,7 +301,7 @@ export const RogueSystemOptions = Object.freeze({
     clock: {
         inSet: RogueSystemSet.Clock,
         before: [
-            RogueSystemSet.Spawn,
+            RogueSystemSet.RecoveryGenerate,
             RogueSystemSet.Intent,
             RogueSystemSet.EnemyResolve,
             RogueSystemSet.Targeting,
@@ -297,7 +309,7 @@ export const RogueSystemOptions = Object.freeze({
     },
     spawn: {
         inSet: RogueSystemSet.Spawn,
-        after: RogueSystemSet.Clock,
+        after: RogueSystemSet.RecoveryCleanup,
         before: MotionSystemSet.Integrate3,
     },
     intent: {
