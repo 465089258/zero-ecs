@@ -1118,7 +1118,7 @@ test("formation tuning request atomically updates radius and angular speed", () 
     game.dispose();
 });
 
-test("Piercing Cloud curves upward from its formation and dives without an apex phase", () => {
+test("Piercing Cloud launches directly from each sword's current position", () => {
     const game = new GameBuilder()
         .addModule(new CommandModule())
         .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
@@ -1197,10 +1197,10 @@ test("Piercing Cloud curves upward from its formation and dives without an apex 
     }
 
     expect(gatherGoalY).toBeCloseTo(PiercingCloudSkillPlan.gatherHeight);
-    expect(peakLaunchY - launchStartY).toBeGreaterThan(1.5);
-    expect(observedRising).toBe(true);
-    expect(observedDescending).toBe(true);
-    expect(strikeStartY).toBeLessThan(peakLaunchY - 1);
+    expect(peakLaunchY - launchStartY).toBeLessThan(0.25);
+    expect(observedRising).toBe(false);
+    expect(observedDescending).toBe(false);
+    expect(strikeStartY).toBeLessThan(launchStartY);
 
     game.dispose();
 });

@@ -255,6 +255,7 @@ canvas {
 
 .upgrade-options strong,
 .upgrade-options small {
+    white-space: pre-line;
     display: block;
 }
 

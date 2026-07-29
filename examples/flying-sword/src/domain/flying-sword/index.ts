@@ -40,6 +40,11 @@ export {
     FlyingSwordView,
 } from "./views";
 export {
+    ControlledFlyingSwordTag,
+    ReserveFlyingSwordTag,
+    PendingFlyingSwordRetireTag,
+    FlyingSwordControlAssignment,
+    FlyingSwordControlAssignmentType,
     FlyingSwordAction,
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,

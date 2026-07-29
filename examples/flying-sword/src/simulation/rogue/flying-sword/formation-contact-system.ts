@@ -1,6 +1,5 @@
 import {
     Update,
-    World,
     defSystem,
     type Entity,
     type QueryOf,
@@ -10,8 +9,8 @@ import { TimeState } from "@zero-ecs/game/time";
 import { Float3 } from "../../../infrastructure/math";
 import {
     DamageKind,
-    FlyingSwordContactCooldown,
-    FlyingSwordContactCooldownType,
+    FlyingSwordCombat,
+    SwordAttack,
 } from "../components";
 import { RogueContentService } from "../content-service";
 import { RogueFlyingSwordCombatQuery } from "../queries";
@@ -23,15 +22,13 @@ import {
     GRID_WIDTH,
 } from "../state";
 import {
-    DEFAULT_SWORD_DAMAGE,
-    FORMATION_CONTACT_COOLDOWN_TICKS,
-    FORMATION_DAMAGE_MULTIPLIER,
     SWORD_HIT_RADIUS,
 } from "./combat-constants";
 import {
     clampGridCell,
     squaredDistanceToSegment3,
 } from "./combat-spatial-index";
+import { rollSwordDamage } from "./sword-loadout-system";
 
 type CombatSwords = QueryOf<typeof RogueFlyingSwordCombatQuery>;
 
@@ -39,7 +36,6 @@ export const collideFormationSwordContactsSystem = defSystem(
     Update.fixed,
     collideFormationSwordContacts,
     [
-        World,
         TimeState,
         CombatScratchState,
         EnemySpatialIndexState,
@@ -49,7 +45,6 @@ export const collideFormationSwordContactsSystem = defSystem(
 );
 
 function collideFormationSwordContacts(
-    world: World,
     time: Readonly<TimeState>,
     scratch: Readonly<CombatScratchState>,
     index: Readonly<EnemySpatialIndexState>,
@@ -66,6 +61,9 @@ function collideFormationSwordContacts(
             members,
             previousPositions,
             positions,
+            ,
+            combat,
+            attacks,
         ] = iter.current;
         const swordGroups = members[FlyingSwordMember.Group];
         const previousXs = previousPositions[Float3.X];
@@ -74,18 +72,25 @@ function collideFormationSwordContacts(
         const xs = positions[Float3.X];
         const ys = positions[Float3.Y];
         const zs = positions[Float3.Z];
+        const nextAttackTicks =
+            combat[FlyingSwordCombat.NextAttackTick];
+        const sequences = combat[FlyingSwordCombat.AttackSequence];
+        const minimumDamages = attacks[SwordAttack.MinimumDamage];
+        const maximumDamages = attacks[SwordAttack.MaximumDamage];
+        const attackIntervals =
+            attacks[SwordAttack.AttackIntervalTicks];
         for (let row = 0; row < count; row++) {
             const sword = entities[row];
             const group = swordGroups[row] as Entity;
             if (
                 !scratch.formationGroups.has(group) ||
                 scratch.activeTaskSwords.has(sword) ||
-                scratch.activeActionSwords.has(sword)
+                scratch.activeActionSwords.has(sword) ||
+                tick < nextAttackTicks[row]
             ) {
                 continue;
             }
-            collideFormationSegment(
-                world,
+            if (collideFormationSegment(
                 tick,
                 content,
                 index,
@@ -93,24 +98,36 @@ function collideFormationSwordContacts(
                 group,
                 scratch.groupFireBurstThresholds.has(group) ||
                     scratch.groupColdMaximumStacks.has(group),
-                scratch.groupFormationDamages.get(group) ??
-                    DEFAULT_SWORD_DAMAGE *
-                        FORMATION_DAMAGE_MULTIPLIER,
-                scratch.groupFormationContactCooldowns.get(group) ??
-                    FORMATION_CONTACT_COOLDOWN_TICKS,
+                rollSwordDamage(
+                    minimumDamages[row],
+                    maximumDamages[row],
+                    sword,
+                    sequences[row] + 1,
+                ) * (
+                    scratch.groupFormationDamageMultipliers.get(
+                        group,
+                    ) ?? 1
+                ),
                 previousXs[row],
                 previousYs[row],
                 previousZs[row],
                 xs[row],
                 ys[row],
                 zs[row],
-            );
+            )) {
+                sequences[row]++;
+                nextAttackTicks[row] = tick + Math.min(
+                    attackIntervals[row],
+                    scratch.groupFormationContactCooldowns.get(
+                        group,
+                    ) ?? attackIntervals[row],
+                );
+            }
         }
     }
 }
 
 function collideFormationSegment(
-    world: World,
     tick: number,
     content: RogueContentService,
     index: Readonly<EnemySpatialIndexState>,
@@ -118,14 +135,13 @@ function collideFormationSegment(
     sourceGroup: Entity,
     sourceContextActive: boolean,
     damage: number,
-    contactCooldownTicks: number,
     startX: number,
     startY: number,
     startZ: number,
     endX: number,
     endY: number,
     endZ: number,
-): void {
+): boolean {
     const padding = 1.4;
     const minimumCellX = clampGridCell(
         Math.floor(
@@ -176,38 +192,27 @@ function collideFormationSegment(
                         endZ,
                     ) <= radius * radius
                 ) {
-                    const nextTick = world.get(
-                        enemy,
-                        FlyingSwordContactCooldownType,
-                        FlyingSwordContactCooldown.FormationNextTick,
-                    );
-                    if (nextTick !== null && tick >= nextTick) {
-                        world.set(
+                    if (sourceContextActive) {
+                        content.requestFlyingSwordDamage(
+                            source,
+                            sourceGroup,
                             enemy,
-                            FlyingSwordContactCooldownType,
-                            FlyingSwordContactCooldown.FormationNextTick,
-                            tick + contactCooldownTicks,
+                            damage,
+                            DamageKind.FormationSword,
                         );
-                        if (sourceContextActive) {
-                            content.requestFlyingSwordDamage(
-                                source,
-                                sourceGroup,
-                                enemy,
-                                damage,
-                                DamageKind.FormationSword,
-                            );
-                        } else {
-                            content.requestDamage(
-                                source,
-                                enemy,
-                                damage,
-                                DamageKind.FormationSword,
-                            );
-                        }
+                    } else {
+                        content.requestDamage(
+                            source,
+                            enemy,
+                            damage,
+                            DamageKind.FormationSword,
+                        );
                     }
+                    return true;
                 }
                 candidate = index.next[candidate];
             }
         }
     }
+    return false;
 }

@@ -19,6 +19,10 @@ import {
 import { FlyingSwordFormationCatalog } from "./formation-catalog";
 import { FlyingSwordFormationPlanId } from "./formation-types";
 import {
+    ControlledFlyingSwordTag,
+    ReserveFlyingSwordTag,
+    FlyingSwordControlAssignment,
+    FlyingSwordControlAssignmentType,
     FlyingSwordFlight,
     FlyingSwordActiveFormation,
     FlyingSwordBehavior,
@@ -228,8 +232,25 @@ export class FlyingSwordService extends Service {
                 MoveTowards3Type,
                 MoveTowards3.ArrivalRadius,
                 DEFAULT_ARRIVAL_RADIUS,
-            )
-            .submit();
+            );
+        if (options.controlled === false) {
+            command.add(ReserveFlyingSwordTag);
+        } else {
+            command
+                .add(ControlledFlyingSwordTag)
+                .add(FlyingSwordControlAssignmentType)
+                .set(
+                    FlyingSwordControlAssignmentType,
+                    FlyingSwordControlAssignment.Slot,
+                    integerInRange(
+                        "controlSlot",
+                        options.controlSlot ?? slot,
+                        0,
+                        0xffff,
+                    ),
+                );
+        }
+        command.submit();
         return entity;
     }
 

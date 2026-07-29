@@ -41,6 +41,9 @@ import {
     collideFocusSwordContactsSystem,
 } from "./flying-sword/focus-contact-system";
 import {
+    bindFocusCastPowerSystem,
+} from "./flying-sword/focus-mana-system";
+import {
     collideFormationSwordContactsSystem,
 } from "./flying-sword/formation-contact-system";
 import {
@@ -59,6 +62,12 @@ import {
 import {
     applyMetalBreakSystem,
 } from "./flying-sword/metal-break-system";
+import {
+    SwordLoadoutSystemOptions,
+    guideReserveSwordFanSystem,
+    orientReserveSwordFanSystem,
+    updateSwordResourcesSystem,
+} from "./flying-sword/sword-loadout-system";
 import {
     applyFireSwordIntentSystem,
     expireFireBurstsSystem,
@@ -145,6 +154,18 @@ export class FlyingSwordRogueSimulationModule implements Module {
             ColdMovementModifierSystemOptions,
         );
         builder.addSystem(
+            updateSwordResourcesSystem,
+            SwordLoadoutSystemOptions.resources,
+        );
+        builder.addSystem(
+            guideReserveSwordFanSystem,
+            SwordLoadoutSystemOptions.reserveFan,
+        );
+        builder.addSystem(
+            orientReserveSwordFanSystem,
+            SwordLoadoutSystemOptions.reserveOrientation,
+        );
+        builder.addSystem(
             driveScatterFlyingSwordsSystem,
             RogueSystemOptions.targeting,
         );
@@ -152,6 +173,10 @@ export class FlyingSwordRogueSimulationModule implements Module {
             rebuildEnemySpatialIndexSystem,
             RogueSystemOptions.spatial,
         );
+        builder.addSystem(bindFocusCastPowerSystem, {
+            ...RogueSystemOptions.combatSnapshot,
+            before: snapshotFlyingSwordCombatSystem,
+        });
         builder.addSystem(
             snapshotFlyingSwordCombatSystem,
             RogueSystemOptions.combatSnapshot,

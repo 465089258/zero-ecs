@@ -1,6 +1,7 @@
 import {
     Inject,
     Service,
+    World,
     type QueryOf,
 } from "@zero-ecs/game";
 import {
@@ -42,7 +43,10 @@ import {
     DamageDisplayStyle,
 } from "../damage-display/components";
 import { DamageDisplayQuery } from "../damage-display/queries";
-import { RogueUpgradeCatalog } from "../content/upgrades";
+import {
+    RogueUpgrade,
+    RogueUpgradeCatalog,
+} from "../content/upgrades";
 import { DemoSceneState } from "../simulation/state";
 import {
     ColdSwordIntent,
@@ -61,7 +65,10 @@ import {
     LightningSwordIntent,
     MetalSwordIntent,
     PlayerStamina,
+    PlayerMana,
+    SpiritualSense,
     RogueRunClock,
+    RogueRunIdentity,
     RogueRunPhase,
     RogueRunStatistics,
     RogueRunStatus,
@@ -71,6 +78,10 @@ import {
     SwordWraithEmpowerment,
     SwordBodyUnity,
     UpgradeSelection,
+    SwordUpgradeOffer,
+    SwordUpgradeOfferType,
+    SwordContainer,
+    SwordContainerType,
 } from "../simulation/rogue/components";
 import {
     RogueEnemyRenderQuery,
@@ -145,6 +156,7 @@ interface DemoRenderItem extends DepthRenderItem {
 
 /** 示例专属 PixiJS/WebGL 表现后端。 */
 export class DemoRenderService extends Service {
+    @Inject.world() private readonly world!: World;
     @Inject.resource(DemoViewResource) private readonly view!: DemoViewResource;
     @Inject.resource(DemoPixiResource)
     private readonly pixi!: DemoPixiResource;
@@ -1608,17 +1620,25 @@ export class DemoRenderService extends Service {
         let tick = 0;
         let kills = 0;
         let activeEnemies = 0;
+        let swordCapacity = 0;
         let runPhase = RogueRunPhase.Playing;
         let upgradeActive = false;
         let upgradeA = 0;
         let upgradeB = 1;
         let upgradeC = 2;
+        let offeredQuality = 1;
+        let offeredMinimumDamage = 0;
+        let offeredMaximumDamage = 0;
+        let offeredAttackInterval = 0;
+        let offeredMaximumSpeed = 0;
+        let offeredMaximumSpirit = 0;
+        let offeredSpiritRecovery = 0;
         const runIter = runs.iter();
         while (runIter.next()) {
             const [
                 count,
                 ,
-                ,
+                identities,
                 clocks,
                 statuses,
                 ,
@@ -1633,11 +1653,55 @@ export class DemoRenderService extends Service {
             kills = statistics[RogueRunStatistics.Kills][0];
             activeEnemies =
                 statistics[RogueRunStatistics.ActiveEnemies][0];
+            const swordContainer =
+                identities[RogueRunIdentity.SwordContainer][0];
+            swordCapacity = this.world.get(
+                swordContainer,
+                SwordContainerType,
+                SwordContainer.Capacity,
+            ) ?? 0;
             upgradeActive =
                 selection[UpgradeSelection.Active][0] !== 0;
             upgradeA = selection[UpgradeSelection.OptionA][0];
             upgradeB = selection[UpgradeSelection.OptionB][0];
             upgradeC = selection[UpgradeSelection.OptionC][0];
+            const swordOffer =
+                selection[UpgradeSelection.SwordOffer][0];
+            offeredQuality = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.Quality,
+            ) ?? 1;
+            offeredMinimumDamage = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.MinimumDamage,
+            ) ?? 0;
+            offeredMaximumDamage = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.MaximumDamage,
+            ) ?? 0;
+            offeredAttackInterval = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.AttackIntervalTicks,
+            ) ?? 0;
+            offeredMaximumSpeed = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.MaximumSpeed,
+            ) ?? 0;
+            offeredMaximumSpirit = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.MaximumSpiritPower,
+            ) ?? 0;
+            offeredSpiritRecovery = this.world.get(
+                swordOffer,
+                SwordUpgradeOfferType,
+                SwordUpgradeOffer.SpiritRecoveryPerSecond,
+            ) ?? 0;
             break;
         }
         let health = 0;
@@ -1649,6 +1713,9 @@ export class DemoRenderService extends Service {
         let stamina = 0;
         let maximumStamina = 1;
         let restartStamina = 0;
+        let mana = 0;
+        let maximumMana = 1;
+        let controlLimit = 0;
         let lightningChainCount = 0;
         let lightningDamageMultiplier = 0;
         let metalMaximumMomentum = 0;
@@ -1674,6 +1741,8 @@ export class DemoRenderService extends Service {
                 ,
                 actionData,
                 staminaData,
+                manaData,
+                spiritualData,
             ] = cultivatorIter.current;
             if (count === 0) continue;
             health = healthData[Health.Current][0];
@@ -1689,6 +1758,11 @@ export class DemoRenderService extends Service {
                 staminaData[PlayerStamina.Maximum][0];
             restartStamina =
                 staminaData[PlayerStamina.RestartThreshold][0];
+            mana = manaData[PlayerMana.Current][0];
+            maximumMana = manaData[PlayerMana.Maximum][0];
+            controlLimit =
+                spiritualData[SpiritualSense.Base][0] +
+                spiritualData[SpiritualSense.Bonus][0];
             break;
         }
         const buildIter = swordBuilds.iter();
@@ -1810,6 +1884,13 @@ export class DemoRenderService extends Service {
             upgradeA,
             upgradeB,
             upgradeC,
+            offeredQuality,
+            offeredMinimumDamage,
+            offeredMaximumDamage,
+            offeredAttackInterval,
+            offeredMaximumSpeed,
+            offeredMaximumSpirit,
+            offeredSpiritRecovery,
         );
 
         const mode = skillPhaseName(
@@ -1832,7 +1913,8 @@ export class DemoRenderService extends Service {
             ? this.maximumHeight.toFixed(2)
             : "--";
         this.view.status.textContent = [
-            `飞剑数量  ${this.totalSwordCount}`,
+            `持有飞剑  ${this.totalSwordCount} / ${swordCapacity}`,
+            `神识御剑  ${this.formationSize} / ${controlLimit}`,
             `当前可见  ${this.visibleSwordCount}`,
             `可见妖物  ${this.visibleEnemyCount}`,
             `场上妖物  ${activeEnemies}`,
@@ -1842,6 +1924,7 @@ export class DemoRenderService extends Service {
             `当前剑意  ${activeIntents}`,
             `剑诀阶段  ${skillPhase}`,
             `生命      ${Math.ceil(health)} / ${Math.ceil(maximumHealth)}`,
+            `法力      ${Math.ceil(mana)} / ${Math.ceil(maximumMana)}`,
             `修为      ${experience.toFixed(0)} / ${requiredExperience.toFixed(0)}`,
             "",
             `角色 X    ${this.followedX.toFixed(2)}`,
@@ -1866,6 +1949,13 @@ export class DemoRenderService extends Service {
         first: number,
         second: number,
         third: number,
+        offeredQuality: number,
+        offeredMinimumDamage: number,
+        offeredMaximumDamage: number,
+        offeredAttackInterval: number,
+        offeredMaximumSpeed: number,
+        offeredMaximumSpirit: number,
+        offeredSpiritRecovery: number,
     ): void {
         this.view.upgradePanel.hidden = !active;
         if (!active) return;
@@ -1876,8 +1966,17 @@ export class DemoRenderService extends Service {
             const id = index === 0 ? first : index === 1 ? second : third;
             if (name) name.textContent = this.upgrades.names[id] ?? "未知剑途";
             if (description) {
-                description.textContent =
+                const base =
                     this.upgrades.descriptions[id] ?? "此道尚未明悟";
+                description.textContent = id === RogueUpgrade.AddSword
+                    ? `${base}\n剑品 ${offeredQuality} · 攻击 ` +
+                        `${offeredMinimumDamage.toFixed(0)}–` +
+                        `${offeredMaximumDamage.toFixed(0)} · 间隔 ` +
+                        `${offeredAttackInterval} 帧 · 飞速 ` +
+                        `${offeredMaximumSpeed.toFixed(1)} · 灵力 ` +
+                        `${offeredMaximumSpirit.toFixed(0)} · 回灵 ` +
+                        `${offeredSpiritRecovery.toFixed(1)}/秒`
+                    : base;
             }
         }
     }

@@ -22,6 +22,7 @@ import {
     EnemyFeedback,
     FireSwordIntent,
     FlyingSwordCombat,
+    FocusCastPower,
     LightningSwordIntent,
     MetalSwordIntent,
 } from "../components";
@@ -29,12 +30,14 @@ import {
     RogueAutoFlyingSwordGroupQuery,
     RogueEnemyFeedbackQuery,
     RogueFlyingSwordCombatQuery,
+    RoguePoweredFocusActionQuery,
 } from "../queries";
 import { CombatScratchState } from "../state";
-import { DEFAULT_SWORD_DAMAGE } from "./combat-constants";
 
 type AutoGroups = QueryOf<typeof RogueAutoFlyingSwordGroupQuery>;
 type SkillActions = QueryOf<typeof FlyingSwordSkillActionQuery>;
+type PoweredFocusActions =
+    QueryOf<typeof RoguePoweredFocusActionQuery>;
 type SwordTasks = QueryOf<typeof FlyingSwordTaskQuery>;
 type SwordActions = QueryOf<typeof FlyingSwordActionQuery>;
 type SwordGroups = QueryOf<typeof FlyingSwordGroupQuery>;
@@ -48,6 +51,7 @@ export const snapshotFlyingSwordCombatSystem = defSystem(
         Write(CombatScratchState),
         RogueAutoFlyingSwordGroupQuery,
         FlyingSwordSkillActionQuery,
+        RoguePoweredFocusActionQuery,
         FlyingSwordTaskQuery,
         FlyingSwordActionQuery,
         FlyingSwordGroupQuery,
@@ -60,13 +64,19 @@ function snapshotFlyingSwordCombat(
     scratch: Mut<CombatScratchState>,
     groups: AutoGroups,
     skillActions: SkillActions,
+    poweredFocusActions: PoweredFocusActions,
     tasks: SwordTasks,
     actions: SwordActions,
     swordGroups: SwordGroups,
     swords: CombatSwords,
     enemyFeedbacks: EnemyFeedbacks,
 ): void {
-    buildActionSnapshots(scratch, skillActions, groups);
+    buildActionSnapshots(
+        scratch,
+        skillActions,
+        poweredFocusActions,
+        groups,
+    );
     buildCombatMembership(scratch, tasks, actions, swordGroups);
     buildTargetFeedback(scratch, swords, enemyFeedbacks);
 }
@@ -102,16 +112,15 @@ function buildTargetFeedback(
 function buildActionSnapshots(
     scratch: Mut<CombatScratchState>,
     actions: SkillActions,
+    poweredActions: PoweredFocusActions,
     groups: AutoGroups,
 ): void {
     let required = 0;
     const countIter = actions.iter();
     while (countIter.next()) required += countIter.current[0];
     scratch.reset(required);
-    scratch.groupDamages.clear();
-    scratch.groupFocusDamages.clear();
-    scratch.groupFormationDamages.clear();
-    scratch.groupReattackDelays.clear();
+    scratch.groupFocusDamageMultipliers.clear();
+    scratch.groupFormationDamageMultipliers.clear();
     scratch.groupFormationContactCooldowns.clear();
     scratch.groupLightningChainCounts.clear();
     scratch.groupLightningChainRadii.clear();
@@ -135,13 +144,10 @@ function buildActionSnapshots(
             fire,
             cold,
         ] = groupIter.current;
-        const damages = data[AutoFlyingSwordSkill.Damage];
         const focusDamageMultipliers =
             data[AutoFlyingSwordSkill.FocusDamageMultiplier];
         const formationDamageMultipliers =
             data[AutoFlyingSwordSkill.FormationDamageMultiplier];
-        const reattackDelays =
-            data[AutoFlyingSwordSkill.ReattackDelayTicks];
         const formationContactCooldowns =
             data[AutoFlyingSwordSkill.FormationContactCooldownTicks];
         const lightningChainCounts =
@@ -167,18 +173,13 @@ function buildActionSnapshots(
         const coldDurationTicks =
             cold[ColdSwordIntent.DurationTicks];
         for (let row = 0; row < count; row++) {
-            scratch.groupDamages.set(entities[row], damages[row]);
-            scratch.groupFocusDamages.set(
+            scratch.groupFocusDamageMultipliers.set(
                 entities[row],
-                damages[row] * focusDamageMultipliers[row],
+                focusDamageMultipliers[row],
             );
-            scratch.groupFormationDamages.set(
+            scratch.groupFormationDamageMultipliers.set(
                 entities[row],
-                damages[row] * formationDamageMultipliers[row],
-            );
-            scratch.groupReattackDelays.set(
-                entities[row],
-                reattackDelays[row],
+                formationDamageMultipliers[row],
             );
             scratch.groupFormationContactCooldowns.set(
                 entities[row],
@@ -248,9 +249,22 @@ function buildActionSnapshots(
             const group = groupEntities[row];
             scratch.actionEntities[index] = entities[row];
             scratch.actionGroups[index] = group;
-            scratch.damages[index] =
-                scratch.groupFocusDamages.get(group) ??
-                DEFAULT_SWORD_DAMAGE;
+            scratch.actionFocusDamageMultipliers[index] = 1;
+        }
+    }
+    const poweredIter = poweredActions.iter();
+    while (poweredIter.next()) {
+        const [count, entities, , powers] = poweredIter.current;
+        const multipliers =
+            powers[FocusCastPower.DamageMultiplier];
+        for (let row = 0; row < count; row++) {
+            const entity = entities[row];
+            for (let index = 0; index < scratch.actionCount; index++) {
+                if (scratch.actionEntities[index] !== entity) continue;
+                scratch.actionFocusDamageMultipliers[index] =
+                    multipliers[row];
+                break;
+            }
         }
     }
 }

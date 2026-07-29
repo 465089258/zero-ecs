@@ -36,6 +36,10 @@ import {
     squaredDistanceToSegment3,
 } from "../../examples/flying-sword/src/simulation/rogue/systems";
 import {
+    clampFocusTargetDistance,
+    focusManaDamageMultiplier,
+} from "../../examples/flying-sword/src/simulation/systems";
+import {
     EnemySpatialIndexState,
     GRID_CELL_SIZE,
     GRID_HALF_EXTENT,
@@ -759,7 +763,9 @@ test("experience requirement rises with level", () => {
 
 test("upgrade catalog covers every combat route without missing metadata", () => {
     const catalog = new RogueUpgradeCatalog();
-    expect(catalog.count).toBe(RogueUpgrade.ColdIntent + 1);
+    expect(catalog.count).toBe(
+        RogueUpgrade.StrengthenSpiritualSense + 1,
+    );
     expect(catalog.names).toHaveLength(catalog.count);
     expect(catalog.descriptions).toHaveLength(catalog.count);
     expect(catalog.names[RogueUpgrade.FocusPower]).toContain("归一");
@@ -842,6 +848,28 @@ test("focus piercing activates only below its height threshold", () => {
     expect(
         focusPiercingSegmentStartRatio(2.4, 1.4, 1.65),
     ).toBeCloseTo(0.75);
+});
+
+test("focus target distance stays inside the effective cast ring", () => {
+    const out = { x: 0, z: 0 };
+    clampFocusTargetDistance(0, 0, 1, 0, 0, 1, 5, 14, out);
+    expect(out.x).toBeCloseTo(5);
+    expect(out.z).toBeCloseTo(0);
+
+    clampFocusTargetDistance(0, 0, 30, 0, 0, 1, 5, 14, out);
+    expect(out.x).toBeCloseTo(14);
+    expect(out.z).toBeCloseTo(0);
+
+    clampFocusTargetDistance(2, 3, 2, 3, 0, -1, 5, 14, out);
+    expect(out.x).toBeCloseTo(2);
+    expect(out.z).toBeCloseTo(-2);
+});
+
+test("focus consumes a cast snapshot whose damage scales with mana spent", () => {
+    expect(focusManaDamageMultiplier(0, 100)).toBe(1);
+    expect(focusManaDamageMultiplier(25, 100)).toBeCloseTo(1.25);
+    expect(focusManaDamageMultiplier(100, 100)).toBeCloseTo(2);
+    expect(focusManaDamageMultiplier(100, 0)).toBe(1);
 });
 
 test("focus piercing records every sword once per enemy and action", () => {

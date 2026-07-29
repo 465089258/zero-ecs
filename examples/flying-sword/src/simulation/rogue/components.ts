@@ -1,6 +1,7 @@
 import {
     Types,
     type Component,
+    type ComponentTag,
 } from "@zero-ecs/game";
 import { Float3 } from "../../infrastructure/math";
 
@@ -8,12 +9,14 @@ import { Float3 } from "../../infrastructure/math";
 export enum RogueRunIdentity {
     Player,
     SwordGroup,
+    SwordContainer,
 }
 
 export class RogueRunIdentityType
 implements Component<RogueRunIdentity> {
     readonly [RogueRunIdentity.Player] = Types.Entity;
     readonly [RogueRunIdentity.SwordGroup] = Types.Entity;
+    readonly [RogueRunIdentity.SwordContainer] = Types.Entity;
 }
 
 export enum RogueRunClock {
@@ -154,11 +157,104 @@ export class PlayerStaminaType implements Component<PlayerStamina> {
     readonly [PlayerStamina.RestartThreshold] = Types.F32;
 }
 
+/** 玩家能够同时维持的神识控制位。 */
+export enum SpiritualSense {
+    Base,
+    Bonus,
+}
+
+export class SpiritualSenseType implements Component<SpiritualSense> {
+    readonly [SpiritualSense.Base] = Types.U16;
+    readonly [SpiritualSense.Bonus] = Types.U16;
+}
+
+/** 剑阵消耗的人物法力，非剑阵状态下持续恢复。 */
+export enum PlayerMana {
+    Current,
+    Maximum,
+    RecoveryPerSecond,
+    FormationBaseDrainPerSecond,
+    FormationDrainPerSwordPerSecond,
+    FormationRestartThreshold,
+}
+
+export class PlayerManaType implements Component<PlayerMana> {
+    readonly [PlayerMana.Current] = Types.F32;
+    readonly [PlayerMana.Maximum] = Types.F32;
+    readonly [PlayerMana.RecoveryPerSecond] = Types.F32;
+    readonly [PlayerMana.FormationBaseDrainPerSecond] = Types.F32;
+    readonly [PlayerMana.FormationDrainPerSwordPerSecond] = Types.F32;
+    readonly [PlayerMana.FormationRestartThreshold] = Types.F32;
+}
+
+/** 当前装备的剑夹。 */
+export enum SwordContainer {
+    Owner,
+    Capacity,
+}
+
+export class SwordContainerType implements Component<SwordContainer> {
+    readonly [SwordContainer.Owner] = Types.Entity;
+    readonly [SwordContainer.Capacity] = Types.U16;
+}
+
+/** 飞剑在剑夹中的稳定归属。 */
+export enum ContainedSword {
+    Container,
+    InventorySlot,
+}
+
+export class ContainedSwordType implements Component<ContainedSword> {
+    readonly [ContainedSword.Container] = Types.Entity;
+    readonly [ContainedSword.InventorySlot] = Types.U16;
+}
+
+/** 单把剑的内容身份。 */
+export enum SwordIdentity {
+    Blueprint,
+    Quality,
+}
+
+export class SwordIdentityType implements Component<SwordIdentity> {
+    readonly [SwordIdentity.Blueprint] = Types.U16;
+    readonly [SwordIdentity.Quality] = Types.U8;
+}
+
+/** 单把剑的独立攻击属性。 */
+export enum SwordAttack {
+    MinimumDamage,
+    MaximumDamage,
+    AttackIntervalTicks,
+}
+
+export class SwordAttackType implements Component<SwordAttack> {
+    readonly [SwordAttack.MinimumDamage] = Types.F32;
+    readonly [SwordAttack.MaximumDamage] = Types.F32;
+    readonly [SwordAttack.AttackIntervalTicks] = Types.U16;
+}
+
+/** 单把剑的独立灵力池。 */
+export enum SwordSpiritPower {
+    Current,
+    Maximum,
+    RecoveryPerSecond,
+    RecoveryStartTick,
+}
+
+export class SwordSpiritPowerType
+implements Component<SwordSpiritPower> {
+    readonly [SwordSpiritPower.Current] = Types.F32;
+    readonly [SwordSpiritPower.Maximum] = Types.F32;
+    readonly [SwordSpiritPower.RecoveryPerSecond] = Types.F32;
+    readonly [SwordSpiritPower.RecoveryStartTick] = Types.U32;
+}
+
+/** 受控剑进入当前阵图后才具有的结构身份。 */
+export class FormationFlyingSwordTag implements ComponentTag {}
+
 /** 示例层控制组的飞剑战斗数值。 */
 export enum AutoFlyingSwordSkill {
-    ReattackDelayTicks,
     TargetRadius,
-    Damage,
     FocusDamageMultiplier,
     FormationDamageMultiplier,
     FormationContactCooldownTicks,
@@ -170,9 +266,7 @@ export enum AutoFlyingSwordSkill {
 
 export class AutoFlyingSwordSkillType
 implements Component<AutoFlyingSwordSkill> {
-    readonly [AutoFlyingSwordSkill.ReattackDelayTicks] = Types.U16;
     readonly [AutoFlyingSwordSkill.TargetRadius] = Types.F32;
-    readonly [AutoFlyingSwordSkill.Damage] = Types.F32;
     readonly [AutoFlyingSwordSkill.FocusDamageMultiplier] = Types.F32;
     readonly [AutoFlyingSwordSkill.FormationDamageMultiplier] = Types.F32;
     readonly [AutoFlyingSwordSkill.FormationContactCooldownTicks] = Types.U16;
@@ -367,12 +461,16 @@ implements Component<ExperienceReward> {
 export enum FlyingSwordCombat {
     Target,
     NextAttackTick,
+    AttackSequence,
+    RolledDamage,
 }
 
 export class FlyingSwordCombatType
 implements Component<FlyingSwordCombat> {
     readonly [FlyingSwordCombat.Target] = Types.Entity;
     readonly [FlyingSwordCombat.NextAttackTick] = Types.U32;
+    readonly [FlyingSwordCombat.AttackSequence] = Types.U32;
+    readonly [FlyingSwordCombat.RolledDamage] = Types.F32;
 }
 
 /** 单剑在一次集火动作中的贯穿进度。 */
@@ -461,6 +559,13 @@ export enum SwordBodyUnity {
     DirectionZ,
     Damage,
     Group,
+    Phase,
+}
+
+export enum SwordBodyUnityPhase {
+    Idle,
+    Gathering,
+    Dashing,
 }
 
 export class SwordBodyUnityType
@@ -471,6 +576,33 @@ implements Component<SwordBodyUnity> {
     readonly [SwordBodyUnity.DirectionZ] = Types.F32;
     readonly [SwordBodyUnity.Damage] = Types.F32;
     readonly [SwordBodyUnity.Group] = Types.Entity;
+    readonly [SwordBodyUnity.Phase] = Types.U8;
+}
+
+/** 输入确认后、领域技能 Action 生成前保存的集火法力快照。 */
+export enum PendingFocusCast {
+    Group,
+    ManaSpent,
+    DamageMultiplier,
+}
+
+export class PendingFocusCastType
+implements Component<PendingFocusCast> {
+    readonly [PendingFocusCast.Group] = Types.Entity;
+    readonly [PendingFocusCast.ManaSpent] = Types.F32;
+    readonly [PendingFocusCast.DamageMultiplier] = Types.F32;
+}
+
+/** 附着于本次集火 Action 的法力爆发参数。 */
+export enum FocusCastPower {
+    ManaSpent,
+    DamageMultiplier,
+}
+
+export class FocusCastPowerType
+implements Component<FocusCastPower> {
+    readonly [FocusCastPower.ManaSpent] = Types.F32;
+    readonly [FocusCastPower.DamageMultiplier] = Types.F32;
 }
 
 /** 身剑合一核心扫掠在一次持续突进中的贯穿进度。 */
@@ -581,6 +713,7 @@ export enum UpgradeSelection {
     OptionA,
     OptionB,
     OptionC,
+    SwordOffer,
 }
 
 export class UpgradeSelectionType
@@ -589,6 +722,33 @@ implements Component<UpgradeSelection> {
     readonly [UpgradeSelection.OptionA] = Types.U8;
     readonly [UpgradeSelection.OptionB] = Types.U8;
     readonly [UpgradeSelection.OptionC] = Types.U8;
+    readonly [UpgradeSelection.SwordOffer] = Types.Entity;
+}
+
+/** 当前升级选择中“添置飞剑”对应的具体剑胚。 */
+export enum SwordUpgradeOffer {
+    Blueprint,
+    Quality,
+    MinimumDamage,
+    MaximumDamage,
+    AttackIntervalTicks,
+    MaximumSpeed,
+    Acceleration,
+    MaximumSpiritPower,
+    SpiritRecoveryPerSecond,
+}
+
+export class SwordUpgradeOfferType
+implements Component<SwordUpgradeOffer> {
+    readonly [SwordUpgradeOffer.Blueprint] = Types.U16;
+    readonly [SwordUpgradeOffer.Quality] = Types.U8;
+    readonly [SwordUpgradeOffer.MinimumDamage] = Types.F32;
+    readonly [SwordUpgradeOffer.MaximumDamage] = Types.F32;
+    readonly [SwordUpgradeOffer.AttackIntervalTicks] = Types.U16;
+    readonly [SwordUpgradeOffer.MaximumSpeed] = Types.F32;
+    readonly [SwordUpgradeOffer.Acceleration] = Types.F32;
+    readonly [SwordUpgradeOffer.MaximumSpiritPower] = Types.F32;
+    readonly [SwordUpgradeOffer.SpiritRecoveryPerSecond] = Types.F32;
 }
 
 export enum ChooseUpgradeRequest {

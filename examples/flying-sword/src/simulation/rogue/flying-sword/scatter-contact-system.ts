@@ -22,16 +22,13 @@ import {
     FlyingSwordCombat,
     Health,
     HealthType,
+    SwordAttack,
 } from "../components";
 import { RogueContentService } from "../content-service";
 import { RogueFlyingSwordTaskContactQuery } from "../queries";
-import { CombatScratchState } from "../state";
-import {
-    DEFAULT_REATTACK_DELAY_TICKS,
-    DEFAULT_SWORD_DAMAGE,
-    SWORD_HIT_RADIUS,
-} from "./combat-constants";
+import { SWORD_HIT_RADIUS } from "./combat-constants";
 import { squaredDistanceToSegment3 } from "./combat-spatial-index";
+import { rollSwordDamage } from "./sword-loadout-system";
 
 type SwordTaskContacts =
     QueryOf<typeof RogueFlyingSwordTaskContactQuery>;
@@ -44,7 +41,6 @@ export const collideScatterSwordContactsSystem = defSystem(
         FlyingSwordService,
         TimeState,
         RogueContentService,
-        CombatScratchState,
         RogueFlyingSwordTaskContactQuery,
     ],
 );
@@ -54,7 +50,6 @@ function collideScatterSwordContacts(
     flyingSwords: FlyingSwordService,
     time: Readonly<TimeState>,
     content: RogueContentService,
-    scratch: Readonly<CombatScratchState>,
     contacts: SwordTaskContacts,
 ): void {
     const tick = time.tick;
@@ -70,6 +65,7 @@ function collideScatterSwordContacts(
             positions,
             ,
             combat,
+            attacks,
         ] = iter.current;
         const groupEntities = members[FlyingSwordMember.Group];
         const previousXs = previousPositions[Float3.X];
@@ -81,6 +77,12 @@ function collideScatterSwordContacts(
         const targets = combat[FlyingSwordCombat.Target];
         const nextAttackTicks =
             combat[FlyingSwordCombat.NextAttackTick];
+        const sequences = combat[FlyingSwordCombat.AttackSequence];
+        const rolledDamages = combat[FlyingSwordCombat.RolledDamage];
+        const minimumDamages = attacks[SwordAttack.MinimumDamage];
+        const maximumDamages = attacks[SwordAttack.MaximumDamage];
+        const attackIntervals =
+            attacks[SwordAttack.AttackIntervalTicks];
         for (let row = 0; row < count; row++) {
             const target = targets[row] as Entity;
             if (target === INVALID_ENTITY) continue;
@@ -93,9 +95,7 @@ function collideScatterSwordContacts(
                     nextAttackTicks,
                     row,
                     tick,
-                    scratch.groupReattackDelays.get(
-                        groupEntities[row],
-                    ) ?? DEFAULT_REATTACK_DELAY_TICKS,
+                    attacks[SwordAttack.AttackIntervalTicks][row],
                 );
                 continue;
             }
@@ -117,8 +117,12 @@ function collideScatterSwordContacts(
                 entities[row],
                 groupEntities[row] as Entity,
                 target,
-                scratch.groupDamages.get(groupEntities[row]) ??
-                    DEFAULT_SWORD_DAMAGE,
+                rolledDamages[row] = rollSwordDamage(
+                    minimumDamages[row],
+                    maximumDamages[row],
+                    entities[row],
+                    ++sequences[row],
+                ),
                 DamageKind.ScatterSword,
             );
             finishTaskAttack(
@@ -128,13 +132,12 @@ function collideScatterSwordContacts(
                 nextAttackTicks,
                 row,
                 tick,
-                scratch.groupReattackDelays.get(
-                    groupEntities[row],
-                ) ?? DEFAULT_REATTACK_DELAY_TICKS,
+                attackIntervals[row],
             );
         }
     }
 }
+
 
 function finishTaskAttack(
     flyingSwords: FlyingSwordService,

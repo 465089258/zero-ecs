@@ -3,11 +3,13 @@ import {
     With,
 } from "@zero-ecs/game";
 import {
+    ControlledFlyingSwordTag,
     FlyingSwordActionView,
     FlyingSwordContactWindow,
     FlyingSwordDirection3View,
     FlyingSwordPosition3View,
     FlyingSwordPreviousPosition3View,
+    FlyingSwordSkillActionView,
     FlyingSwordView,
     FlyingSwordTaskView,
 } from "../../domain/flying-sword";
@@ -41,6 +43,7 @@ import {
     FlyingSwordDamageSourceType,
     FlyingSwordPiercingSequenceType,
     FocusSwordHitHistoryType,
+    FocusCastPowerType,
     HealthType,
     LevelExperienceType,
     LightningArcEnd3Type,
@@ -52,6 +55,8 @@ import {
     PlayerMovementType,
     PlayerPickupType,
     PlayerStaminaType,
+    PlayerManaType,
+    SpiritualSenseType,
     RogueRunClockType,
     RogueRunIdentityType,
     RogueRunRandomType,
@@ -61,8 +66,11 @@ import {
     UpgradeSelectionType,
     SwordBodyUnityType,
     SwordBodyUnityPiercingSequenceType,
+    SwordAttackType,
+    SwordSpiritPowerType,
     StoneGolemChargeType,
     SwordWraithEmpowermentType,
+    PendingFocusCastType,
 } from "./components";
 
 export const RogueRunQuery = QueryType.from(With(
@@ -89,6 +97,8 @@ export const RoguePlayerQuery = QueryType.from(With(
     PlayerPickupType,
     SwordBodyUnityType,
     PlayerStaminaType,
+    PlayerManaType,
+    SpiritualSenseType,
 ));
 
 /** 敌人行为只读取玩家空间位置，不耦合玩家战斗与成长组件。 */
@@ -112,6 +122,7 @@ export const SwordBodyUnityControlQuery = QueryType.from(With(
     PlayerMovementType,
     PlayerStaminaType,
     SwordBodyUnityType,
+    PlayerManaType,
 ));
 
 export const RogueEnemyQuery = QueryType.from(With(
@@ -181,6 +192,15 @@ export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(
     MetalSwordIntentType,
     FireSwordIntentType,
     ColdSwordIntentType,
+));
+
+export const RoguePendingFocusCastQuery = QueryType.from(With(
+    PendingFocusCastType,
+));
+
+export const RoguePoweredFocusActionQuery = QueryType.from(With(
+    FlyingSwordSkillActionView,
+    FocusCastPowerType,
 ));
 
 export const RogueLightningArcQuery = QueryType.from(With(
@@ -266,6 +286,8 @@ export const RogueFlyingSwordContactQuery = QueryType.from(With(
     FlyingSwordDirection3View,
     FlyingSwordCombatType,
     FlyingSwordPiercingSequenceType,
+    SwordAttackType,
+    ControlledFlyingSwordTag,
 ));
 
 /** 身剑合一的核心贯穿线，不把附属螺旋剑误算为同一直线。 */
@@ -284,6 +306,9 @@ export const RogueFlyingSwordCombatQuery = QueryType.from(With(
     FlyingSwordPosition3View,
     FlyingSwordDirection3View,
     FlyingSwordCombatType,
+    SwordAttackType,
+    SwordSpiritPowerType,
+    ControlledFlyingSwordTag,
 ));
 
 /** 单剑异步攻击开放接触窗口时的集成查询。 */
@@ -295,4 +320,6 @@ export const RogueFlyingSwordTaskContactQuery = QueryType.from(With(
     FlyingSwordPosition3View,
     FlyingSwordDirection3View,
     FlyingSwordCombatType,
+    SwordAttackType,
+    ControlledFlyingSwordTag,
 ));

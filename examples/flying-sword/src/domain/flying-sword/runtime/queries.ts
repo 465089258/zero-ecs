@@ -13,6 +13,7 @@ import {
     Velocity3Type,
 } from "../../../infrastructure/math";
 import { MoveTowards3Type } from "../../../infrastructure/motion";
+import { ReserveFlyingSwordTag } from "../types";
 import {
     FlyingSwordContactWindowStorage,
     FlyingSwordBehaviorStorage,
@@ -111,15 +112,18 @@ export const FlyingSwordSkillActionEntityStorageQuery =
         FlyingSwordSkillProgressStorage,
     ));
 
-export const FlyingSwordBaseStorageQuery = QueryType.from(With(
-    FlyingSwordMemberStorage,
-    FlyingSwordFlightStorage,
-    Position3Type,
-    PreviousPosition3Type,
-    Velocity3Type,
-    Direction3Type,
-    FlyingSwordFormationGoal3Storage,
-    MoveTowards3Type,
+export const FlyingSwordBaseStorageQuery = QueryType.from(All(
+    With(
+        FlyingSwordMemberStorage,
+        FlyingSwordFlightStorage,
+        Position3Type,
+        PreviousPosition3Type,
+        Velocity3Type,
+        Direction3Type,
+        FlyingSwordFormationGoal3Storage,
+        MoveTowards3Type,
+    ),
+    Without(ReserveFlyingSwordTag),
 ));
 
 export const AvailableFlyingSwordStorageQuery = QueryType.from(All(
@@ -130,7 +134,10 @@ export const AvailableFlyingSwordStorageQuery = QueryType.from(All(
         FlyingSwordFormationGoal3Storage,
         MoveTowards3Type,
     ),
-    Without(FlyingSwordSkillActionStorage),
+    Without(
+        FlyingSwordSkillActionStorage,
+        ReserveFlyingSwordTag,
+    ),
     Optional(
         FlyingSwordPendingSkillTarget3Storage,
         FlyingSwordTaskStorage,
@@ -147,6 +154,7 @@ export const ActiveFlyingSwordSkillStorageQuery = QueryType.from(All(
         MoveTowards3Type,
         FlyingSwordSkillActionStorage,
     ),
+    Without(ReserveFlyingSwordTag),
     Optional(
         FlyingSwordContactWindowStorage,
         FlyingSwordPendingSkillTarget3Storage,
@@ -161,6 +169,7 @@ export const FlyingSwordGuidanceStorageQuery = QueryType.from(All(
         FlyingSwordFormationGoal3Storage,
         MoveTowards3Type,
     ),
+    Without(ReserveFlyingSwordTag),
     Optional(
         FlyingSwordSkillActionStorage,
         FlyingSwordContactWindowStorage,
@@ -173,6 +182,7 @@ export const FlyingSwordOrientationStorageQuery = QueryType.from(All(
         Direction3Type,
         FlyingSwordIdleDirection3Storage,
     ),
+    Without(ReserveFlyingSwordTag),
     Optional(
         FlyingSwordSkillActionStorage,
         FlyingSwordTaskStorage,
@@ -188,6 +198,7 @@ export const FlyingSwordTaskStorageQuery = QueryType.from(All(
         MoveTowards3Type,
         FlyingSwordTaskStorage,
     ),
+    Without(ReserveFlyingSwordTag),
     Optional(FlyingSwordContactWindowStorage),
 ));
 
@@ -199,5 +210,6 @@ export const ActiveFlyingSwordTaskStorageQuery = QueryType.from(All(
         Position3Type,
         Direction3Type,
     ),
+    Without(ReserveFlyingSwordTag),
     Optional(FlyingSwordContactWindowStorage),
 ));

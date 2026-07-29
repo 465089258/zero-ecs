@@ -29,6 +29,7 @@ import {
     RogueRunPhase,
     RogueRunStatus,
     RogueRunTarget,
+    SwordSpiritPower,
 } from "../components";
 import {
     RogueAutoFlyingSwordGroupQuery,
@@ -142,15 +143,19 @@ function driveScatterFlyingSwords(
             ,
             ,
             combat,
+            ,
+            spirits,
         ] = availabilityIter.current;
         const swordGroups = members[FlyingSwordMember.Group];
         const nextAttackTicks =
             combat[FlyingSwordCombat.NextAttackTick];
+        const currentSpirits = spirits[SwordSpiritPower.Current];
         for (let row = 0; row < count; row++) {
             if (
                 swordGroups[row] === swordGroup &&
                 !scratch.activeTaskSwords.has(entities[row]) &&
-                tick >= nextAttackTicks[row]
+                tick >= nextAttackTicks[row] &&
+                currentSpirits[row] >= SCATTER_SPIRIT_COST
             ) {
                 availableSwordCount++;
             }
@@ -257,18 +262,22 @@ function driveScatterFlyingSwords(
             ,
             ,
             combat,
+            ,
+            spirits,
         ] = swordIter.current;
         const swordGroups = members[FlyingSwordMember.Group];
         const swordSlots = members[FlyingSwordMember.Slot];
         const assignedTargets = combat[FlyingSwordCombat.Target];
         const nextAttackTicks =
             combat[FlyingSwordCombat.NextAttackTick];
+        const currentSpirits = spirits[SwordSpiritPower.Current];
         for (let row = 0; row < count; row++) {
             const sword = entities[row];
             if (
                 swordGroups[row] !== swordGroup ||
                 scratch.activeTaskSwords.has(sword) ||
                 tick < nextAttackTicks[row] ||
+                currentSpirits[row] < SCATTER_SPIRIT_COST ||
                 !shouldLaunchScatterSword(
                     tick,
                     swordSlots[row],
@@ -286,6 +295,7 @@ function driveScatterFlyingSwords(
             assignedTargets[row] =
                 targeting.entities[candidate] as Entity;
             nextAttackTicks[row] = tick + TASK_REQUEST_GUARD_TICKS;
+            currentSpirits[row] -= SCATTER_SPIRIT_COST;
             flyingSwords.attack(sword, castTarget);
             assignment++;
         }
@@ -376,3 +386,4 @@ const groupBehavior = {
     activeFormation: FlyingSwordActiveFormation.None as number,
 };
 const TASK_REQUEST_GUARD_TICKS = 2;
+const SCATTER_SPIRIT_COST = 18;

@@ -13,8 +13,20 @@ export class RogueRunTuning extends Resource {
     readonly fusionStaminaDrainPerSecond = 40;
     readonly staminaRecoveryPerSecond = 22;
     readonly fusionRestartStamina = 25;
+    readonly initialMana = 100;
+    readonly manaRecoveryPerSecond = 14;
+    readonly formationManaBaseDrainPerSecond = 3;
+    readonly formationManaDrainPerSwordPerSecond = 1.4;
+    readonly formationManaRestartThreshold = 25;
+    readonly initialSwordContainerCapacity = 12;
+    readonly initialSpiritualSense = 4;
     readonly initialFormationRadius = 3.7;
     readonly initialFormationAngularSpeed = 0.92;
+    readonly focusMinimumDistance = 5;
+    readonly focusMaximumDistance = 14;
+    readonly focusMinimumMana = 25;
+    readonly focusManaDamageScale = 100;
+    readonly fusionGatherTicks = 18;
 
     constructor(search = window.location.search) {
         super();

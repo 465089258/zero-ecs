@@ -18,6 +18,7 @@ import {
     FlyingSwordContactCooldown,
     FlyingSwordContactCooldownType,
     SwordBodyUnity,
+    SwordBodyUnityPhase,
     SwordBodyUnityPiercingSequence,
 } from "../components";
 import { RogueContentService } from "../content-service";
@@ -91,6 +92,7 @@ function collideSwordBodyUnity(
         const previousYs = previousPositions[Float3.Y];
         const previousZs = previousPositions[Float3.Z];
         const active = actions[SwordBodyUnity.Active];
+        const phases = actions[SwordBodyUnity.Phase];
         const damages = actions[SwordBodyUnity.Damage];
         const groups = actions[SwordBodyUnity.Group];
         const actionStartTicks = actions[SwordBodyUnity.StartTick];
@@ -103,7 +105,12 @@ function collideSwordBodyUnity(
                 SwordBodyUnityPiercingSequence.HitCount
             ];
         for (let row = 0; row < count; row++) {
-            if (active[row] === 0) continue;
+            if (
+                active[row] === 0 ||
+                phases[row] !== SwordBodyUnityPhase.Dashing
+            ) {
+                continue;
+            }
             const group = groups[row] as Entity;
             if (
                 (scratch.groupMetalMaximumMomentum.get(group) ?? 0) >

@@ -112,15 +112,14 @@ export class ColdSwordIntentAccessState extends State {
 export class CombatScratchState extends State {
     actionEntities = new Uint32Array(4);
     actionGroups = new Uint32Array(4);
-    damages = new Float32Array(4);
+    actionFocusDamageMultipliers = new Float32Array(4);
     actionCount = 0;
     readonly activeTaskSwords = new Set<Entity>();
     readonly activeActionSwords = new Set<Entity>();
     readonly formationGroups = new Set<Entity>();
-    readonly groupDamages = new Map<Entity, number>();
-    readonly groupFocusDamages = new Map<Entity, number>();
-    readonly groupFormationDamages = new Map<Entity, number>();
-    readonly groupReattackDelays = new Map<Entity, number>();
+    readonly groupFocusDamageMultipliers = new Map<Entity, number>();
+    readonly groupFormationDamageMultipliers =
+        new Map<Entity, number>();
     readonly groupFormationContactCooldowns =
         new Map<Entity, number>();
     readonly groupLightningChainCounts = new Map<Entity, number>();
@@ -145,7 +144,10 @@ export class CombatScratchState extends State {
         while (capacity < required) capacity *= 2;
         this.actionEntities = growUint32(this.actionEntities, capacity);
         this.actionGroups = growUint32(this.actionGroups, capacity);
-        this.damages = growFloat32(this.damages, capacity);
+        this.actionFocusDamageMultipliers = growFloat32(
+            this.actionFocusDamageMultipliers,
+            capacity,
+        );
     }
 
     resetMembership(): void {
@@ -158,10 +160,8 @@ export class CombatScratchState extends State {
         this.activeTaskSwords.clear();
         this.activeActionSwords.clear();
         this.formationGroups.clear();
-        this.groupDamages.clear();
-        this.groupFocusDamages.clear();
-        this.groupFormationDamages.clear();
-        this.groupReattackDelays.clear();
+        this.groupFocusDamageMultipliers.clear();
+        this.groupFormationDamageMultipliers.clear();
         this.groupFormationContactCooldowns.clear();
         this.groupLightningChainCounts.clear();
         this.groupLightningChainRadii.clear();

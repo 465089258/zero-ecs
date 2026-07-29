@@ -13,6 +13,9 @@ import {
 } from "@zero-ecs/game";
 import { TimeState } from "@zero-ecs/game/time";
 import {
+    ControlledFlyingSwordTag,
+    FlyingSwordControlAssignment,
+    FlyingSwordControlAssignmentType,
     FlyingSwordMember,
     FlyingSwordQuery,
     FlyingSwordService,
@@ -65,6 +68,20 @@ import {
     MetalSwordIntent,
     PlayerPickup,
     PlayerStamina,
+    PlayerMana,
+    SpiritualSense,
+    SwordContainer,
+    SwordContainerType,
+    ContainedSword,
+    ContainedSwordType,
+    SwordIdentity,
+    SwordIdentityType,
+    SwordAttack,
+    SwordAttackType,
+    SwordSpiritPower,
+    SwordSpiritPowerType,
+    SwordUpgradeOffer,
+    SwordUpgradeOfferType,
     PlayerMovement,
     RogueRunClock,
     RogueRunIdentity,
@@ -139,6 +156,7 @@ export const applyRogueUpgradeRequestsSystem = defSystem(
     applyRogueUpgradeRequests,
     [
         Commands,
+        World,
         FlyingSwordService,
         RogueRunQuery,
         RoguePlayerQuery,
@@ -224,6 +242,8 @@ export const openRogueUpgradeSelectionSystem = defSystem(
     Update.fixed,
     openRogueUpgradeSelection,
     [
+        Commands,
+        World,
         RogueUpgradeCatalog,
         RogueRunControlService,
         RogueRunQuery,
@@ -320,6 +340,7 @@ export const RogueSystemOptions = Object.freeze({
 
 function applyRogueUpgradeRequests(
     commands: Commands,
+    world: World,
     flyingSwords: FlyingSwordService,
     runs: Runs,
     players: Players,
@@ -338,6 +359,7 @@ function applyRogueUpgradeRequests(
                 continue;
             }
             let upgrade = -1;
+            let swordOffer = INVALID_ENTITY;
             let activeSelection: Uint8Array | undefined;
             const runIter = runs.iter();
             while (runIter.next()) {
@@ -362,23 +384,35 @@ function applyRogueUpgradeRequests(
                     : slot === 1
                         ? selection[UpgradeSelection.OptionB][0]
                         : selection[UpgradeSelection.OptionC][0];
+                swordOffer =
+                    selection[UpgradeSelection.SwordOffer][0];
+                selection[UpgradeSelection.SwordOffer][0] =
+                    INVALID_ENTITY;
                 break;
             }
             if (upgrade >= 0 && activeSelection) {
                 applyUpgradeToPlayer(upgrade, players);
                 applyUpgradeToSwordGroup(
                     upgrade,
+                    world,
                     flyingSwords,
                     groups,
+                    swords,
                 );
+                applyUpgradeToSwordContainer(upgrade, world, runs);
                 if (upgrade === RogueUpgrade.AddSword) {
                     addFlyingSword(
                         commands,
+                        world,
                         flyingSwords,
                         runs,
                         players,
                         swords,
+                        swordOffer,
                     );
+                }
+                if (swordOffer !== INVALID_ENTITY) {
+                    commands.entity(swordOffer).despawn().submit();
                 }
                 activeSelection[0] = 0;
                 decrementPendingChoice(players);
@@ -390,49 +424,121 @@ function applyRogueUpgradeRequests(
 
 function addFlyingSword(
     commands: Commands,
+    world: World,
     flyingSwords: FlyingSwordService,
     runs: Runs,
     players: Players,
     swords: FlyingSwords,
+    swordOffer: Entity,
 ): void {
     let group = 0 as Entity;
+    let container = 0 as Entity;
     const runIter = runs.iter();
     while (runIter.next()) {
         const [count, , identities] = runIter.current;
         if (count === 0) continue;
         group = identities[RogueRunIdentity.SwordGroup][0];
+        container = identities[RogueRunIdentity.SwordContainer][0];
         break;
     }
-    if (group === 0) return;
+    if (group === 0 || container === 0) return;
+    const offeredBlueprint = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.Blueprint,
+    ) ?? 0;
+    const offeredQuality = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.Quality,
+    ) ?? 1;
+    const offeredMinimumDamage = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.MinimumDamage,
+    ) ?? 14;
+    const offeredMaximumDamage = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.MaximumDamage,
+    ) ?? 22;
+    const offeredAttackInterval = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.AttackIntervalTicks,
+    ) ?? 27;
+    const offeredMaximumSpeed = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.MaximumSpeed,
+    ) ?? 13;
+    const offeredAcceleration = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.Acceleration,
+    ) ?? 42;
+    const offeredMaximumSpirit = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.MaximumSpiritPower,
+    ) ?? 90;
+    const offeredSpiritRecovery = world.get(
+        swordOffer,
+        SwordUpgradeOfferType,
+        SwordUpgradeOffer.SpiritRecoveryPerSecond,
+    ) ?? 14;
 
     let swordCount = 0;
+    let controlledSwordCount = 0;
     let maximumSlot = -1;
     const swordIter = swords.iter();
     while (swordIter.next()) {
-        const [count, , members] = swordIter.current;
+        const [count, entities, members] = swordIter.current;
         const swordGroups = members[FlyingSwordMember.Group];
         const slots = members[FlyingSwordMember.Slot];
         for (let row = 0; row < count; row++) {
             if (swordGroups[row] !== group) continue;
             swordCount++;
+            if (world.has(entities[row], ControlledFlyingSwordTag)) {
+                controlledSwordCount++;
+            }
             maximumSlot = Math.max(maximumSlot, slots[row]);
         }
     }
-    if (swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT) return;
+    const capacity = world.get(
+        container,
+        SwordContainerType,
+        SwordContainer.Capacity,
+    ) ?? 0;
+    if (
+        swordCount >= MAX_FLYING_SWORD_UPGRADE_COUNT ||
+        swordCount >= capacity
+    ) return;
 
     let x = 0;
     let y = 0.9;
     let z = 0;
+    let controlLimit = 0;
     const playerIter = players.iter();
     while (playerIter.next()) {
-        const [count, , positions] = playerIter.current;
+        const data = playerIter.current;
+        const count = data[0];
+        const positions = data[2];
         if (count === 0) continue;
         x = positions[Float3.X][0];
         y = positions[Float3.Y][0] + 0.9;
         z = positions[Float3.Z][0];
+        const spiritual = data[15];
+        controlLimit =
+            spiritual[SpiritualSense.Base][0] +
+            spiritual[SpiritualSense.Bonus][0];
         break;
     }
     const slot = maximumSlot + 1;
+    const deployImmediately = controlledSwordCount < controlLimit;
+    const controlSlot = deployImmediately
+        ? findAvailableControlSlot(world, swords, group)
+        : 0;
     const sword = flyingSwords.createSword({
         group,
         position: {
@@ -441,14 +547,20 @@ function addFlyingSword(
             z: z - 0.55,
         },
         slot,
-        maximumSpeed: 13,
-        acceleration: 42,
+        maximumSpeed: offeredMaximumSpeed,
+        acceleration: offeredAcceleration,
+        controlled: deployImmediately,
+        controlSlot,
     });
     commands
         .entity(sword)
         .add(FlyingSwordVisualType)
         .add(FlyingSwordCombatType)
         .add(FlyingSwordPiercingSequenceType)
+        .add(ContainedSwordType)
+        .add(SwordIdentityType)
+        .add(SwordAttackType)
+        .add(SwordSpiritPowerType)
         .set(
             FlyingSwordVisualType,
             FlyingSwordVisual.Id,
@@ -464,6 +576,55 @@ function addFlyingSword(
             FlyingSwordCombat.NextAttackTick,
             0,
         )
+        .set(FlyingSwordCombatType, FlyingSwordCombat.AttackSequence, 0)
+        .set(FlyingSwordCombatType, FlyingSwordCombat.RolledDamage, 0)
+        .set(ContainedSwordType, ContainedSword.Container, container)
+        .set(
+            ContainedSwordType,
+            ContainedSword.InventorySlot,
+            slot,
+        )
+        .set(
+            SwordIdentityType,
+            SwordIdentity.Blueprint,
+            offeredBlueprint,
+        )
+        .set(SwordIdentityType, SwordIdentity.Quality, offeredQuality)
+        .set(
+            SwordAttackType,
+            SwordAttack.MinimumDamage,
+            offeredMinimumDamage,
+        )
+        .set(
+            SwordAttackType,
+            SwordAttack.MaximumDamage,
+            offeredMaximumDamage,
+        )
+        .set(
+            SwordAttackType,
+            SwordAttack.AttackIntervalTicks,
+            offeredAttackInterval,
+        )
+        .set(
+            SwordSpiritPowerType,
+            SwordSpiritPower.Current,
+            offeredMaximumSpirit,
+        )
+        .set(
+            SwordSpiritPowerType,
+            SwordSpiritPower.Maximum,
+            offeredMaximumSpirit,
+        )
+        .set(
+            SwordSpiritPowerType,
+            SwordSpiritPower.RecoveryPerSecond,
+            offeredSpiritRecovery,
+        )
+        .set(
+            SwordSpiritPowerType,
+            SwordSpiritPower.RecoveryStartTick,
+            0,
+        )
         .set(
             FlyingSwordPiercingSequenceType,
             FlyingSwordPiercingSequence.Action,
@@ -475,10 +636,55 @@ function addFlyingSword(
             0,
         )
         .submit();
-    flyingSwords.setFormationSize(group, swordCount + 1);
+    flyingSwords.setFormationSize(
+        group,
+        controlledSwordCount + (deployImmediately ? 1 : 0),
+    );
+}
+
+function findAvailableControlSlot(
+    world: World,
+    swords: FlyingSwords,
+    group: Entity,
+): number {
+    let slot = 0;
+    while (slot < 64) {
+        let occupied = false;
+        const iter = swords.iter();
+        while (iter.next()) {
+            const [count, entities, members] = iter.current;
+            const groups = members[FlyingSwordMember.Group];
+            for (let row = 0; row < count; row++) {
+                if (
+                    groups[row] !== group ||
+                    !world.has(
+                        entities[row],
+                        ControlledFlyingSwordTag,
+                    )
+                ) {
+                    continue;
+                }
+                const assigned = world.get(
+                    entities[row],
+                    FlyingSwordControlAssignmentType,
+                    FlyingSwordControlAssignment.Slot,
+                );
+                if (assigned === slot) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied) break;
+        }
+        if (!occupied) return slot;
+        slot++;
+    }
+    return 0;
 }
 
 function openRogueUpgradeSelection(
+    commands: Commands,
+    world: World,
     catalog: Readonly<RogueUpgradeCatalog>,
     control: RogueRunControlService,
     runs: Runs,
@@ -532,16 +738,27 @@ function openRogueUpgradeSelection(
             swords,
             identities[RogueRunIdentity.SwordGroup][0],
         );
+        const swordContainer =
+            identities[RogueRunIdentity.SwordContainer][0];
+        const swordCapacity = world.get(
+            swordContainer,
+            SwordContainerType,
+            SwordContainer.Capacity,
+        ) ?? 0;
         let randomState = randoms[RogueRunRandom.State][0];
         let first = 0;
         do {
             randomState = nextRogueRandom(randomState);
             first = randomState % catalog.count;
-        } while (!isUpgradeAvailable(first, swordCount));
+        } while (!isUpgradeAvailable(
+            first,
+            swordCount,
+            swordCapacity,
+        ));
         let second = first;
         while (
             second === first ||
-            !isUpgradeAvailable(second, swordCount)
+            !isUpgradeAvailable(second, swordCount, swordCapacity)
         ) {
             randomState = nextRogueRandom(randomState);
             second = randomState % catalog.count;
@@ -550,7 +767,7 @@ function openRogueUpgradeSelection(
         while (
             third === first ||
             third === second ||
-            !isUpgradeAvailable(third, swordCount)
+            !isUpgradeAvailable(third, swordCount, swordCapacity)
         ) {
             randomState = nextRogueRandom(randomState);
             third = randomState % catalog.count;
@@ -559,10 +776,92 @@ function openRogueUpgradeSelection(
         selection[UpgradeSelection.OptionB][0] = second;
         selection[UpgradeSelection.OptionC][0] = third;
         selection[UpgradeSelection.Active][0] = 1;
+        if (
+            first === RogueUpgrade.AddSword ||
+            second === RogueUpgrade.AddSword ||
+            third === RogueUpgrade.AddSword
+        ) {
+            const offerCommand = commands
+                .spawn()
+                .add(SwordUpgradeOfferType);
+            const swordOffer = offerCommand.entity;
+            randomState = rollSwordUpgradeOffer(
+                randomState,
+                offerCommand,
+            );
+            offerCommand.submit();
+            selection[UpgradeSelection.SwordOffer][0] = swordOffer;
+        } else {
+            selection[UpgradeSelection.SwordOffer][0] = INVALID_ENTITY;
+        }
         randoms[RogueRunRandom.State][0] = randomState;
         control.pauseForUpgrade();
         return;
     }
+}
+
+function rollSwordUpgradeOffer(
+    initialState: number,
+    offer: ReturnType<Commands["spawn"]>,
+): number {
+    let state = nextRogueRandom(initialState);
+    const blueprint = state % 6;
+    state = nextRogueRandom(state);
+    const quality = 1 + state % 3;
+    state = nextRogueRandom(state);
+    const minimumDamage = 13 + quality * 2 + state % 7;
+    state = nextRogueRandom(state);
+    const maximumDamage =
+        minimumDamage + 7 + quality * 2 + state % 8;
+    state = nextRogueRandom(state);
+    const attackInterval = Math.max(16, 31 - quality * 2 - state % 5);
+    state = nextRogueRandom(state);
+    const maximumSpeed = 12 + quality * 0.7 + (state % 5) * 0.25;
+    state = nextRogueRandom(state);
+    const acceleration = 38 + quality * 3 + state % 7;
+    state = nextRogueRandom(state);
+    const maximumSpirit = 80 + quality * 12 + state % 16;
+    state = nextRogueRandom(state);
+    const spiritRecovery = 11 + quality * 2 + state % 5;
+    offer
+        .set(SwordUpgradeOfferType, SwordUpgradeOffer.Blueprint, blueprint)
+        .set(SwordUpgradeOfferType, SwordUpgradeOffer.Quality, quality)
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MinimumDamage,
+            minimumDamage,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MaximumDamage,
+            maximumDamage,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.AttackIntervalTicks,
+            attackInterval,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MaximumSpeed,
+            maximumSpeed,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.Acceleration,
+            acceleration,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.MaximumSpiritPower,
+            maximumSpirit,
+        )
+        .set(
+            SwordUpgradeOfferType,
+            SwordUpgradeOffer.SpiritRecoveryPerSecond,
+            spiritRecovery,
+        );
+    return state;
 }
 
 function countFlyingSwords(
@@ -584,9 +883,15 @@ function countFlyingSwords(
 function isUpgradeAvailable(
     upgrade: number,
     swordCount: number,
+    swordCapacity: number,
 ): boolean {
-    return upgrade !== RogueUpgrade.AddSword ||
-        swordCount < MAX_FLYING_SWORD_UPGRADE_COUNT;
+    if (upgrade === RogueUpgrade.ExpandSwordContainer) {
+        return swordCapacity < 64;
+    }
+    return upgrade !== RogueUpgrade.AddSword || (
+            swordCount < MAX_FLYING_SWORD_UPGRADE_COUNT &&
+            swordCount < swordCapacity
+    );
 }
 
 function applyUpgradeToPlayer(
@@ -610,6 +915,8 @@ function applyUpgradeToPlayer(
             pickup,
             actions,
             stamina,
+            ,
+            spiritual,
         ] = iter.current;
         if (count === 0) continue;
         if (upgrade === RogueUpgrade.BodyTechnique) {
@@ -638,6 +945,10 @@ function applyUpgradeToPlayer(
                 stamina[PlayerStamina.Current][0] + 20,
             );
             stamina[PlayerStamina.RecoveryPerSecond][0] *= 1.1;
+        } else if (
+            upgrade === RogueUpgrade.StrengthenSpiritualSense
+        ) {
+            spiritual[SpiritualSense.Bonus][0]++;
         }
         return;
     }
@@ -645,8 +956,10 @@ function applyUpgradeToPlayer(
 
 function applyUpgradeToSwordGroup(
     upgrade: number,
+    world: World,
     flyingSwords: FlyingSwordService,
     groups: AutoGroups,
+    swords: FlyingSwords,
 ): void {
     const iter = groups.iter();
     while (iter.next()) {
@@ -666,14 +979,13 @@ function applyUpgradeToSwordGroup(
         const formationAngularSpeeds =
             auto[AutoFlyingSwordSkill.FormationAngularSpeed];
         if (upgrade === RogueUpgrade.TemperSword) {
-            auto[AutoFlyingSwordSkill.Damage][0] *= 1.25;
+            temperOwnedSwords(world, swords, entities[0], 1.25);
         } else if (upgrade === RogueUpgrade.ShortenCooldown) {
-            auto[AutoFlyingSwordSkill.ReattackDelayTicks][0] = Math.max(
-                1,
-                Math.floor(
-                    auto[AutoFlyingSwordSkill.ReattackDelayTicks][0] *
-                    0.9,
-                ),
+            shortenOwnedSwordIntervals(
+                world,
+                swords,
+                entities[0],
+                0.9,
             );
         } else if (upgrade === RogueUpgrade.ScatterRange) {
             auto[AutoFlyingSwordSkill.TargetRadius][0] *= 1.2;
@@ -747,6 +1059,107 @@ function applyUpgradeToSwordGroup(
             } else {
                 slowPerStack[0] *= 1.15;
             }
+        }
+        return;
+    }
+}
+
+function temperOwnedSwords(
+    world: World,
+    swords: FlyingSwords,
+    group: Entity,
+    multiplier: number,
+): void {
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, entities, members] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < count; row++) {
+            if (groups[row] !== group) continue;
+            const sword = entities[row];
+            const minimum = world.get(
+                sword,
+                SwordAttackType,
+                SwordAttack.MinimumDamage,
+            );
+            const maximum = world.get(
+                sword,
+                SwordAttackType,
+                SwordAttack.MaximumDamage,
+            );
+            if (minimum !== null) {
+                world.set(
+                    sword,
+                    SwordAttackType,
+                    SwordAttack.MinimumDamage,
+                    minimum * multiplier,
+                );
+            }
+            if (maximum !== null) {
+                world.set(
+                    sword,
+                    SwordAttackType,
+                    SwordAttack.MaximumDamage,
+                    maximum * multiplier,
+                );
+            }
+        }
+    }
+}
+
+function shortenOwnedSwordIntervals(
+    world: World,
+    swords: FlyingSwords,
+    group: Entity,
+    multiplier: number,
+): void {
+    const iter = swords.iter();
+    while (iter.next()) {
+        const [count, entities, members] = iter.current;
+        const groups = members[FlyingSwordMember.Group];
+        for (let row = 0; row < count; row++) {
+            if (groups[row] !== group) continue;
+            const sword = entities[row];
+            const interval = world.get(
+                sword,
+                SwordAttackType,
+                SwordAttack.AttackIntervalTicks,
+            );
+            if (interval === null) continue;
+            world.set(
+                sword,
+                SwordAttackType,
+                SwordAttack.AttackIntervalTicks,
+                Math.max(1, Math.floor(interval * multiplier)),
+            );
+        }
+    }
+}
+
+function applyUpgradeToSwordContainer(
+    upgrade: number,
+    world: World,
+    runs: Runs,
+): void {
+    if (upgrade !== RogueUpgrade.ExpandSwordContainer) return;
+    const iter = runs.iter();
+    while (iter.next()) {
+        const [count, , identities] = iter.current;
+        if (count === 0) continue;
+        const container =
+            identities[RogueRunIdentity.SwordContainer][0];
+        const capacity = world.get(
+            container,
+            SwordContainerType,
+            SwordContainer.Capacity,
+        );
+        if (capacity !== null) {
+            world.set(
+                container,
+                SwordContainerType,
+                SwordContainer.Capacity,
+                Math.min(64, capacity + 2),
+            );
         }
         return;
     }

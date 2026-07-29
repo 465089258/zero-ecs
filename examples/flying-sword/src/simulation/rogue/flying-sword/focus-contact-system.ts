@@ -19,6 +19,7 @@ import {
     FlyingSwordPiercingSequence,
     FocusSwordHitHistory,
     FocusSwordHitHistoryType,
+    SwordAttack,
 } from "../components";
 import { RogueContentService } from "../content-service";
 import { RogueFlyingSwordContactQuery } from "../queries";
@@ -40,6 +41,7 @@ import {
     progressAlongSegment3,
     squaredDistanceToSegment3,
 } from "./combat-spatial-index";
+import { rollSwordDamage } from "./sword-loadout-system";
 
 type SwordContacts = QueryOf<typeof RogueFlyingSwordContactQuery>;
 type HitHistoryComponentId =
@@ -86,6 +88,7 @@ function collideFocusSwordContacts(
             ,
             ,
             piercingSequences,
+            attacks,
         ] = iter.current;
         const groupEntities = members[FlyingSwordMember.Group];
         const slots = members[FlyingSwordMember.Slot];
@@ -100,6 +103,8 @@ function collideFocusSwordContacts(
             piercingSequences[FlyingSwordPiercingSequence.Action];
         const piercingHitCounts =
             piercingSequences[FlyingSwordPiercingSequence.HitCount];
+        const minimumDamages = attacks[SwordAttack.MinimumDamage];
+        const maximumDamages = attacks[SwordAttack.MaximumDamage];
         for (let row = 0; row < count; row++) {
             const actionEntity = actionEntities[row] as Entity;
             if (actionEntity === INVALID_ENTITY) continue;
@@ -147,7 +152,16 @@ function collideFocusSwordContacts(
                 sourceGroup,
                 actionEntity,
                 slots[row],
-                scratch.damages[action],
+                rollSwordDamage(
+                    minimumDamages[row],
+                    maximumDamages[row],
+                    entities[row],
+                    actionEntity,
+                ) * (
+                    scratch.groupFocusDamageMultipliers.get(
+                        sourceGroup,
+                    ) ?? 1
+                ) * scratch.actionFocusDamageMultipliers[action],
                 startX,
                 startY,
                 startZ,

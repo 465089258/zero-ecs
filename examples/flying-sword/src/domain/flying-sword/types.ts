@@ -2,6 +2,7 @@
 import {
     Types,
     type Component,
+    type ComponentTag,
     type Entity,
 } from "@zero-ecs/game";
 import type { Float3 } from "../../infrastructure/math";
@@ -74,6 +75,26 @@ export interface CreateFlyingSwordOptions {
     readonly slot?: number;
     readonly maximumSpeed?: number;
     readonly acceleration?: number;
+    readonly controlled?: boolean;
+    readonly controlSlot?: number;
+}
+
+/** 当前占用神识控制位、能够参与战斗的飞剑。 */
+export class ControlledFlyingSwordTag implements ComponentTag {}
+
+/** 位于角色背后恢复灵力、不能参与战斗的飞剑。 */
+export class ReserveFlyingSwordTag implements ComponentTag {}
+
+/** 灵力耗尽但需等待当前动作结束后换下。 */
+export class PendingFlyingSwordRetireTag implements ComponentTag {}
+
+export enum FlyingSwordControlAssignment {
+    Slot,
+}
+
+export class FlyingSwordControlAssignmentType
+implements Component<FlyingSwordControlAssignment> {
+    readonly [FlyingSwordControlAssignment.Slot] = Types.U16;
 }
 
 /** 飞剑控制组的稳定身份。 */

@@ -11,26 +11,26 @@ export const PiercingCloudSkillPlan: CompiledFlyingSwordSkillPlan =
         id: FlyingSwordSkillPlanId.PiercingCloud,
         minimumSwords: 1,
         maximumSwords: 0xffff,
-        gatherTicks: 24,
-        gatherArrivalRatio: 0.8,
-        gatherDistance: 1.35,
-        gatherHeight: 1.65,
+        gatherTicks: 1,
+        gatherArrivalRatio: 1,
+        gatherDistance: 0,
+        gatherHeight: 0,
         gatherSpacing: 0.28,
         gatherArrivalRadius: 0.42,
         gatherSpeedMultiplier: 1,
-        launchWaveCount: 8,
-        launchIntervalTicks: 2,
-        launchCurveTicks: 30,
-        launchLookaheadTicks: 6,
-        launchAscentHeight: 4.6,
-        launchTurnDistance: 2.8,
-        launchTimeoutTicks: 120,
-        launchSpeedMultiplier: 1.8,
-        strikeHeight: 0.9,
-        strikeSpread: 1.2,
-        passDistance: 3.6,
-        strikeTicks: 12,
-        strikeSpeedMultiplier: 1.8,
+        launchWaveCount: 1,
+        launchIntervalTicks: 0,
+        launchCurveTicks: 1,
+        launchLookaheadTicks: 1,
+        launchAscentHeight: 0,
+        launchTurnDistance: 0,
+        launchTimeoutTicks: 90,
+        launchSpeedMultiplier: 2.25,
+        strikeHeight: 0,
+        strikeSpread: 0,
+        passDistance: 1.8,
+        strikeTicks: 4,
+        strikeSpeedMultiplier: 2.25,
         returnSpeedMultiplier: 1.25,
         rejoinRadius: 1.35,
         rejoinTicks: 2,
@@ -86,7 +86,7 @@ function validatePlan(plan: CompiledFlyingSwordSkillPlan): void {
     integer("maximumSwords", plan.maximumSwords, plan.minimumSwords, 0xffff);
     integer("gatherTicks", plan.gatherTicks, 1, 0xffffffff);
     ratio("gatherArrivalRatio", plan.gatherArrivalRatio);
-    positive("gatherDistance", plan.gatherDistance);
+    nonNegative("gatherDistance", plan.gatherDistance);
     finite("gatherHeight", plan.gatherHeight);
     positive("gatherSpacing", plan.gatherSpacing);
     positive("gatherArrivalRadius", plan.gatherArrivalRadius);
@@ -100,7 +100,7 @@ function validatePlan(plan: CompiledFlyingSwordSkillPlan): void {
         0,
         plan.launchCurveTicks,
     );
-    positive("launchAscentHeight", plan.launchAscentHeight);
+    nonNegative("launchAscentHeight", plan.launchAscentHeight);
     nonNegative("launchTurnDistance", plan.launchTurnDistance);
     integer("launchTimeoutTicks", plan.launchTimeoutTicks, 1, 0xffffffff);
     positive("launchSpeedMultiplier", plan.launchSpeedMultiplier);
