@@ -107,6 +107,10 @@ import {
     cleanupResolvedDamageFactsSystem,
     generateLifeLeechRecoverySystem,
 } from "./life-leech-system";
+import {
+    LifePickupSystemOptions,
+    collectLifePickupsSystem,
+} from "./life-pickup-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -274,6 +278,10 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             collectRogueExperienceSystem,
             RogueSystemOptions.progression,
+        );
+        builder.addSystem(
+            collectLifePickupsSystem,
+            LifePickupSystemOptions,
         );
         builder.addSystem(
             openRogueUpgradeSelectionSystem,

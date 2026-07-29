@@ -47,6 +47,9 @@ import {
     ExperiencePickupType,
     ExperienceReward,
     ExperienceRewardType,
+    HealingKind,
+    HealingRequest,
+    HealingRequestType,
     FocusSwordHitHistory,
     FocusSwordHitHistoryType,
     FireBurst,
@@ -57,6 +60,10 @@ import {
     FlyingSwordDamageSourceType,
     Health,
     HealthType,
+    LifeOnKillReward,
+    LifeOnKillRewardType,
+    LifePickup,
+    LifePickupType,
     LightningArc,
     LightningArcEnd3Type,
     LightningArcStart3Type,
@@ -108,6 +115,7 @@ export class RogueContentService extends Service {
             .add(EnemyFeedbackType)
             .add(HealthType)
             .add(ExperienceRewardType)
+            .add(LifeOnKillRewardType)
             .add(FlyingSwordContactCooldownType)
             .add(FocusSwordHitHistoryType)
             .add(EnemyFireAccumulationType)
@@ -219,6 +227,11 @@ export class RogueContentService extends Service {
                 ExperienceRewardType,
                 ExperienceReward.Value,
                 catalog.experience[kind],
+            )
+            .set(
+                LifeOnKillRewardType,
+                LifeOnKillReward.MaximumLifeRatio,
+                catalog.lifeOnKillRatio[kind],
             )
             .set(
                 FlyingSwordContactCooldownType,
@@ -360,6 +373,54 @@ export class RogueContentService extends Service {
             .set(Velocity3Type, Float3.Y, 0)
             .set(Velocity3Type, Float3.Z, 0)
             .set(ExperiencePickupType, ExperiencePickup.Value, value)
+            .submit();
+        return entity;
+    }
+
+    spawnLifePickup(
+        x: number,
+        z: number,
+        maximumLifeRatio: number,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(Position3Type)
+            .add(PreviousPosition3Type)
+            .add(Velocity3Type)
+            .add(LifePickupType)
+            .set(Position3Type, Float3.X, x)
+            .set(Position3Type, Float3.Y, 0.3)
+            .set(Position3Type, Float3.Z, z)
+            .set(PreviousPosition3Type, Float3.X, x)
+            .set(PreviousPosition3Type, Float3.Y, 0.3)
+            .set(PreviousPosition3Type, Float3.Z, z)
+            .set(Velocity3Type, Float3.X, 0)
+            .set(Velocity3Type, Float3.Y, 0)
+            .set(Velocity3Type, Float3.Z, 0)
+            .set(
+                LifePickupType,
+                LifePickup.MaximumLifeRatio,
+                maximumLifeRatio,
+            )
+            .submit();
+        return entity;
+    }
+
+    requestHealing(
+        source: Entity,
+        target: Entity,
+        amount: number,
+        kind: HealingKind,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(HealingRequestType)
+            .set(HealingRequestType, HealingRequest.Source, source)
+            .set(HealingRequestType, HealingRequest.Target, target)
+            .set(HealingRequestType, HealingRequest.Amount, amount)
+            .set(HealingRequestType, HealingRequest.Kind, kind)
             .submit();
         return entity;
     }

@@ -151,6 +151,34 @@ implements Component<LifeRegeneration> {
     readonly [LifeRegeneration.MaximumLifePerSecondRatio] = Types.F32;
 }
 
+export enum LifeOnKill {
+    RewardMultiplier,
+    MaximumPerTickRatio,
+}
+
+export class LifeOnKillType implements Component<LifeOnKill> {
+    readonly [LifeOnKill.RewardMultiplier] = Types.F32;
+    readonly [LifeOnKill.MaximumPerTickRatio] = Types.F32;
+}
+
+export enum LifeOnKillReward {
+    MaximumLifeRatio,
+}
+
+export class LifeOnKillRewardType
+implements Component<LifeOnKillReward> {
+    readonly [LifeOnKillReward.MaximumLifeRatio] = Types.F32;
+}
+
+/** 独立于经验灵蕴的生命恢复拾取物。 */
+export enum LifePickup {
+    MaximumLifeRatio,
+}
+
+export class LifePickupType implements Component<LifePickup> {
+    readonly [LifePickup.MaximumLifeRatio] = Types.F32;
+}
+
 export enum PlayerMovement {
     Speed,
 }

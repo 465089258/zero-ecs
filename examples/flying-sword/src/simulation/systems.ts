@@ -74,6 +74,8 @@ import {
     LifeLeechRuntimeType,
     LifeLeechStats,
     LifeLeechStatsType,
+    LifeOnKill,
+    LifeOnKillType,
     LevelExperience,
     LevelExperienceType,
     LightningSwordIntent,
@@ -246,6 +248,7 @@ function setupFlyingSwordDemo(
         .add(LifeRegenerationType)
         .add(LifeLeechStatsType)
         .add(LifeLeechRuntimeType)
+        .add(LifeOnKillType)
         .add(PlayerMovementType)
         .add(LevelExperienceType)
         .add(PlayerPickupType)
@@ -313,6 +316,12 @@ function setupFlyingSwordDemo(
             LifeLeechRuntimeType,
             LifeLeechRuntime.Stored,
             0,
+        )
+        .set(LifeOnKillType, LifeOnKill.RewardMultiplier, 1)
+        .set(
+            LifeOnKillType,
+            LifeOnKill.MaximumPerTickRatio,
+            0.05,
         )
         .set(PlayerMovementType, PlayerMovement.Speed, 5.4)
         .set(LevelExperienceType, LevelExperience.Level, 1)

@@ -62,6 +62,7 @@ import {
     EnemyFeedback,
     EnemyIdentity,
     ExperiencePickup,
+    LifePickup,
     FireBurst,
     FireSwordIntent,
     Health,
@@ -98,6 +99,7 @@ import {
     RogueEnemyRenderQuery,
     RogueAutoFlyingSwordGroupQuery,
     RogueExperiencePickupQuery,
+    RogueLifePickupQuery,
     RogueFireBurstQuery,
     RogueLightningArcQuery,
     RoguePlayerQuery,
@@ -125,6 +127,7 @@ type StoneGolemCharges =
 type SwordWraithEmpowerments =
     QueryOf<typeof RogueSwordWraithEmpowermentRenderQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
+type LifePickups = QueryOf<typeof RogueLifePickupQuery>;
 type DamageDisplays = QueryOf<typeof DamageDisplayQuery>;
 type LightningArcs = QueryOf<typeof RogueLightningArcQuery>;
 type FireBursts = QueryOf<typeof RogueFireBurstQuery>;
@@ -140,6 +143,7 @@ enum RenderKind {
     Cultivator,
     Enemy,
     Experience,
+    LifePickup,
     Sword,
     FusionAura,
     LightningArc,
@@ -333,6 +337,7 @@ export class DemoRenderService extends Service {
         swords: Swords,
         replacementSelections: ReplacementSelections,
         swordInventory: SwordInventory,
+        lifePickups: LifePickups,
     ): void {
         const skillPhase = this.skills.phase(scene.swordGroup);
         const tick = this.readRunTick(runs);
@@ -361,6 +366,7 @@ export class DemoRenderService extends Service {
         this.collectCultivators(cultivators, interpolation, tick);
         this.collectEnemies(enemies, interpolation, tick);
         this.collectExperience(pickups, interpolation);
+        this.collectLifePickups(lifePickups, interpolation);
         this.collectSwords(swords, interpolation);
         this.collectDamageDisplays(
             damages,
@@ -1191,6 +1197,50 @@ export class DemoRenderService extends Service {
         }
     }
 
+    private collectLifePickups(
+        pickups: LifePickups,
+        interpolation: number,
+    ): void {
+        const iter = pickups.iter();
+        while (iter.next()) {
+            const [
+                count,
+                entities,
+                positions,
+                previousPositions,
+                ,
+                values,
+            ] = iter.current;
+            const previousXs = previousPositions[Float3.X];
+            const previousYs = previousPositions[Float3.Y];
+            const previousZs = previousPositions[Float3.Z];
+            const xs = positions[Float3.X];
+            const ys = positions[Float3.Y];
+            const zs = positions[Float3.Z];
+            const ratios = values[LifePickup.MaximumLifeRatio];
+            for (let row = 0; row < count; row++) {
+                const x = lerp(previousXs[row], xs[row], interpolation);
+                const y = lerp(previousYs[row], ys[row], interpolation);
+                const z = lerp(previousZs[row], zs[row], interpolation);
+                this.camera.project(x, y, z, this.projected);
+                if (!this.isVisible(this.projected.x, this.projected.y)) {
+                    continue;
+                }
+                const item = this.queue.acquire();
+                item.kind = RenderKind.LifePickup;
+                item.sprite = 0;
+                item.layer = DemoRenderLayer.World;
+                item.depth = this.projected.depth;
+                item.subOrder = 2;
+                item.stableId = entities[row] * 8 + 5;
+                item.x1 = this.projected.x;
+                item.y1 = this.projected.y;
+                item.width = 8 + Math.min(5, ratios[row] * 24);
+                item.height = item.width;
+            }
+        }
+    }
+
     private isVisible(x: number, y: number): boolean {
         return !(
             x < -VIEW_CULLING_MARGIN ||
@@ -1613,6 +1663,8 @@ export class DemoRenderService extends Service {
                 if (item.health < 0.999) drawEnemyHealth(context, item);
             } else if (item.kind === RenderKind.Experience) {
                 drawExperience(context, item);
+            } else if (item.kind === RenderKind.LifePickup) {
+                drawLifePickup(context, item);
             } else if (item.kind === RenderKind.Sword) {
                 if (item.trailStrength > 0) {
                     drawSwordTrail(context, item);
@@ -2611,6 +2663,30 @@ function drawExperience(
     context.lineTo(item.x1 - radius * 0.7, item.y1);
     context.closePath();
     context.fill();
+}
+
+function drawLifePickup(
+    context: PixiPainter,
+    item: Readonly<DemoRenderItem>,
+): void {
+    const radius = item.width * 0.5;
+    context.fillStyle = "rgba(110, 255, 145, 0.2)";
+    context.beginPath();
+    context.arc(item.x1, item.y1, radius + 4, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#71ef91";
+    context.fillRect(
+        item.x1 - radius * 0.22,
+        item.y1 - radius,
+        radius * 0.44,
+        radius * 2,
+    );
+    context.fillRect(
+        item.x1 - radius,
+        item.y1 - radius * 0.22,
+        radius * 2,
+        radius * 0.44,
+    );
 }
 
 function formatRunTime(tick: number): string {

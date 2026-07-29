@@ -71,7 +71,10 @@ import {
     FlyingSwordPiercingSequenceType,
     Health,
     HealthType,
+    HealingKind,
     LevelExperience,
+    LifeOnKill,
+    LifeOnKillReward,
     LightningSwordIntent,
     MetalSwordIntent,
     PlayerPickup,
@@ -121,6 +124,7 @@ import {
     RogueEnemyIntentQuery,
     RogueEnemyQuery,
     RogueExperiencePickupQuery,
+    RogueLifeOnKillBeneficiaryQuery,
     RoguePlayerQuery,
     RogueRunQuery,
     RoguePendingSwordReplacementQuery,
@@ -133,6 +137,8 @@ import {
 
 type Runs = QueryOf<typeof RogueRunQuery>;
 type Players = QueryOf<typeof RoguePlayerQuery>;
+type LifeOnKillPlayers =
+    QueryOf<typeof RogueLifeOnKillBeneficiaryQuery>;
 type Enemies = QueryOf<typeof RogueEnemyQuery>;
 type EnemyIntents = QueryOf<typeof RogueEnemyIntentQuery>;
 type Pickups = QueryOf<typeof RogueExperiencePickupQuery>;
@@ -271,9 +277,11 @@ export const reactToRogueDeathsSystem = defSystem(
     reactToRogueDeaths,
     [
         Commands,
+        EnemyCatalog,
         RogueContentService,
         RogueRunQuery,
         RoguePlayerQuery,
+        RogueLifeOnKillBeneficiaryQuery,
         RogueEnemyQuery,
     ],
 );
@@ -2100,9 +2108,11 @@ export function calculateAppliedDamage(
 
 function reactToRogueDeaths(
     commands: Commands,
+    catalog: Readonly<EnemyCatalog>,
     content: RogueContentService,
     runs: Runs,
     players: Players,
+    lifeOnKillPlayers: LifeOnKillPlayers,
     enemies: Enemies,
 ): void {
     let runKills: Uint32Array | undefined;
@@ -2121,6 +2131,7 @@ function reactToRogueDeaths(
     }
     if (!runKills || !runActiveEnemies || !runPhases) return;
 
+    let totalLifeOnKillRatio = 0;
     const enemyIter = enemies.iter();
     while (enemyIter.next()) {
         const [
@@ -2136,17 +2147,65 @@ function reactToRogueDeaths(
             ,
             health,
             experience,
+            ,
+            ,
+            lifeOnKillRewards,
         ] = enemyIter.current;
         const xs = positions[Float3.X];
         const zs = positions[Float3.Z];
         const currentHealth = health[Health.Current];
         const rewards = experience[ExperienceReward.Value];
+        const enemyKinds = enemyIter.current[7][EnemyIdentity.Kind];
+        const lifeRatios =
+            lifeOnKillRewards[LifeOnKillReward.MaximumLifeRatio];
         for (let row = 0; row < count; row++) {
             if (currentHealth[row] > 0) continue;
             content.spawnExperience(xs[row], zs[row], rewards[row]);
+            totalLifeOnKillRatio += lifeRatios[row];
+            const kind = enemyKinds[row];
+            if (
+                shouldDropLifePickup(
+                    entities[row],
+                    runKills[0],
+                    catalog.lifePickupChance[kind],
+                )
+            ) {
+                content.spawnLifePickup(
+                    xs[row],
+                    zs[row],
+                    catalog.lifePickupRatio[kind],
+                );
+            }
             commands.entity(entities[row]).despawn().submit();
             runKills[0]++;
             if (runActiveEnemies[0] > 0) runActiveEnemies[0]--;
+        }
+    }
+
+    if (totalLifeOnKillRatio > 0) {
+        const iter = lifeOnKillPlayers.iter();
+        while (iter.next()) {
+            const [count, entities, health, rules] = iter.current;
+            const currents = health[Health.Current];
+            const maximums = health[Health.Maximum];
+            const multipliers = rules[LifeOnKill.RewardMultiplier];
+            const caps = rules[LifeOnKill.MaximumPerTickRatio];
+            for (let row = 0; row < count; row++) {
+                if (currents[row] <= 0) continue;
+                const amount = calculateLifeOnKillRecovery(
+                    maximums[row],
+                    totalLifeOnKillRatio,
+                    multipliers[row],
+                    caps[row],
+                );
+                if (amount <= 0) continue;
+                content.requestHealing(
+                    entities[row],
+                    entities[row],
+                    amount,
+                    HealingKind.OnKill,
+                );
+            }
         }
     }
 
@@ -2171,6 +2230,45 @@ function reactToRogueDeaths(
         }
         break;
     }
+}
+
+export function calculateLifeOnKillRecovery(
+    maximumLife: number,
+    totalRewardRatio: number,
+    rewardMultiplier: number,
+    maximumPerTickRatio: number,
+): number {
+    if (!Number.isFinite(maximumLife) || maximumLife <= 0) return 0;
+    const reward = Number.isFinite(totalRewardRatio)
+        ? Math.max(0, totalRewardRatio)
+        : 0;
+    const multiplier = Number.isFinite(rewardMultiplier)
+        ? Math.max(0, rewardMultiplier)
+        : 0;
+    const cap = Number.isFinite(maximumPerTickRatio)
+        ? Math.max(0, maximumPerTickRatio)
+        : 0;
+    return Math.min(
+        maximumLife * cap,
+        maximumLife * reward * multiplier,
+    );
+}
+
+export function shouldDropLifePickup(
+    enemy: Entity,
+    killSerial: number,
+    chance: number,
+): boolean {
+    if (!(chance > 0)) return false;
+    if (chance >= 1) return true;
+    let hash = (
+        Number(enemy) ^
+        Math.imul(killSerial + 1, 0x9e3779b1)
+    ) >>> 0;
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b) >>> 0;
+    hash ^= hash >>> 13;
+    return hash / 0x100000000 < chance;
 }
 
 function collectRogueExperience(

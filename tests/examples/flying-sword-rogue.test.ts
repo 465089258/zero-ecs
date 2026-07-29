@@ -32,11 +32,13 @@ import {
 import {
     nextRogueRandom,
     calculateAppliedDamage,
+    calculateLifeOnKillRecovery,
     progressAlongSegment3,
     rogueRequiredExperienceFor,
     rollSwordOfferValues,
     resolveRogueDamageSystem,
     swordContainerNeedsReplacement,
+    shouldDropLifePickup,
     squaredDistanceToSegment3,
     type SwordOfferRollOut,
 } from "../../examples/flying-sword/src/simulation/rogue/systems";
@@ -1182,6 +1184,28 @@ test("only eligible resolved damage enters the leech reserve", () => {
     const [, , , runtime] = iter.current;
     expect(runtime[LifeLeechRuntime.Stored][0]).toBeCloseTo(0.1);
     game.dispose();
+});
+
+test("kill and life-pickup recovery stay bounded and deterministic", () => {
+    const catalog = new EnemyCatalog();
+    expect(
+        catalog.lifeOnKillRatio[EnemyKind.SwordWraith],
+    ).toBeGreaterThan(
+        catalog.lifeOnKillRatio[EnemyKind.CorruptedBat],
+    );
+    expect(
+        catalog.lifePickupRatio[EnemyKind.SwordWraith],
+    ).toBeGreaterThan(
+        catalog.lifePickupRatio[EnemyKind.CorruptedBat],
+    );
+    expect(calculateLifeOnKillRecovery(100, 0.2, 1, 0.05))
+        .toBe(5);
+    expect(calculateLifeOnKillRecovery(100, 0.02, 1, 0.05))
+        .toBe(2);
+    expect(shouldDropLifePickup(123 as Entity, 9, 1)).toBe(true);
+    expect(shouldDropLifePickup(123 as Entity, 9, 0)).toBe(false);
+    expect(shouldDropLifePickup(123 as Entity, 9, 0.25))
+        .toBe(shouldDropLifePickup(123 as Entity, 9, 0.25));
 });
 
 test("fusion starts with a meaningful stamina drain budget", () => {

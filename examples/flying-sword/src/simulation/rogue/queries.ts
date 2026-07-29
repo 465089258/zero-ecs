@@ -57,6 +57,9 @@ import {
     LifeRegenerationType,
     LifeLeechRuntimeType,
     LifeLeechStatsType,
+    LifeOnKillRewardType,
+    LifeOnKillType,
+    LifePickupType,
     MetalSwordIntentType,
     PiercingDamageType,
     PlayerMovementType,
@@ -168,6 +171,7 @@ export const RogueEnemyQuery = QueryType.from(With(
     ExperienceRewardType,
     FlyingSwordContactCooldownType,
     FocusSwordHitHistoryType,
+    LifeOnKillRewardType,
 ));
 
 /** 通用追逐行为只写速度、目标与行为期望值。 */
@@ -198,6 +202,13 @@ export const RogueExperiencePickupQuery = QueryType.from(With(
     PreviousPosition3Type,
     Velocity3Type,
     ExperiencePickupType,
+));
+
+export const RogueLifePickupQuery = QueryType.from(With(
+    Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
+    LifePickupType,
 ));
 
 export const RogueDamageRequestQuery = QueryType.from(All(
@@ -239,6 +250,12 @@ export const RogueLifeLeechBeneficiaryQuery = QueryType.from(With(
     HealthType,
     LifeLeechStatsType,
     LifeLeechRuntimeType,
+));
+
+export const RogueLifeOnKillBeneficiaryQuery = QueryType.from(With(
+    HealthType,
+    LifeOnKillType,
+    CultivatorTag,
 ));
 
 export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(

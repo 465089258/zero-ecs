@@ -10,6 +10,7 @@ import {
     RogueEnemyRenderQuery,
     RogueAutoFlyingSwordGroupQuery,
     RogueExperiencePickupQuery,
+    RogueLifePickupQuery,
     RogueFireBurstQuery,
     RogueLightningArcQuery,
     RoguePlayerQuery,
@@ -50,6 +51,7 @@ export const renderFlyingSwordDemoSystem = defSystem(
         DemoFlyingSwordRenderQuery,
         RogueSwordReplacementSelectionQuery,
         RogueSwordInventoryQuery,
+        RogueLifePickupQuery,
     ],
 );
 
@@ -77,6 +79,7 @@ function renderFlyingSwordDemo(
     replacementSelections:
         Parameters<DemoRenderService["render"]>[14],
     swordInventory: Parameters<DemoRenderService["render"]>[15],
+    lifePickups: Parameters<DemoRenderService["render"]>[16],
 ): void {
     renderer.render(
         frame.interpolation,
@@ -95,5 +98,6 @@ function renderFlyingSwordDemo(
         swords,
         replacementSelections,
         swordInventory,
+        lifePickups,
     );
 }
