@@ -19,6 +19,7 @@ import {
     FusionPiercingCandidateState,
     LightningChainAccessState,
     RogueEntityAccessState,
+    RvoSolverState,
 } from "./state";
 import {
     RogueSystemOptions,
@@ -91,6 +92,10 @@ import {
     resolveEnemyCombatSystem,
 } from "./enemy/combat-system";
 import {
+    RvoSystemOptions,
+    resolveRvoAvoidanceSystem,
+} from "./enemy/rvo-system";
+import {
     SwordWraithEmpowermentSystemOptions,
     applyEnemyEmpowermentModifiersSystem,
     pulseSwordWraithEmpowermentSystem,
@@ -129,6 +134,7 @@ export class FlyingSwordRogueSimulationModule implements Module {
             .addState(LightningChainAccessState)
             .addState(FlyingSwordTargetingState)
             .addState(RogueEntityAccessState)
+            .addState(RvoSolverState)
             .addService(RogueContentService)
             .addService(RogueRunControlService);
         builder.addSystem(
@@ -186,6 +192,10 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             applyColdMovementModifierSystem,
             ColdMovementModifierSystemOptions,
+        );
+        builder.addSystem(
+            resolveRvoAvoidanceSystem,
+            RvoSystemOptions,
         );
         builder.addSystem(
             updateSwordResourcesSystem,

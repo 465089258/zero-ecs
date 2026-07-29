@@ -70,6 +70,8 @@ import {
     LightningArcType,
     PiercingDamage,
     PiercingDamageType,
+    RvoAgent,
+    RvoAgentType,
     LeechEligibleDamageTag,
     ContainedSword,
     ContainedSwordType,
@@ -110,6 +112,7 @@ export class RogueContentService extends Service {
             .add(EnemyIdentityType)
             .add(EnemyBodyType)
             .add(EnemyLocomotionType)
+            .add(RvoAgentType)
             .add(EnemyCombatType)
             .add(EnemyEmpowermentType)
             .add(EnemyFeedbackType)
@@ -179,6 +182,11 @@ export class RogueContentService extends Service {
                 EnemyLocomotion.DesiredAcceleration,
                 catalog.acceleration[kind],
             )
+            .set(RvoAgentType, RvoAgent.NeighborDistance, 4.5)
+            .set(RvoAgentType, RvoAgent.TimeHorizon, 1.25)
+            .set(RvoAgentType, RvoAgent.MaximumNeighbors, 12)
+            .set(RvoAgentType, RvoAgent.RadiusScale, 1.05)
+            .set(RvoAgentType, RvoAgent.Responsibility, 1)
             .set(
                 EnemyCombatType,
                 EnemyCombat.BaseContactDamage,

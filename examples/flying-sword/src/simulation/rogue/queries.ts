@@ -73,6 +73,7 @@ import {
     RogueRunStatisticsType,
     RogueRunStatusType,
     RogueRunTargetType,
+    RvoAgentType,
     UpgradeSelectionType,
     SwordBodyUnityType,
     SwordBodyUnityPiercingSequenceType,
@@ -296,6 +297,17 @@ export const RogueColdEnemyQuery = QueryType.from(With(
 export const RogueEnemyMovementQuery = QueryType.from(With(
     EnemyLocomotionType,
     MoveTowards3Type,
+));
+
+export const RogueRvoAgentQuery = QueryType.from(With(
+    Position3Type,
+    PreviousPosition3Type,
+    Velocity3Type,
+    Direction3Type,
+    MoveTowards3Type,
+    EnemyBodyType,
+    HealthType,
+    RvoAgentType,
 ));
 
 /** 基础接触伤害归并使用的最窄查询。 */

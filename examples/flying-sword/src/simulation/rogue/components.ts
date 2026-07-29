@@ -461,6 +461,23 @@ implements Component<EnemyLocomotion> {
     readonly [EnemyLocomotion.DesiredAcceleration] = Types.F32;
 }
 
+/** RVO2/ORCA 局部避障参数；仅敌人实体拥有。 */
+export enum RvoAgent {
+    NeighborDistance,
+    TimeHorizon,
+    MaximumNeighbors,
+    RadiusScale,
+    Responsibility,
+}
+
+export class RvoAgentType implements Component<RvoAgent> {
+    readonly [RvoAgent.NeighborDistance] = Types.F32;
+    readonly [RvoAgent.TimeHorizon] = Types.F32;
+    readonly [RvoAgent.MaximumNeighbors] = Types.U8;
+    readonly [RvoAgent.RadiusScale] = Types.F32;
+    readonly [RvoAgent.Responsibility] = Types.F32;
+}
+
 export enum StoneGolemChargePhase {
     Pursuit,
     Windup,

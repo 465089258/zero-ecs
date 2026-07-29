@@ -22,10 +22,14 @@ import {
 } from "@zero-ecs/game/time";
 import {
     Float3,
+    Direction3Type,
     Position3Type,
+    PreviousPosition3Type,
     Velocity3Type,
 } from "../../examples/flying-sword/src/infrastructure/math";
 import {
+    DemoMotionModule,
+    MotionSystemSet,
     MoveTowards3,
     MoveTowards3Type,
 } from "../../examples/flying-sword/src/infrastructure/motion";
@@ -57,6 +61,7 @@ import {
     FocusPiercingCandidateState,
     LightningChainAccessState,
     RogueEntityAccessState,
+    RvoSolverState,
 } from "../../examples/flying-sword/src/simulation/rogue/state";
 import {
     RogueUpgrade,
@@ -167,6 +172,8 @@ import {
     PendingSwordReplacementType,
     ReplaceSwordRequest,
     ReplaceSwordRequestType,
+    RvoAgent,
+    RvoAgentType,
     SwordReplacementSelection,
     SwordReplacementSelectionType,
 } from "../../examples/flying-sword/src/simulation/rogue/components";
@@ -204,6 +211,9 @@ import {
     resolveEnemyCombatSystem,
 } from "../../examples/flying-sword/src/simulation/rogue/enemy/combat-system";
 import {
+    resolveRvoAvoidanceSystem,
+} from "../../examples/flying-sword/src/simulation/rogue/enemy/rvo-system";
+import {
     applyEnemyEmpowermentModifiersSystem,
     isWithinSwordWraithEmpowerment,
     pulseSwordWraithEmpowermentSystem,
@@ -237,6 +247,11 @@ const HealingRequestTestQuery = QueryType.from(With(HealingRequestType));
 const LeechBeneficiaryTestQuery = QueryType.from(With(
     HealthType,
     LifeLeechRuntimeType,
+));
+const RvoTestAgentQuery = QueryType.from(With(
+    Position3Type,
+    Velocity3Type,
+    RvoAgentType,
 ));
 
 const setupHealingPipelineTestSystem = defSystem(
@@ -363,6 +378,43 @@ const setupLifeLeechPipelineTestSystem = defSystem(
                     );
             }
             damageCommand.submit();
+        }
+    },
+    [Commands],
+);
+
+const setupRvoTestSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        for (const x of [-0.3, 0.3]) {
+            commands
+                .spawn()
+                .add(Position3Type)
+                .add(PreviousPosition3Type)
+                .add(Velocity3Type)
+                .add(Direction3Type)
+                .add(MoveTowards3Type)
+                .add(EnemyBodyType)
+                .add(HealthType)
+                .add(RvoAgentType)
+                .set(Position3Type, Float3.X, x)
+                .set(Position3Type, Float3.Y, 0)
+                .set(Position3Type, Float3.Z, 0)
+                .set(MoveTowards3Type, MoveTowards3.TargetX, 0)
+                .set(MoveTowards3Type, MoveTowards3.TargetY, 0)
+                .set(MoveTowards3Type, MoveTowards3.TargetZ, 10)
+                .set(MoveTowards3Type, MoveTowards3.MaximumSpeed, 2)
+                .set(MoveTowards3Type, MoveTowards3.Acceleration, 20)
+                .set(MoveTowards3Type, MoveTowards3.ArrivalRadius, 0.05)
+                .set(EnemyBodyType, EnemyBody.Radius, 0.4)
+                .set(HealthType, Health.Current, 10)
+                .set(HealthType, Health.Maximum, 10)
+                .set(RvoAgentType, RvoAgent.NeighborDistance, 4.5)
+                .set(RvoAgentType, RvoAgent.TimeHorizon, 1.25)
+                .set(RvoAgentType, RvoAgent.MaximumNeighbors, 12)
+                .set(RvoAgentType, RvoAgent.RadiusScale, 1.05)
+                .set(RvoAgentType, RvoAgent.Responsibility, 1)
+                .submit();
         }
     },
     [Commands],
@@ -1108,6 +1160,44 @@ test("healing pipeline deterministically combines same-tick requests", () => {
     const requestIter =
         game.world.query(HealingRequestTestQuery).iter();
     expect(requestIter.next()).toBe(false);
+    game.dispose();
+});
+
+test("RVO2 separates overlapping enemies without steady-state buffers", () => {
+    const scratch = new RvoSolverState();
+    const initialXs = scratch.xs;
+    scratch.ensureCapacity(initialXs.length);
+    expect(scratch.xs).toBe(initialXs);
+    scratch.ensureCapacity(initialXs.length + 1);
+    const grownXs = scratch.xs;
+    expect(grownXs).not.toBe(initialXs);
+    scratch.ensureCapacity(initialXs.length + 2);
+    expect(scratch.xs).toBe(grownXs);
+
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)))
+        .addModule(new DemoMotionModule());
+    builder.addState(RvoSolverState);
+    builder.addSystem(setupRvoTestSystem);
+    builder.addSystem(resolveRvoAvoidanceSystem, {
+        after: MotionSystemSet.Integrate3,
+    });
+    const game = builder.build();
+    game.init();
+    game.start();
+    for (let tick = 0; tick < 30; tick++) game.update();
+
+    const iter = game.world.query(RvoTestAgentQuery).iter();
+    expect(iter.next()).toBe(true);
+    const [count, , positions, velocities] = iter.current;
+    expect(count).toBe(2);
+    const separation = Math.abs(
+        positions[Float3.X][0] - positions[Float3.X][1],
+    );
+    expect(separation).toBeGreaterThan(0.6);
+    expect(Number.isFinite(velocities[Float3.X][0])).toBe(true);
+    expect(Number.isFinite(velocities[Float3.Z][0])).toBe(true);
     game.dispose();
 });
 

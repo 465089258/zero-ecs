@@ -68,6 +68,67 @@ export class EnemySpatialIndexState extends State {
     }
 }
 
+export const RVO_GRID_SIZE = 64;
+export const RVO_MAX_NEIGHBORS = 32;
+
+/** RVO2 快照、空间网格与 ORCA 求解临时区；仅按高水位扩容。 */
+export class RvoSolverState extends State {
+    readonly cellHeads = new Int32Array(
+        RVO_GRID_SIZE * RVO_GRID_SIZE,
+    );
+    next = new Int32Array(INITIAL_CAPACITY);
+    xs = new Float32Array(INITIAL_CAPACITY);
+    zs = new Float32Array(INITIAL_CAPACITY);
+    velocityXs = new Float32Array(INITIAL_CAPACITY);
+    velocityZs = new Float32Array(INITIAL_CAPACITY);
+    preferredXs = new Float32Array(INITIAL_CAPACITY);
+    preferredZs = new Float32Array(INITIAL_CAPACITY);
+    resultXs = new Float32Array(INITIAL_CAPACITY);
+    resultZs = new Float32Array(INITIAL_CAPACITY);
+    radii = new Float32Array(INITIAL_CAPACITY);
+    maximumSpeeds = new Float32Array(INITIAL_CAPACITY);
+    neighborDistances = new Float32Array(INITIAL_CAPACITY);
+    timeHorizons = new Float32Array(INITIAL_CAPACITY);
+    maximumNeighbors = new Uint8Array(INITIAL_CAPACITY);
+    responsibilities = new Float32Array(INITIAL_CAPACITY);
+    readonly neighborIndices = new Int32Array(RVO_MAX_NEIGHBORS);
+    readonly neighborDistanceSquared =
+        new Float32Array(RVO_MAX_NEIGHBORS);
+    readonly linePointXs = new Float32Array(RVO_MAX_NEIGHBORS);
+    readonly linePointZs = new Float32Array(RVO_MAX_NEIGHBORS);
+    readonly lineDirectionXs =
+        new Float32Array(RVO_MAX_NEIGHBORS);
+    readonly lineDirectionZs =
+        new Float32Array(RVO_MAX_NEIGHBORS);
+    count = 0;
+    originX = 0;
+    originZ = 0;
+
+    ensureCapacity(required: number): void {
+        if (required <= this.xs.length) return;
+        let capacity = this.xs.length;
+        while (capacity < required) capacity *= 2;
+        this.next = growInt32(this.next, capacity);
+        this.xs = growFloat32(this.xs, capacity);
+        this.zs = growFloat32(this.zs, capacity);
+        this.velocityXs = growFloat32(this.velocityXs, capacity);
+        this.velocityZs = growFloat32(this.velocityZs, capacity);
+        this.preferredXs = growFloat32(this.preferredXs, capacity);
+        this.preferredZs = growFloat32(this.preferredZs, capacity);
+        this.resultXs = growFloat32(this.resultXs, capacity);
+        this.resultZs = growFloat32(this.resultZs, capacity);
+        this.radii = growFloat32(this.radii, capacity);
+        this.maximumSpeeds = growFloat32(this.maximumSpeeds, capacity);
+        this.neighborDistances =
+            growFloat32(this.neighborDistances, capacity);
+        this.timeHorizons = growFloat32(this.timeHorizons, capacity);
+        this.maximumNeighbors =
+            growUint8(this.maximumNeighbors, capacity);
+        this.responsibilities =
+            growFloat32(this.responsibilities, capacity);
+    }
+}
+
 /** Damage 热路径复用的实体定位结果。 */
 export class RogueEntityAccessState extends State {
     readonly access: EntityAccess = {
