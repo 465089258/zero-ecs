@@ -3,6 +3,7 @@ import {
     Inject,
     INVALID_ENTITY,
     Service,
+    World,
     type Entity,
 } from "@zero-ecs/game";
 import {
@@ -22,6 +23,8 @@ import {
 } from "../../content/enemies";
 import {
     DamageKind,
+    DamageAttribution,
+    DamageAttributionType,
     DamageRequest,
     DamageRequestType,
     EnemyColdAccumulation,
@@ -60,6 +63,11 @@ import {
     LightningArcType,
     PiercingDamage,
     PiercingDamageType,
+    LeechEligibleDamageTag,
+    ContainedSword,
+    ContainedSwordType,
+    SwordContainer,
+    SwordContainerType,
     StoneGolemCharge,
     StoneGolemChargePhase,
     StoneGolemChargeType,
@@ -70,6 +78,7 @@ import {
 /** 示例组合根：集中组装“敌人具有生命、移动、伤害与经验”等跨模块规则。 */
 export class RogueContentService extends Service {
     @Inject.service(Commands) private readonly commands!: Commands;
+    @Inject.world() private readonly world!: World;
     @Inject.resource(EnemyCatalog)
     private readonly enemies!: EnemyCatalog;
 
@@ -393,8 +402,9 @@ export class RogueContentService extends Service {
                 FlyingSwordDamageSourceType,
                 FlyingSwordDamageSource.Group,
                 sourceGroup,
-            )
-            .submit();
+            );
+        this.addSwordLeechAttribution(command, source);
+        command.submit();
         return entity;
     }
 
@@ -425,9 +435,62 @@ export class RogueContentService extends Service {
                 PiercingDamageType,
                 PiercingDamage.PriorHits,
                 priorHits,
+            );
+        this.addSwordLeechAttribution(command, source);
+        command.submit();
+        return entity;
+    }
+
+    requestLeechEligibleDamage(
+        source: Entity,
+        beneficiary: Entity,
+        target: Entity,
+        amount: number,
+        kind: DamageKind,
+    ): Entity {
+        const command = this.commands.spawn();
+        const entity = command.entity;
+        command
+            .add(DamageRequestType)
+            .add(DamageAttributionType)
+            .add(LeechEligibleDamageTag)
+            .set(DamageRequestType, DamageRequest.Source, source)
+            .set(DamageRequestType, DamageRequest.Target, target)
+            .set(DamageRequestType, DamageRequest.Amount, amount)
+            .set(DamageRequestType, DamageRequest.Kind, kind)
+            .set(
+                DamageAttributionType,
+                DamageAttribution.Beneficiary,
+                beneficiary,
             )
             .submit();
         return entity;
+    }
+
+    private addSwordLeechAttribution(
+        command: ReturnType<Commands["spawn"]>,
+        sword: Entity,
+    ): void {
+        const container = this.world.get(
+            sword,
+            ContainedSwordType,
+            ContainedSword.Container,
+        );
+        if (container === null) return;
+        const beneficiary = this.world.get(
+            container,
+            SwordContainerType,
+            SwordContainer.Owner,
+        );
+        if (beneficiary === null) return;
+        command
+            .add(DamageAttributionType)
+            .add(LeechEligibleDamageTag)
+            .set(
+                DamageAttributionType,
+                DamageAttribution.Beneficiary,
+                beneficiary,
+            );
     }
 
     spawnLightningArc(

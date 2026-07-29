@@ -70,6 +70,10 @@ import {
     HealthType,
     LifeRegeneration,
     LifeRegenerationType,
+    LifeLeechRuntime,
+    LifeLeechRuntimeType,
+    LifeLeechStats,
+    LifeLeechStatsType,
     LevelExperience,
     LevelExperienceType,
     LightningSwordIntent,
@@ -100,6 +104,8 @@ import {
     SwordSpiritPowerType,
     SwordSpiritCost,
     SwordSpiritCostType,
+    SwordLifeLeech,
+    SwordLifeLeechType,
     RogueRunClock,
     RogueRunClockType,
     RogueRunIdentity,
@@ -238,6 +244,8 @@ function setupFlyingSwordDemo(
         .add(CultivatorTag)
         .add(HealthType)
         .add(LifeRegenerationType)
+        .add(LifeLeechStatsType)
+        .add(LifeLeechRuntimeType)
         .add(PlayerMovementType)
         .add(LevelExperienceType)
         .add(PlayerPickupType)
@@ -274,6 +282,36 @@ function setupFlyingSwordDemo(
         .set(
             LifeRegenerationType,
             LifeRegeneration.MaximumLifePerSecondRatio,
+            0,
+        )
+        .set(
+            LifeLeechStatsType,
+            LifeLeechStats.GlobalDamageRatio,
+            tuning.initialLifeLeechDamageRatio,
+        )
+        .set(
+            LifeLeechStatsType,
+            LifeLeechStats.MaximumPerHitRatio,
+            tuning.lifeLeechMaximumPerHitRatio,
+        )
+        .set(
+            LifeLeechStatsType,
+            LifeLeechStats.MaximumStoredRatio,
+            tuning.lifeLeechMaximumStoredRatio,
+        )
+        .set(
+            LifeLeechStatsType,
+            LifeLeechStats.ReleaseDuration,
+            tuning.lifeLeechReleaseDuration,
+        )
+        .set(
+            LifeLeechStatsType,
+            LifeLeechStats.MaximumRecoveryPerSecondRatio,
+            tuning.lifeLeechMaximumRecoveryPerSecondRatio,
+        )
+        .set(
+            LifeLeechRuntimeType,
+            LifeLeechRuntime.Stored,
             0,
         )
         .set(PlayerMovementType, PlayerMovement.Speed, 5.4)
@@ -426,6 +464,7 @@ function setupFlyingSwordDemo(
             .add(SwordAttackType)
             .add(SwordSpiritPowerType)
             .add(SwordSpiritCostType)
+            .add(SwordLifeLeechType)
             .set(FlyingSwordVisualType, FlyingSwordVisual.Id, slot)
             .set(
                 FlyingSwordCombatType,
@@ -508,6 +547,11 @@ function setupFlyingSwordDemo(
                 SwordSpiritCostType,
                 SwordSpiritCost.FormationPerSecond,
                 swordCatalog.formationSpiritDrainPerSecond[blueprint],
+            )
+            .set(
+                SwordLifeLeechType,
+                SwordLifeLeech.DamageRatio,
+                0,
             )
             .set(
                 FlyingSwordPiercingSequenceType,

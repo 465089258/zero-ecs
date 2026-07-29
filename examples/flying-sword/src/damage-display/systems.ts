@@ -17,8 +17,12 @@ import { CultivatorTag } from "../simulation/components";
 import {
     DamageKind,
     DamageRequest,
+    ResolvedDamage,
 } from "../simulation/rogue/components";
 import { resolveRogueDamageSystem } from "../simulation/rogue/systems";
+import {
+    cleanupResolvedDamageFactsSystem,
+} from "../simulation/rogue/life-leech-system";
 import {
     DamageDisplay,
     DamageDisplayCapturedTag,
@@ -54,7 +58,8 @@ export const expireDamageDisplaysSystem = defSystem(
 
 export const DamageDisplaySystemOptions = Object.freeze({
     capture: {
-        beforeIfPresent: resolveRogueDamageSystem,
+        after: resolveRogueDamageSystem,
+        beforeIfPresent: cleanupResolvedDamageFactsSystem,
     } as const,
     expire: {
         after: captureDamageDisplaysSystem,
@@ -72,9 +77,9 @@ function captureDamageDisplays(
     const access = scratch.access;
     const iter = sources.iter();
     while (iter.next()) {
-        const [count, entities, requests] = iter.current;
+        const [count, entities, requests, resolved] = iter.current;
         const targets = requests[DamageRequest.Target];
-        const amounts = requests[DamageRequest.Amount];
+        const amounts = resolved[ResolvedDamage.Applied];
         const kinds = requests[DamageRequest.Kind];
         for (let row = 0; row < count; row++) {
             const request = entities[row];

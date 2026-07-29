@@ -90,12 +90,16 @@ import {
     SwordSpiritPowerType,
     SwordSpiritCost,
     SwordSpiritCostType,
+    SwordLifeLeech,
+    SwordLifeLeechType,
     SwordUpgradeOffer,
     SwordUpgradeOfferType,
     PlayerMovement,
     PendingSwordReplacement,
     PendingSwordReplacementType,
     ReplaceSwordRequest,
+    ResolvedDamage,
+    ResolvedDamageType,
     RogueRunClock,
     RogueRunIdentity,
     RogueRunPhase,
@@ -179,6 +183,14 @@ export const RogueSystemSet = Object.freeze({
         "flying-sword-rogue:damage-effects",
     ),
     Damage: new SystemSet(Update.fixed, "flying-sword-rogue:damage"),
+    LeechAccumulate: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:leech-accumulate",
+    ),
+    DamageCleanup: new SystemSet(
+        Update.fixed,
+        "flying-sword-rogue:damage-cleanup",
+    ),
     Death: new SystemSet(Update.fixed, "flying-sword-rogue:death"),
     Progression: new SystemSet(Update.fixed, "flying-sword-rogue:progression"),
     OpenUpgrade: new SystemSet(
@@ -361,11 +373,11 @@ export const RogueSystemOptions = Object.freeze({
     damage: {
         inSet: RogueSystemSet.Damage,
         after: RogueSystemSet.DamageEffects,
-        before: RogueSystemSet.Death,
+        before: RogueSystemSet.LeechAccumulate,
     },
     death: {
         inSet: RogueSystemSet.Death,
-        after: RogueSystemSet.Damage,
+        after: RogueSystemSet.DamageCleanup,
         before: RogueSystemSet.Progression,
     },
     progression: {
@@ -954,6 +966,7 @@ function addFlyingSword(
         .add(SwordAttackType)
         .add(SwordSpiritPowerType)
         .add(SwordSpiritCostType)
+        .add(SwordLifeLeechType)
         .set(
             FlyingSwordVisualType,
             FlyingSwordVisual.Id,
@@ -1032,6 +1045,11 @@ function addFlyingSword(
             SwordSpiritCostType,
             SwordSpiritCost.FormationPerSecond,
             offeredFormationSpiritDrain,
+        )
+        .set(
+            SwordLifeLeechType,
+            SwordLifeLeech.DamageRatio,
+            0,
         )
         .set(
             FlyingSwordPiercingSequenceType,
@@ -2019,6 +2037,7 @@ function resolveRogueDamage(
         const kinds = data[DamageRequest.Kind];
         for (let row = 0; row < count; row++) {
             const target = targets[row];
+            let applied = 0;
             if (world.resolve(target, access) && access.archetype) {
                 const health = access.archetype.getComp(
                     access.row,
@@ -2028,12 +2047,15 @@ function resolveRogueDamage(
                     const localRow =
                         access.archetype.rowIdxOf(access.row);
                     const current = health[Health.Current];
-                    const amount = Math.max(0, amounts[row]);
+                    applied = calculateAppliedDamage(
+                        current[localRow],
+                        amounts[row],
+                    );
                     current[localRow] = Math.max(
                         0,
-                        current[localRow] - amount,
+                        current[localRow] - applied,
                     );
-                    if (amount > 0 && feedbackId !== undefined) {
+                    if (applied > 0 && feedbackId !== undefined) {
                         const feedback = access.archetype.getComp(
                             access.row,
                             feedbackId,
@@ -2049,9 +2071,31 @@ function resolveRogueDamage(
                     }
                 }
             }
-            commands.entity(entities[row]).despawn().submit();
+            commands
+                .entity(entities[row])
+                .add(ResolvedDamageType)
+                .set(
+                    ResolvedDamageType,
+                    ResolvedDamage.Applied,
+                    applied,
+                )
+                .submit();
         }
     }
+}
+
+export function calculateAppliedDamage(
+    currentLife: number,
+    requestedDamage: number,
+): number {
+    if (
+        !Number.isFinite(currentLife) ||
+        !Number.isFinite(requestedDamage)
+    ) return 0;
+    return Math.min(
+        Math.max(0, currentLife),
+        Math.max(0, requestedDamage),
+    );
 }
 
 function reactToRogueDeaths(

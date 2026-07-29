@@ -703,6 +703,62 @@ export class DamageRequestType implements Component<DamageRequest> {
     readonly [DamageRequest.Kind] = Types.U8;
 }
 
+/** 伤害结算后保留下来的实际扣血量。 */
+export enum ResolvedDamage {
+    Applied,
+}
+
+export class ResolvedDamageType implements Component<ResolvedDamage> {
+    readonly [ResolvedDamage.Applied] = Types.F32;
+}
+
+/** 伤害产生恢复收益时的明确受益人。 */
+export enum DamageAttribution {
+    Beneficiary,
+}
+
+export class DamageAttributionType
+implements Component<DamageAttribution> {
+    readonly [DamageAttribution.Beneficiary] = Types.Entity;
+}
+
+/** 只有明确携带该 Tag 的直接伤害才允许转化为吸血。 */
+export class LeechEligibleDamageTag implements ComponentTag {}
+
+export enum LifeLeechStats {
+    GlobalDamageRatio,
+    MaximumPerHitRatio,
+    MaximumStoredRatio,
+    ReleaseDuration,
+    MaximumRecoveryPerSecondRatio,
+}
+
+export class LifeLeechStatsType implements Component<LifeLeechStats> {
+    readonly [LifeLeechStats.GlobalDamageRatio] = Types.F32;
+    readonly [LifeLeechStats.MaximumPerHitRatio] = Types.F32;
+    readonly [LifeLeechStats.MaximumStoredRatio] = Types.F32;
+    readonly [LifeLeechStats.ReleaseDuration] = Types.F32;
+    readonly [LifeLeechStats.MaximumRecoveryPerSecondRatio] = Types.F32;
+}
+
+export enum LifeLeechRuntime {
+    Stored,
+}
+
+export class LifeLeechRuntimeType
+implements Component<LifeLeechRuntime> {
+    readonly [LifeLeechRuntime.Stored] = Types.F32;
+}
+
+/** 单剑仅作用于自身直接伤害的吸血比例。 */
+export enum SwordLifeLeech {
+    DamageRatio,
+}
+
+export class SwordLifeLeechType implements Component<SwordLifeLeech> {
+    readonly [SwordLifeLeech.DamageRatio] = Types.F32;
+}
+
 /** 飞剑伤害事实携带的控制组上下文，供宿主剑意规则解释。 */
 export enum FlyingSwordDamageSource {
     Group,

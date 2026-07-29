@@ -101,6 +101,12 @@ import {
     generateLifeRegenerationSystem,
     resolveHealingRequestsSystem,
 } from "./recovery-system";
+import {
+    LifeLeechSystemOptions,
+    accumulateLifeLeechSystem,
+    cleanupResolvedDamageFactsSystem,
+    generateLifeLeechRecoverySystem,
+} from "./life-leech-system";
 
 export class FlyingSwordRogueSimulationModule implements Module {
     build(builder: GameBuilder): void {
@@ -132,6 +138,10 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             generateLifeRegenerationSystem,
             RecoverySystemOptions.generate,
+        );
+        builder.addSystem(
+            generateLifeLeechRecoverySystem,
+            LifeLeechSystemOptions.generate,
         );
         builder.addSystem(
             resolveHealingRequestsSystem,
@@ -248,6 +258,14 @@ export class FlyingSwordRogueSimulationModule implements Module {
         builder.addSystem(
             resolveRogueDamageSystem,
             RogueSystemOptions.damage,
+        );
+        builder.addSystem(
+            accumulateLifeLeechSystem,
+            LifeLeechSystemOptions.accumulate,
+        );
+        builder.addSystem(
+            cleanupResolvedDamageFactsSystem,
+            LifeLeechSystemOptions.cleanup,
         );
         builder.addSystem(
             reactToRogueDeathsSystem,

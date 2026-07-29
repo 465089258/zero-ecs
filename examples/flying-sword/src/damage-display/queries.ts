@@ -5,14 +5,17 @@ import {
     Without,
 } from "@zero-ecs/game";
 import { Position3Type } from "../infrastructure/math";
-import { DamageRequestType } from "../simulation/rogue/components";
+import {
+    DamageRequestType,
+    ResolvedDamageType,
+} from "../simulation/rogue/components";
 import {
     DamageDisplayCapturedTag,
     DamageDisplayType,
 } from "./components";
 
 export const DamageDisplaySourceQuery = QueryType.from(All(
-    With(DamageRequestType),
+    With(DamageRequestType, ResolvedDamageType),
     Without(DamageDisplayCapturedTag),
 ));
 

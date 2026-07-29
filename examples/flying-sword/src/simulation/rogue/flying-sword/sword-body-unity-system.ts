@@ -415,7 +415,8 @@ function collideFusionSegment(
                             FlyingSwordContactCooldown.FusionNextTick,
                             tick + FUSION_CONTACT_COOLDOWN_TICKS,
                         );
-                        content.requestDamage(
+                        content.requestLeechEligibleDamage(
+                            source,
                             source,
                             enemy,
                             damage,

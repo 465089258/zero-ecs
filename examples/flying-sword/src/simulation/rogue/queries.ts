@@ -1,6 +1,8 @@
 import {
+    All,
     QueryType,
     With,
+    Without,
 } from "@zero-ecs/game";
 import {
     ControlledFlyingSwordTag,
@@ -26,6 +28,7 @@ import {
     ChooseUpgradeRequestType,
     ColdSwordIntentType,
     DamageRequestType,
+    DamageAttributionType,
     EnemyBodyType,
     EnemyCombatType,
     EnemyColdAccumulationType,
@@ -52,6 +55,8 @@ import {
     LightningArcType,
     LightningSwordIntentType,
     LifeRegenerationType,
+    LifeLeechRuntimeType,
+    LifeLeechStatsType,
     MetalSwordIntentType,
     PiercingDamageType,
     PlayerMovementType,
@@ -77,6 +82,8 @@ import {
     PendingSwordReplacementType,
     ReplaceSwordRequestType,
     ResolvedHealingType,
+    ResolvedDamageType,
+    LeechEligibleDamageTag,
     ContainedSwordType,
     SwordIdentityType,
     SwordReplacementSelectionType,
@@ -193,21 +200,46 @@ export const RogueExperiencePickupQuery = QueryType.from(With(
     ExperiencePickupType,
 ));
 
-export const RogueDamageRequestQuery = QueryType.from(With(
-    DamageRequestType,
+export const RogueDamageRequestQuery = QueryType.from(All(
+    With(DamageRequestType),
+    Without(ResolvedDamageType),
 ));
 
-export const RogueFlyingSwordDamageRequestQuery = QueryType.from(With(
-    DamageRequestType,
-    FlyingSwordDamageSourceType,
+export const RogueFlyingSwordDamageRequestQuery = QueryType.from(All(
+    With(
+        DamageRequestType,
+        FlyingSwordDamageSourceType,
+    ),
+    Without(ResolvedDamageType),
 ));
 
 export const RoguePiercingFlyingSwordDamageRequestQuery =
-    QueryType.from(With(
-        DamageRequestType,
-        FlyingSwordDamageSourceType,
-        PiercingDamageType,
+    QueryType.from(All(
+        With(
+            DamageRequestType,
+            FlyingSwordDamageSourceType,
+            PiercingDamageType,
+        ),
+        Without(ResolvedDamageType),
     ));
+
+export const RogueResolvedDamageQuery = QueryType.from(With(
+    DamageRequestType,
+    ResolvedDamageType,
+));
+
+export const RogueLeechEligibleDamageQuery = QueryType.from(With(
+    DamageRequestType,
+    ResolvedDamageType,
+    DamageAttributionType,
+    LeechEligibleDamageTag,
+));
+
+export const RogueLifeLeechBeneficiaryQuery = QueryType.from(With(
+    HealthType,
+    LifeLeechStatsType,
+    LifeLeechRuntimeType,
+));
 
 export const RogueAutoFlyingSwordGroupQuery = QueryType.from(With(
     AutoFlyingSwordSkillType,

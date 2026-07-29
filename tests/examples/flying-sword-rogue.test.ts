@@ -31,9 +31,11 @@ import {
 } from "../../examples/flying-sword/src/infrastructure/motion";
 import {
     nextRogueRandom,
+    calculateAppliedDamage,
     progressAlongSegment3,
     rogueRequiredExperienceFor,
     rollSwordOfferValues,
+    resolveRogueDamageSystem,
     swordContainerNeedsReplacement,
     squaredDistanceToSegment3,
     type SwordOfferRollOut,
@@ -117,6 +119,8 @@ import {
 } from "../../examples/flying-sword/src/simulation/rogue/flying-sword/metal-break-system";
 import {
     DamageKind,
+    DamageAttribution,
+    DamageAttributionType,
     DamageRequest,
     DamageRequestType,
     EnemyBody,
@@ -140,6 +144,11 @@ import {
     PiercingDamageType,
     Health,
     HealthType,
+    LeechEligibleDamageTag,
+    LifeLeechRuntime,
+    LifeLeechRuntimeType,
+    LifeLeechStats,
+    LifeLeechStatsType,
     RogueRunClock,
     RogueRunClockType,
     RogueRunPhase,
@@ -150,6 +159,8 @@ import {
     StoneGolemChargeType,
     SwordWraithEmpowerment,
     SwordWraithEmpowermentType,
+    SwordLifeLeech,
+    SwordLifeLeechType,
     PendingSwordReplacement,
     PendingSwordReplacementType,
     ReplaceSwordRequest,
@@ -201,6 +212,13 @@ import {
     resolveHealingRequestsSystem,
     type ResolvedHealingOut,
 } from "../../examples/flying-sword/src/simulation/rogue/recovery-system";
+import {
+    accumulateLifeLeechSystem,
+    calculateLifeLeechRelease,
+    calculateLifeLeechStorage,
+    cleanupResolvedDamageFactsSystem,
+    type LifeLeechStorageOut,
+} from "../../examples/flying-sword/src/simulation/rogue/life-leech-system";
 
 type TestDamageRequests = QueryOf<typeof RogueDamageRequestQuery>;
 type TestRunPhases = QueryOf<typeof RogueRunPhaseQuery>;
@@ -214,6 +232,10 @@ const TestEmpoweredEnemyQuery = QueryType.from(With(
 
 const HealingTargetQuery = QueryType.from(With(HealthType));
 const HealingRequestTestQuery = QueryType.from(With(HealingRequestType));
+const LeechBeneficiaryTestQuery = QueryType.from(With(
+    HealthType,
+    LifeLeechRuntimeType,
+));
 
 const setupHealingPipelineTestSystem = defSystem(
     Startup,
@@ -250,6 +272,95 @@ const setupHealingPipelineTestSystem = defSystem(
                     HealingKind.Skill,
                 )
                 .submit();
+        }
+    },
+    [Commands],
+);
+
+const setupLifeLeechPipelineTestSystem = defSystem(
+    Startup,
+    (commands: Commands): void => {
+        const beneficiaryCommand = commands.spawn();
+        const beneficiary = beneficiaryCommand.entity;
+        beneficiaryCommand
+            .add(HealthType)
+            .add(LifeLeechStatsType)
+            .add(LifeLeechRuntimeType)
+            .set(HealthType, Health.Current, 50)
+            .set(HealthType, Health.Maximum, 100)
+            .set(
+                LifeLeechStatsType,
+                LifeLeechStats.GlobalDamageRatio,
+                0.01,
+            )
+            .set(
+                LifeLeechStatsType,
+                LifeLeechStats.MaximumPerHitRatio,
+                0.05,
+            )
+            .set(
+                LifeLeechStatsType,
+                LifeLeechStats.MaximumStoredRatio,
+                0.4,
+            )
+            .set(
+                LifeLeechStatsType,
+                LifeLeechStats.ReleaseDuration,
+                3.33,
+            )
+            .set(
+                LifeLeechStatsType,
+                LifeLeechStats.MaximumRecoveryPerSecondRatio,
+                0.12,
+            )
+            .set(
+                LifeLeechRuntimeType,
+                LifeLeechRuntime.Stored,
+                0,
+            )
+            .submit();
+        const sourceCommand = commands.spawn();
+        const source = sourceCommand.entity;
+        sourceCommand
+            .add(SwordLifeLeechType)
+            .set(
+                SwordLifeLeechType,
+                SwordLifeLeech.DamageRatio,
+                0,
+            )
+            .submit();
+        for (let index = 0; index < 2; index++) {
+            const targetCommand = commands.spawn();
+            const target = targetCommand.entity;
+            targetCommand
+                .add(HealthType)
+                .set(HealthType, Health.Current, 10)
+                .set(HealthType, Health.Maximum, 10)
+                .submit();
+            const damageCommand = commands
+                .spawn()
+                .add(DamageRequestType)
+                .set(DamageRequestType, DamageRequest.Source, source)
+                .set(DamageRequestType, DamageRequest.Target, target)
+                .set(DamageRequestType, DamageRequest.Amount, 100)
+                .set(
+                    DamageRequestType,
+                    DamageRequest.Kind,
+                    index === 0
+                        ? DamageKind.ScatterSword
+                        : DamageKind.LightningChain,
+                );
+            if (index === 0) {
+                damageCommand
+                    .add(DamageAttributionType)
+                    .add(LeechEligibleDamageTag)
+                    .set(
+                        DamageAttributionType,
+                        DamageAttribution.Beneficiary,
+                        beneficiary,
+                    );
+            }
+            damageCommand.submit();
         }
     },
     [Commands],
@@ -995,6 +1106,81 @@ test("healing pipeline deterministically combines same-tick requests", () => {
     const requestIter =
         game.world.query(HealingRequestTestQuery).iter();
     expect(requestIter.next()).toBe(false);
+    game.dispose();
+});
+
+test("resolved damage and aggregate leech respect all caps", () => {
+    expect(calculateAppliedDamage(80, 2000)).toBe(80);
+    expect(calculateAppliedDamage(80, -5)).toBe(0);
+    expect(calculateAppliedDamage(80, Number.NaN)).toBe(0);
+
+    const out: LifeLeechStorageOut = { gain: 0, stored: 0 };
+    calculateLifeLeechStorage(
+        2000,
+        100,
+        0.01,
+        0,
+        0.05,
+        0,
+        0.4,
+        out,
+    );
+    expect(out).toEqual({ gain: 5, stored: 5 });
+
+    calculateLifeLeechStorage(
+        2000,
+        100,
+        0.01,
+        0,
+        0.05,
+        38,
+        0.4,
+        out,
+    );
+    expect(out).toEqual({ gain: 2, stored: 40 });
+
+    calculateLifeLeechStorage(
+        50,
+        100,
+        0.01,
+        0.02,
+        0.05,
+        0,
+        0.4,
+        out,
+    );
+    expect(out.gain).toBeCloseTo(1.5);
+    expect(out.stored).toBeCloseTo(1.5);
+    expect(
+        calculateLifeLeechRelease(40, 100, 3.33, 0.12, 1),
+    ).toBe(12);
+});
+
+test("only eligible resolved damage enters the leech reserve", () => {
+    const builder = new GameBuilder()
+        .addModule(new CommandModule())
+        .addModule(new TimeModule(new FixedTimeResource(1 / 60)));
+    builder.addState(RogueEntityAccessState);
+    builder.addSystem(setupLifeLeechPipelineTestSystem);
+    builder.addSystem(resolveRogueDamageSystem);
+    builder.addSystem(accumulateLifeLeechSystem, {
+        after: resolveRogueDamageSystem,
+    });
+    builder.addSystem(cleanupResolvedDamageFactsSystem, {
+        after: accumulateLifeLeechSystem,
+    });
+    const game = builder.build();
+    game.init();
+    game.start();
+    game.update();
+    game.update();
+    game.update();
+
+    const iter =
+        game.world.query(LeechBeneficiaryTestQuery).iter();
+    expect(iter.next()).toBe(true);
+    const [, , , runtime] = iter.current;
+    expect(runtime[LifeLeechRuntime.Stored][0]).toBeCloseTo(0.1);
     game.dispose();
 });
 
