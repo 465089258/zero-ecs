@@ -29,7 +29,7 @@ export class Scheduler<Param = unknown> {
     private _sortedStages: readonly SortedStage<Param>[] = [];
     private _stageLookup = new Map<Stage, readonly SystemRunner[]>();
 
-    constructor(readonly schedule: Schedule<Param>) {}
+    constructor(readonly schedule: Schedule<Param>) { }
 
     /** 仅执行领域无关的依赖校验与稳定拓扑排序。 */
     init(): void {
@@ -82,8 +82,7 @@ export class Scheduler<Param = unknown> {
         const runners = this._stageLookup.get(stage);
         if (!runners) return;
         for (let i = 0; i < runners.length; i++) {
-            const runner = runners[i];
-            runner();
+            runners[i]();
         }
     }
 
@@ -134,10 +133,7 @@ export class Scheduler<Param = unknown> {
     }
 }
 
-function findDependencyCycle(
-    outgoing: readonly (readonly number[])[],
-    emitted: Uint8Array,
-): number[] {
+function findDependencyCycle(outgoing: readonly (readonly number[])[], emitted: Uint8Array): number[] {
     const states = new Uint8Array(outgoing.length);
     const path: number[] = [];
     const positions = new Int32Array(outgoing.length);
@@ -219,6 +215,14 @@ function createRunner(fn: SystemFunction, args: unknown[]): SystemRunner {
         case 8: {
             const [a0, a1, a2, a3, a4, a5, a6, a7] = args;
             return () => fn(a0, a1, a2, a3, a4, a5, a6, a7);
+        }
+        case 9: {
+            const [a0, a1, a2, a3, a4, a5, a6, a7, a8] = args;
+            return () => fn(a0, a1, a2, a3, a4, a5, a6, a7, a8);
+        }
+        case 10: {
+            const [a0, a1, a2, a3, a4, a5, a6, a7, a8, a9] = args;
+            return () => fn(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
         }
         default: {
             const values = Object.freeze(args);
