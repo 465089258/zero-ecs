@@ -3,6 +3,9 @@
 *.local
 *.log*
 
+# Course (private, not part of the framework)
+course/
+
 # Dist
 node_modules
 dist/
