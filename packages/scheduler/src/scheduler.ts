@@ -1,11 +1,7 @@
-import type { Schedule, SystemDependency } from "./schedule";
-import type { Stage } from "./stage";
-import type { SystemParamProvider } from "./system-param-provider";
-import type {
-    SystemDefinition,
-    SystemFunction,
-    SystemId,
-} from "./system";
+import type { Schedule, SystemDependency } from './schedule';
+import type { Stage } from './stage';
+import type { SystemParamProvider } from './system-param-provider';
+import type { SystemDefinition, SystemFunction, SystemId } from './system';
 
 type SystemRunner = () => void;
 
@@ -20,7 +16,7 @@ enum SchedulerPhase {
     Preparing,
     Prepared,
     PrepareFailed,
-    Disposed,
+    Disposed
 }
 
 /** 对静态调度排序、一次性绑定不透明参数，并按阶段串行执行系统。 */
@@ -29,21 +25,23 @@ export class Scheduler<Param = unknown> {
     private _sortedStages: readonly SortedStage<Param>[] = [];
     private _stageLookup = new Map<Stage, readonly SystemRunner[]>();
 
-    constructor(readonly schedule: Schedule<Param>) { }
+    constructor(readonly schedule: Schedule<Param>) {}
 
     /** 仅执行领域无关的依赖校验与稳定拓扑排序。 */
     init(): void {
         if (this._phase !== SchedulerPhase.Created) {
-            throw new Error("Scheduler has already been initialized");
+            throw new Error('Scheduler has already been initialized');
         }
         const sortedStages: SortedStage<Param>[] = [];
         for (const stage of this.schedule.stages) {
-            const definitions = this.schedule.systems.filter(system => system.handle.stage === stage);
+            const definitions = this.schedule.systems.filter((system) => system.handle.stage === stage);
             if (!definitions.length) continue;
-            sortedStages.push(Object.freeze({
-                stage,
-                systems: Object.freeze(this.topologicalSort(definitions, this.schedule.dependencies)),
-            }));
+            sortedStages.push(
+                Object.freeze({
+                    stage,
+                    systems: Object.freeze(this.topologicalSort(definitions, this.schedule.dependencies))
+                })
+            );
         }
         this._sortedStages = Object.freeze(sortedStages);
         this._phase = SchedulerPhase.Initialized;
@@ -60,7 +58,7 @@ export class Scheduler<Param = unknown> {
             for (const stage of this._sortedStages) {
                 const runners: SystemRunner[] = [];
                 for (const definition of stage.systems) {
-                    const args = definition.params.map(param => provider.resolve(param));
+                    const args = definition.params.map((param) => provider.resolve(param));
                     runners.push(createRunner(definition.fn, args));
                 }
                 lookup.set(stage.stage, Object.freeze(runners));
@@ -77,12 +75,13 @@ export class Scheduler<Param = unknown> {
     /** 按依赖排序串行执行指定阶段；阶段没有系统时不产生效果。 */
     run(stage: Stage): void {
         if (this._phase !== SchedulerPhase.Prepared) {
-            throw new Error("Scheduler has not been prepared");
+            throw new Error('Scheduler has not been prepared');
         }
         const runners = this._stageLookup.get(stage);
         if (!runners) return;
         for (let i = 0; i < runners.length; i++) {
-            runners[i]();
+            const runner = runners[i];
+            runner();
         }
     }
 
@@ -96,7 +95,7 @@ export class Scheduler<Param = unknown> {
 
     private topologicalSort(
         definitions: readonly SystemDefinition<Param>[],
-        dependencies: readonly SystemDependency[],
+        dependencies: readonly SystemDependency[]
     ): SystemDefinition<Param>[] {
         const byId = new Map<SystemId, number>();
         definitions.forEach((definition, index) => byId.set(definition.handle.id, index));
@@ -114,15 +113,17 @@ export class Scheduler<Param = unknown> {
         while (result.length < definitions.length) {
             let next = -1;
             for (let i = 0; i < definitions.length; i++) {
-                if (!emitted[i] && inDegree[i] === 0 && (
-                    next === -1 || definitions[i].registrationIndex < definitions[next].registrationIndex
-                )) next = i;
+                if (
+                    !emitted[i] &&
+                    inDegree[i] === 0 &&
+                    (next === -1 || definitions[i].registrationIndex < definitions[next].registrationIndex)
+                )
+                    next = i;
             }
             if (next === -1) {
                 const cycle = findDependencyCycle(outgoing, emitted);
-                const names = cycle.length === 0
-                    ? "unknown"
-                    : cycle.map(index => definitions[index].handle.name).join(" -> ");
+                const names =
+                    cycle.length === 0 ? 'unknown' : cycle.map((index) => definitions[index].handle.name).join(' -> ');
                 throw new Error(`System dependency cycle detected: ${names}`);
             }
             emitted[next] = 1;

@@ -14,6 +14,9 @@ storybook-static
 doc_build/
 tmp/
 
+# Perf baselines (generated artifacts, not committed)
+perf-baseline/
+
 # IDE
 .vscode/*
 !.vscode/extensions.json
