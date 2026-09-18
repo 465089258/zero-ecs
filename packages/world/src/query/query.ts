@@ -324,9 +324,16 @@ export class Query<Components extends readonly (object | undefined)[]> {
 
     private matches(archetype: Archetype): boolean {
         const clauses = this._clauses;
+        const archetypeMask = archetype.mask;
+        const archetypeLen = archetypeMask.length;
         for (let i = 0; i < clauses.length; i++) {
             const clause = clauses[i];
-            if (archetype.mask.has(clause.requiredMask) && archetype.mask.not(clause.excludedMask)) return true;
+            // 剪枝 1: excludedMask 优先。not() 在发现第一个交集时立即返回 false，
+            // 对于典型 Without(X) 场景只需 1 个 word 检查，比 has() 全量遍历更短。
+            if (clause.excludedMask.length > 0 && !archetypeMask.not(clause.excludedMask)) continue;
+            // 剪枝 2: length 下界。archetype 的最高有效位还没有 requiredMask 高 → 不可能包含。
+            if (archetypeLen < clause.requiredMask.length) continue;
+            if (archetypeMask.has(clause.requiredMask)) return true;
         }
         return false;
     }
